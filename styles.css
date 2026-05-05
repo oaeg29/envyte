@@ -2,6 +2,8 @@
 :root {
   --app-viewport-height: 100vh;
   --app-viewport-width: 100vw;
+  --app-viewport-offset-left: 0px;
+  --app-viewport-offset-top: 0px;
 }
 
 @supports (height: 100lvh) {
@@ -27,8 +29,8 @@ body {
 
 #myCanvas {
   position: fixed;
-  top: 0;
-  left: 0;
+  top: var(--app-viewport-offset-top);
+  left: var(--app-viewport-offset-left);
   /* width: 100vw; */
   /* height: 100vh; */
   z-index: -1;
@@ -37,24 +39,24 @@ body {
 
 #myCanvasFront {
   position: fixed;
-  top: 0;
-  left: 0;
+  top: var(--app-viewport-offset-top);
+  left: var(--app-viewport-offset-left);
   z-index: 10000;
   pointer-events: none;
 }
 
 #myCanvasFlowersBack {
   position: fixed;
-  top: 0;
-  left: 0;
+  top: var(--app-viewport-offset-top);
+  left: var(--app-viewport-offset-left);
   z-index: 0;
   pointer-events: none;
 }
 
 #myCanvasFlowersFront {
   position: fixed;
-  top: 0;
-  left: 0;
+  top: var(--app-viewport-offset-top);
+  left: var(--app-viewport-offset-left);
   z-index: 10001;
   pointer-events: none;
 }
@@ -70,8 +72,8 @@ header h1 {
 
 video {
   position: fixed;
-  top: 50%;
-  left: 50%;
+  top: calc(50% + var(--app-viewport-offset-top));
+  left: calc(50% + var(--app-viewport-offset-left));
   transform: translate(-50%, -50%) rotate(var(--hero-video-rotate, 0deg));
   width: auto;          /* Preserve aspect ratio */
   height: var(--app-viewport-height); /* Always touch top and bottom */
@@ -83,8 +85,8 @@ video {
 
 #centerOverlayImage {
   position: fixed;
-  top: 50%;
-  left: 50%;
+  top: calc(50% + var(--app-viewport-offset-top));
+  left: calc(50% + var(--app-viewport-offset-left));
   transform: translate(-50%, -50%) scale(1);
   z-index: 2;
   pointer-events: none;
@@ -93,9 +95,22 @@ video {
   display: none;
 }
 
+body.ios26-fixed-workaround #myCanvas,
+body.ios26-fixed-workaround #myCanvasFront,
+body.ios26-fixed-workaround #myCanvasFlowersBack,
+body.ios26-fixed-workaround #myCanvasFlowersFront,
+body.ios26-fixed-workaround video,
+body.ios26-fixed-workaround #centerOverlayImage,
+body.ios26-fixed-workaround #loadingScreen {
+  position: absolute;
+}
+
 #loadingScreen {
   position: fixed;
-  inset: 0;
+  top: var(--app-viewport-offset-top);
+  left: var(--app-viewport-offset-left);
+  width: var(--app-viewport-width);
+  height: var(--app-viewport-height);
   z-index: 20000;
   display: flex;
   align-items: center;
