@@ -214,20 +214,13 @@ function setHeroVideoSourcePath(path, options = {}) {
     existingSources[i].remove();
   }
   if (sourceType.length > 0) {
-    video.removeAttribute('src');
-    video.src = '';
-    const sourceEl = document.createElement('source');
-    sourceEl.setAttribute('src', nextPath);
-    sourceEl.setAttribute('type', sourceType);
-    video.appendChild(sourceEl);
-    video.setAttribute('data-hero-video-source-path', nextPath);
     video.setAttribute('data-hero-video-source-type', sourceType);
   } else {
     video.removeAttribute('data-hero-video-source-type');
-    video.setAttribute('data-hero-video-source-path', nextPath);
-    video.setAttribute('src', nextPath);
-    video.src = nextPath;
   }
+  video.setAttribute('data-hero-video-source-path', nextPath);
+  video.setAttribute('src', nextPath);
+  video.src = nextPath;
   if (shouldForceLoad && typeof video.load === 'function') {
     try {
       video.load();
@@ -422,6 +415,7 @@ function resolveHeroVideoDebugConfig(configCandidate = CONFIG.heroVideoDebug) {
     testFrameCount,
     candidateEntries,
     candidatePaths,
+    requireCanPlayTypeCheck: safeConfig.requireCanPlayTypeCheck !== false,
     labelEnabled: safeConfig.labelEnabled !== false,
     holdAfterEachMs: Number.isFinite(Number(safeConfig.holdAfterEachMs))
       ? clamp(Number(safeConfig.holdAfterEachMs), 0, 2000)
@@ -641,8 +635,42 @@ async function runHeroVideoDebugCycle(debugConfig = resolveHeroVideoDebugConfig(
     const candidatePath = candidate.path;
     const candidateSourceType = candidate.sourceType;
     const shortName = candidatePath.split('/').pop() || candidatePath;
+    const canPlayResult = (
+      candidateSourceType.length > 0
+      && video
+      && typeof video.canPlayType === 'function'
+    )
+      ? String(video.canPlayType(candidateSourceType) || '').trim().toLowerCase()
+      : '';
     if (debugConfig.labelEnabled) {
-      setHeroVideoDebugLabel(`iOS video debug ${i + 1}/${candidatePaths.length}: loading ${shortName}`, { visible: true });
+      const canPlayLabel = canPlayResult.length > 0 ? ` canPlayType=${canPlayResult}` : '';
+      setHeroVideoDebugLabel(
+        `iOS video debug ${i + 1}/${candidatePaths.length}: loading ${shortName}${canPlayLabel}`,
+        { visible: true },
+      );
+    }
+    if (
+      debugConfig.requireCanPlayTypeCheck === true
+      && candidateSourceType.length > 0
+      && canPlayResult !== 'maybe'
+      && canPlayResult !== 'probably'
+    ) {
+      const candidateResult = {
+        path: candidatePath,
+        loaded: false,
+        played: false,
+        error: `canplaytype:${canPlayResult || 'none'}`,
+        reachedSec: 0,
+      };
+      result.results.push(candidateResult);
+      if (debugConfig.labelEnabled) {
+        setHeroVideoDebugLabel(
+          `iOS video debug ${i + 1}/${candidatePaths.length}: ${shortName} skipped (${candidateResult.error})`,
+          { visible: true, isError: true },
+        );
+      }
+      await sleepMs(debugConfig.holdAfterEachMs);
+      continue;
     }
     setHeroVideoSourcePath(candidatePath, { forceLoad: true, sourceType: candidateSourceType });
     const loadStatus = await waitForHeroVideoReadyOrError(debugConfig.loadTimeoutMs);

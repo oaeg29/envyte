@@ -78,12 +78,17 @@
       iosOnly: true,
       frameRate: 30,
       testFrameCount: 150,
+      requireCanPlayTypeCheck: true,
       labelEnabled: true,
       holdAfterEachMs: 300,
       loadTimeoutMs: 15000,
       playTimeoutMs: 15000,
       chooseFirstPlayableAsFinalSource: true,
       candidateSources: [
+        {
+          path: './hero_vid_for_ios.mov',
+          type: 'video/quicktime; codecs="hvc1.1.6.H120.b0"',
+        },
         {
           path: './hero_vid_for_ios_1.mp4',
           type: 'video/mp4; codecs="hvc1"',
@@ -95,6 +100,18 @@
         {
           path: './hero_vid_for_ios_3.mov',
           type: 'video/quicktime; codecs="hvc1.1.6.H120.b0"',
+        },
+        {
+          path: './hero_vid_for_ios_4.mov',
+          type: 'video/quicktime; codecs="hvc1.1.6.H120.b0"',
+        },
+        {
+          path: './vids/hero_vid_for_ios.mp4',
+          type: 'video/mp4; codecs="hvc1"',
+        },
+        {
+          path: './vids/hero_vid_for_ios_clean.mp4',
+          type: 'video/mp4; codecs="hvc1"',
         },
       ],
       candidatePaths: [
