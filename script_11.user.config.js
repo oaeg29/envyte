@@ -87,6 +87,8 @@
         './hero_vid_for_ios.mov',
         './hero_vid_for_ios_1.mp4',
         './hero_vid_for_ios_2.mp4',
+        './hero_vid_for_ios_3.mov',
+        './hero_vid_for_ios_4.mov',
         './vids/hero_vid_for_ios.mp4',
         './vids/hero_vid_for_ios_clean.mp4',
       ],
