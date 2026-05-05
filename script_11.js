@@ -9037,8 +9037,14 @@ function onBranchStructureChanged() {
 // 14) Scene Render
 // =========================
 function resizeCanvasToViewport() {
-  STATE.viewportWidth = window.innerWidth;
-  STATE.viewportHeight = window.innerHeight;
+  const viewportSize = resolveViewportSizeForRendering();
+  STATE.viewportWidth = viewportSize.width;
+  STATE.viewportHeight = viewportSize.height;
+
+  if (document && document.documentElement && document.documentElement.style) {
+    document.documentElement.style.setProperty('--app-viewport-width', `${STATE.viewportWidth}px`);
+    document.documentElement.style.setProperty('--app-viewport-height', `${STATE.viewportHeight}px`);
+  }
 
   canvas.style.width = STATE.viewportWidth + 'px';
   canvas.style.height = STATE.viewportHeight + 'px';
@@ -9065,6 +9071,69 @@ function resizeCanvasToViewport() {
     flowersFrontCanvas.width = Math.floor(STATE.viewportWidth * STATE.dpr);
     flowersFrontCanvas.height = Math.floor(STATE.viewportHeight * STATE.dpr);
   }
+}
+
+let largeViewportProbeElement = null;
+
+function ensureLargeViewportProbeElement() {
+  if (largeViewportProbeElement) {
+    return largeViewportProbeElement;
+  }
+  if (!document || !document.body) {
+    return null;
+  }
+  const probe = document.createElement('div');
+  probe.setAttribute('aria-hidden', 'true');
+  probe.style.position = 'fixed';
+  probe.style.left = '0';
+  probe.style.top = '0';
+  probe.style.width = '100vw';
+  probe.style.height = '100vh';
+  if (typeof CSS !== 'undefined' && CSS && typeof CSS.supports === 'function') {
+    if (CSS.supports('width', '100lvw')) {
+      probe.style.width = '100lvw';
+    }
+    if (CSS.supports('height', '100lvh')) {
+      probe.style.height = '100lvh';
+    }
+  }
+  probe.style.pointerEvents = 'none';
+  probe.style.opacity = '0';
+  probe.style.visibility = 'hidden';
+  probe.style.zIndex = '-2147483648';
+  document.body.appendChild(probe);
+  largeViewportProbeElement = probe;
+  return largeViewportProbeElement;
+}
+
+function resolveViewportSizeForRendering() {
+  const safeInnerWidth = Number.isFinite(window.innerWidth) ? Math.max(0, window.innerWidth) : 0;
+  const safeInnerHeight = Number.isFinite(window.innerHeight) ? Math.max(0, window.innerHeight) : 0;
+  const root = document && document.documentElement ? document.documentElement : null;
+  const safeClientWidth = root && Number.isFinite(root.clientWidth) ? Math.max(0, root.clientWidth) : 0;
+  const safeClientHeight = root && Number.isFinite(root.clientHeight) ? Math.max(0, root.clientHeight) : 0;
+
+  let probeWidth = 0;
+  let probeHeight = 0;
+  const probe = ensureLargeViewportProbeElement();
+  if (probe && typeof probe.getBoundingClientRect === 'function') {
+    const rect = probe.getBoundingClientRect();
+    if (rect) {
+      if (Number.isFinite(rect.width)) {
+        probeWidth = Math.max(0, rect.width);
+      }
+      if (Number.isFinite(rect.height)) {
+        probeHeight = Math.max(0, rect.height);
+      }
+    }
+  }
+
+  const width = Math.max(safeInnerWidth, safeClientWidth, probeWidth);
+  const height = Math.max(safeInnerHeight, safeClientHeight, probeHeight);
+  return {
+    width: width > 0 ? width : safeInnerWidth,
+    height: height > 0 ? height : safeInnerHeight,
+  };
 }
 
 function renderBranch(branch, renderOptions = {}) {
