@@ -42,6 +42,8 @@ let valScaling = 0.01;
 const defaultCountPerSide = 9;
 const FILTER_CACHE_HUE_STEP_DEG = 2;
 const FILTER_CACHE_BRIGHTNESS_STEP = 0.02;
+const HERO_VIDEO_PATH_DEFAULT = './hero_vid_7.webm';
+const HERO_VIDEO_PATH_IOS = './hero_vid_for_ios.mov';
 
 function normalizeHostedAssetPath(path) {
   if (typeof path !== 'string') {
@@ -86,7 +88,25 @@ function setLoadingScreenVisible(visible) {
   }, 240);
 }
 
-video.src = normalizeHostedAssetPath('./hero_vid_7.webm');
+function isLikelyIOSDevice() {
+  if (typeof navigator === 'undefined') {
+    return false;
+  }
+  const userAgent = typeof navigator.userAgent === 'string' ? navigator.userAgent : '';
+  const platform = typeof navigator.platform === 'string' ? navigator.platform : '';
+  const maxTouchPoints = Number.isFinite(Number(navigator.maxTouchPoints))
+    ? Number(navigator.maxTouchPoints)
+    : 0;
+  const isIOSFamily = /iPad|iPhone|iPod/i.test(userAgent);
+  const isIpadOsDesktopMode = platform === 'MacIntel' && maxTouchPoints > 1;
+  return isIOSFamily || isIpadOsDesktopMode;
+}
+
+function resolveHeroVideoSourcePath() {
+  return isLikelyIOSDevice() ? HERO_VIDEO_PATH_IOS : HERO_VIDEO_PATH_DEFAULT;
+}
+
+video.src = normalizeHostedAssetPath(resolveHeroVideoSourcePath());
 video.controls = false; // Displays play/pause and volume controls
 video.preload = 'auto';
 video.muted = true;
