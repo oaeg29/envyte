@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Basic boilerplate for Zeina Envyte project"
+    />
+    <title>Zeina Envyte</title>
+
+    <!-- Styles -->
+    <link rel="stylesheet" href="styles.css" />
+
+    <!-- Favicons (optional) -->
+    <!-- <link rel="icon" href="/favicon.ico" /> -->
+  </head>
+  <body>
+    <header>
+      <h1>Welcome</h1>
+    </header>
+
+    <main>
+      <!-- <p>Welcome — this is a minimal HTML5 boilerplate.</p> -->
+      <canvas id="myCanvas"></canvas>
+      <canvas id="myCanvasFront"></canvas>
+    </main>
+
+    <footer>
+      <!-- <p>&copy; <span id="year"></span> Zeina Envyte</p> -->
+    </footer>
+
+    <!-- Scripts -->
+    <script src="manual_templates.registry.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pixi.js@7.4.3/dist/pixi.min.js" defer></script>
+    <script src="script_11_flowers.js" defer></script>
+    <script src="script_11.js" defer></script>
+    <script src="
+https://cdn.jsdelivr.net/npm/noisejs@2.1.0/index.min.js
+"></script>
+    <script>
+      // Set current year in footer
+      const yearEl = document.getElementById("year");
+      if (yearEl) {
+        yearEl.textContent = String(new Date().getFullYear());
+      }
+    </script>
+  </body>
+</html>

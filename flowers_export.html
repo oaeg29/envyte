@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Flower Atlas Exporter</title>
+    <style>
+      :root {
+        color-scheme: light;
+      }
+      html, body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        min-height: 100%;
+        background: #f4f4f2;
+        color: #1f1f1f;
+        font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+      }
+      .page {
+        box-sizing: border-box;
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 24px;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 28px;
+        line-height: 1.15;
+      }
+      p {
+        margin: 0 0 14px;
+        line-height: 1.45;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: minmax(420px, 1fr) minmax(340px, 420px);
+        gap: 18px;
+      }
+      .panel {
+        background: #ffffff;
+        border: 1px solid #d6d6d3;
+        border-radius: 12px;
+        padding: 14px;
+      }
+      .panel h2 {
+        margin: 0 0 10px;
+        font-size: 16px;
+      }
+      label {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      textarea {
+        box-sizing: border-box;
+        width: 100%;
+        min-height: 360px;
+        resize: vertical;
+        border: 1px solid #c8c8c5;
+        border-radius: 8px;
+        padding: 10px;
+        font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
+        font-size: 12px;
+        line-height: 1.4;
+        background: #fcfcfb;
+      }
+      .controls {
+        margin-top: 12px;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .control-stack {
+        margin-top: 12px;
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+      .row {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .mini-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(90px, 1fr));
+        gap: 8px;
+      }
+      .mini-grid label {
+        margin: 0;
+        font-size: 11px;
+        font-weight: 600;
+      }
+      .mini-grid input {
+        width: 100%;
+        box-sizing: border-box;
+        border: 1px solid #c8c8c5;
+        border-radius: 6px;
+        padding: 6px 8px;
+        background: #fcfcfb;
+        font-size: 12px;
+      }
+      .sway-group {
+        border: 1px solid #d9d9d7;
+        border-radius: 8px;
+        padding: 8px;
+        background: #fafaf8;
+      }
+      .sway-group-title {
+        margin: 0 0 6px;
+        font-size: 12px;
+        font-weight: 700;
+      }
+      select {
+        border: 1px solid #c8c8c5;
+        border-radius: 8px;
+        padding: 8px 10px;
+        background: #fcfcfb;
+        color: #1f1f1f;
+        font-size: 13px;
+      }
+      button {
+        border: 0;
+        border-radius: 8px;
+        padding: 9px 14px;
+        background: #2f6842;
+        color: #fff;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.55;
+        cursor: default;
+      }
+      .hint {
+        font-size: 12px;
+        color: #666;
+      }
+      .hint.warning {
+        color: #8a4b00;
+        font-weight: 600;
+      }
+      .toggle-inline {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        margin: 0;
+        font-size: 12px;
+        font-weight: 600;
+        color: #2b2b2b;
+      }
+      .toggle-inline input[type="checkbox"] {
+        margin: 0;
+      }
+      .preview-wrap {
+        border: 1px solid #d9d9d6;
+        border-radius: 10px;
+        background: radial-gradient(circle at 50% 40%, #f2f7ef 0%, #e7eee1 100%);
+        height: 300px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #previewCanvas {
+        width: 260px;
+        height: 260px;
+        image-rendering: auto;
+      }
+      .status {
+        margin-top: 12px;
+        font-size: 12px;
+      }
+      pre {
+        margin: 10px 0 0;
+        border: 1px solid #d9d9d7;
+        border-radius: 8px;
+        padding: 10px;
+        background: #fafaf8;
+        max-height: 280px;
+        overflow: auto;
+        font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
+        font-size: 11px;
+        line-height: 1.35;
+      }
+      @media (max-width: 1000px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <h1>Flower Atlas Exporter</h1>
+      <p>Paste your flower config JSON, then press <strong>Shift+E</strong> (or click Export) to bake atlas PNG pages + manifest JSON. Export uses a loop-locked cycle by default (60-frame sway returns to center).</p>
+      <div class="grid">
+        <section class="panel">
+          <h2>Input Config</h2>
+          <label for="configInput">JSON (either full config with <code>flowers</code> or flowers object only)</label>
+          <textarea id="configInput" spellcheck="false"></textarea>
+          <div class="control-stack">
+            <div class="row">
+              <label for="qualityProfileSelect">Export Quality Profile</label>
+              <select id="qualityProfileSelect">
+                <option value="standard">Standard (faster)</option>
+                <option value="high" selected>High Quality</option>
+                <option value="ultra">Ultra (slowest)</option>
+                <option value="extreme">Extreme (very slow)</option>
+              </select>
+              <label for="loopModeSelect">Loop Mode</label>
+              <select id="loopModeSelect">
+                <option value="continuousCycle" selected>Continuous Cycle</option>
+                <option value="singleCycle">Settle Cycle</option>
+              </select>
+              <label for="loopFramesSelect">Loop Frames</label>
+              <select id="loopFramesSelect">
+                <option value="60">60</option>
+                <option value="120" selected>120</option>
+              </select>
+              <label for="frameSplitSelect">Frame Split</label>
+              <select id="frameSplitSelect">
+                <option value="0" selected>Auto</option>
+                <option value="60">60 Animated/Sheet</option>
+                <option value="120">120 Animated/Sheet</option>
+              </select>
+              <label class="toggle-inline" for="allowMultiPageToggle">
+                <input id="allowMultiPageToggle" type="checkbox" checked />
+                Allow Multi-Page Overflow
+              </label>
+              <label class="toggle-inline" for="forceSinglePageDownscaleToggle">
+                <input id="forceSinglePageDownscaleToggle" type="checkbox" />
+                Force Single-Page Downscale
+              </label>
+              <span class="hint" id="qualityProfileHint"></span>
+              <span class="hint warning" id="packingWarning"></span>
+            </div>
+            <div class="row">
+              <label for="variantSelect">Variant To Export</label>
+              <select id="variantSelect"></select>
+              <button id="refreshVariantsBtn" type="button">Refresh Variants</button>
+            </div>
+            <div class="sway-group">
+              <p class="sway-group-title">Global Sway</p>
+              <div class="mini-grid">
+                <label>Rise
+                  <input id="ctrlSwayRiseSpeed" type="number" step="0.01" />
+                </label>
+                <label>Fall
+                  <input id="ctrlSwayFallSpeed" type="number" step="0.01" />
+                </label>
+                <label>Epsilon
+                  <input id="ctrlSwayEpsilon" type="number" step="0.0001" />
+                </label>
+                <label>Mouse Affect
+                  <input id="ctrlMouseSpeedSwayAffect" type="number" step="0.01" />
+                </label>
+              </div>
+            </div>
+            <div class="sway-group">
+              <p class="sway-group-title">Lily Sway</p>
+              <div class="mini-grid">
+                <label>Amp Min
+                  <input id="ctrlLilyAmpMin" type="number" step="0.01" />
+                </label>
+                <label>Amp Max
+                  <input id="ctrlLilyAmpMax" type="number" step="0.01" />
+                </label>
+                <label>Speed Min
+                  <input id="ctrlLilySpeedMin" type="number" step="0.01" />
+                </label>
+                <label>Speed Max
+                  <input id="ctrlLilySpeedMax" type="number" step="0.01" />
+                </label>
+              </div>
+            </div>
+            <div class="sway-group">
+              <p class="sway-group-title">Blue Sway</p>
+              <div class="mini-grid">
+                <label>Amp Min
+                  <input id="ctrlBlueAmpMin" type="number" step="0.01" />
+                </label>
+                <label>Amp Max
+                  <input id="ctrlBlueAmpMax" type="number" step="0.01" />
+                </label>
+                <label>Speed Min
+                  <input id="ctrlBlueSpeedMin" type="number" step="0.01" />
+                </label>
+                <label>Speed Max
+                  <input id="ctrlBlueSpeedMax" type="number" step="0.01" />
+                </label>
+              </div>
+            </div>
+            <div class="controls">
+              <button id="exportBtn" type="button">Export Selected Variant</button>
+              <span class="hint">Only the selected variant exports (plus its manifest).</span>
+            </div>
+          </div>
+        </section>
+        <section class="panel">
+          <h2>Preview + Log</h2>
+          <div class="preview-wrap">
+            <canvas id="previewCanvas" width="260" height="260"></canvas>
+          </div>
+          <div class="status" id="statusText">Ready.</div>
+          <pre id="logOutput"></pre>
+        </section>
+      </div>
+    </div>
+
+    <script src="script_11_flowers.js"></script>
+    <script src="flowers_exporter.js"></script>
+  </body>
+</html>

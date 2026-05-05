@@ -1,0 +1,77 @@
+/* Make the canvas fill the entire viewport and sit under content */
+html, body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body {
+  position: relative;
+}
+
+#myCanvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  /* width: 100vw; */
+  /* height: 100vh; */
+  z-index: -1;
+  pointer-events: none;
+}
+
+#myCanvasFront {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 10000;
+  pointer-events: none;
+}
+
+#myCanvasFlowersBack {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+#myCanvasFlowersFront {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 10001;
+  pointer-events: none;
+}
+
+main, header, footer {
+  position: relative;
+  z-index: 1;
+}
+
+video {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(var(--hero-video-rotate, 0deg));
+  width: auto;          /* Preserve aspect ratio */
+  height: 100vh;        /* Always touch top and bottom */
+  display: block;
+  z-index: 1;          /* On top of everything */
+  margin: 0;
+  padding: 0;
+}
+
+#centerOverlayImage {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(1);
+  z-index: 2;
+  pointer-events: none;
+  user-select: none;
+  opacity: 0;
+  display: none;
+}
