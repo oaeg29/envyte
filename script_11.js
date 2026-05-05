@@ -332,6 +332,7 @@ const CONFIG = {
     growthEase: 'easeOut', // linear | easeIn | easeOut | easeInOut
     growthEasePower: 1,
     autoStart: true,
+    requireFoliageLoadedBeforeStart: true,
     useOffscreenLayerCache: true,
   },
 
@@ -712,6 +713,13 @@ const STATE = {
   branchEndpoints: [],
   lastSeedPacket: null,
   hasBootstrapped: false,
+  foliageLoad: {
+    videoReady: false,
+    stemReady: false,
+    leafReady: false,
+    flowerReady: false,
+    ready: false,
+  },
 
   manualTemplateRegistryLoaded: false,
   manualTemplateRegistryTemplates: [],
@@ -798,6 +806,7 @@ const STATE = {
     monitorRafId: null,
     monitorVideoFrameCallbackId: null,
     stage: 'idle', // idle | introPlaying | waitingForOpenButton | postOpenButtonPlaying | postOpenButtonPaused
+    growthFrameReached: false,
     growthStarted: false,
     growthAnimationEnabledByConfig: false,
     openButtonClickedAtMs: null,
@@ -1533,7 +1542,82 @@ function resolveHeroPlaybackGateConfig(configCandidate = CONFIG.heroPlaybackGate
   };
 }
 
+function isFoliageReadyForGrowth() {
+  if (CONFIG.branchGrowth.requireFoliageLoadedBeforeStart === false) {
+    return true;
+  }
+  return Boolean(STATE.foliageLoad && STATE.foliageLoad.ready === true);
+}
+
+function setFoliageLoadReadyFlag(flagName, isReady) {
+  const loadState = STATE.foliageLoad;
+  if (!loadState || typeof flagName !== 'string' || !(flagName in loadState)) {
+    return;
+  }
+  loadState[flagName] = Boolean(isReady);
+  const nextReady = Boolean(loadState.stemReady && loadState.leafReady && loadState.flowerReady);
+  const justBecameReady = nextReady && loadState.ready !== true;
+  loadState.ready = nextReady;
+  if (!justBecameReady) {
+    return;
+  }
+  const gateConfig = resolveHeroPlaybackGateConfig();
+  const currentFrame = getCurrentHeroVideoFrame(gateConfig);
+  maybeStartGrowthAnimationFromHeroVideoFrame(currentFrame, gateConfig);
+  if (STATE.branchGarden) {
+    renderScene();
+  }
+}
+
+function isInitialHeroVideoReadyForStartup() {
+  if (!video) {
+    return false;
+  }
+  const minReadyState = (
+    typeof HTMLMediaElement !== 'undefined'
+    && Number.isFinite(HTMLMediaElement.HAVE_CURRENT_DATA)
+  )
+    ? HTMLMediaElement.HAVE_CURRENT_DATA
+    : 2;
+  return Number.isFinite(video.readyState) && video.readyState >= minReadyState;
+}
+
+function waitForInitialHeroVideoReadyForStartup() {
+  if (isInitialHeroVideoReadyForStartup()) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve, reject) => {
+    const onReady = () => {
+      if (!isInitialHeroVideoReadyForStartup()) {
+        return;
+      }
+      cleanup();
+      resolve();
+    };
+    const onError = () => {
+      cleanup();
+      reject(new Error('Failed to load initial hero video data.'));
+    };
+    const cleanup = () => {
+      video.removeEventListener('loadeddata', onReady);
+      video.removeEventListener('canplay', onReady);
+      video.removeEventListener('error', onError);
+    };
+    video.addEventListener('loadeddata', onReady);
+    video.addEventListener('canplay', onReady);
+    video.addEventListener('error', onError);
+    try {
+      video.load();
+    } catch (_error) {
+      // Ignore load() errors and rely on normal media events.
+    }
+  });
+}
+
 function isHeroPlaybackGrowthStartBlocked(gateConfig = resolveHeroPlaybackGateConfig()) {
+  if (!isFoliageReadyForGrowth()) {
+    return true;
+  }
   const gateState = STATE.heroPlaybackGate;
   if (!gateConfig || gateConfig.enabled !== true || !gateState) {
     return false;
@@ -2143,7 +2227,13 @@ function maybeStartGrowthAnimationFromHeroVideoFrame(currentFrame, gateConfig = 
   if (gateState.growthAnimationEnabledByConfig !== true) {
     return;
   }
-  if (!Number.isFinite(currentFrame) || currentFrame < gateConfig.growthStartFrame) {
+  if (Number.isFinite(currentFrame) && currentFrame >= gateConfig.growthStartFrame) {
+    gateState.growthFrameReached = true;
+  }
+  if (gateState.growthFrameReached !== true) {
+    return;
+  }
+  if (!isFoliageReadyForGrowth()) {
     return;
   }
   gateState.growthStarted = true;
@@ -2351,6 +2441,7 @@ function startHeroPlaybackGateFlow() {
   cancelHeroPlaybackGateMonitor();
   stopHeroVideoWiggle({ resetRotation: true });
   refreshHeroVideoReferenceRect();
+  gateState.growthFrameReached = false;
   gateState.growthStarted = false;
   gateState.growthAnimationEnabledByConfig = CONFIG.branchGrowth.enabled === true;
   gateState.openButtonClickedAtMs = null;
@@ -9888,6 +9979,9 @@ function applyBranchGrowthOptions(nextOptions) {
       sanitized.growthEasePower = Math.max(0.01, growthEasePower);
     }
   }
+  if (nextOptions.requireFoliageLoadedBeforeStart !== undefined) {
+    sanitized.requireFoliageLoadedBeforeStart = Boolean(nextOptions.requireFoliageLoadedBeforeStart);
+  }
 
   Object.assign(CONFIG.branchGrowth, sanitized);
   if (STATE.heroPlaybackGate) {
@@ -11084,6 +11178,13 @@ async function bootstrap() {
 
   resizeCanvasToViewport();
   refreshHeroVideoReferenceRect();
+  STATE.foliageLoad.videoReady = false;
+  STATE.foliageLoad.stemReady = false;
+  STATE.foliageLoad.leafReady = false;
+  STATE.foliageLoad.flowerReady = false;
+  STATE.foliageLoad.ready = false;
+  await waitForInitialHeroVideoReadyForStartup();
+  STATE.foliageLoad.videoReady = true;
 
   if (
     window.StemWarpFlowerSystem11
@@ -11100,10 +11201,11 @@ async function bootstrap() {
     console.warn('Flower system module missing (script_11_flowers.js). Flowers are disabled.');
   }
 
-  STATE.stemImage = await loadStemTexture();
+  // Immediate fallback stem so first paint is not blocked on network.
+  STATE.stemImage = createFallbackStemTexture();
   STATE.stemImageFlippedX = createHorizontallyFlippedTexture(STATE.stemImage);
-  STATE.leafImage = await loadLeafTexture(CONFIG.leaves || {});
-  await loadFlowerSpriteIntoSystem();
+  STATE.leafImage = null;
+  setFoliageLoadReadyFlag('stemReady', true);
   resetFilteredStemTextureCache();
   await loadManualTemplateSources();
   STATE.branchGarden = new BranchGarden();
@@ -11122,6 +11224,47 @@ async function bootstrap() {
   renderScene();
   setupEventHandlers();
   exposeDevToolsApi();
+  // Load heavier visual assets in the background and progressively upgrade.
+  loadStemTexture()
+    .then((stemTexture) => {
+      if (!stemTexture) {
+        return;
+      }
+      STATE.stemImage = stemTexture;
+      STATE.stemImageFlippedX = createHorizontallyFlippedTexture(stemTexture);
+      setFoliageLoadReadyFlag('stemReady', true);
+      resetFilteredStemTextureCache();
+      invalidateAllBranchStripCaches();
+      invalidateCompletedBranchLayer();
+      renderScene({ skipAutoStart: true });
+    })
+    .catch((error) => {
+      console.warn(error.message || String(error));
+      setFoliageLoadReadyFlag('stemReady', true);
+    });
+
+  loadLeafTexture(CONFIG.leaves || {})
+    .then((leafTexture) => {
+      STATE.leafImage = leafTexture;
+      setFoliageLoadReadyFlag('leafReady', true);
+      invalidateCompletedBranchLayer();
+      renderScene({ skipAutoStart: true });
+    })
+    .catch((error) => {
+      console.warn(error.message || String(error));
+      setFoliageLoadReadyFlag('leafReady', true);
+    });
+
+  loadFlowerSpriteIntoSystem()
+    .then(() => {
+      setFoliageLoadReadyFlag('flowerReady', true);
+      invalidateCompletedBranchLayer();
+      renderScene({ skipAutoStart: true });
+    })
+    .catch((error) => {
+      console.warn(error.message || String(error));
+      setFoliageLoadReadyFlag('flowerReady', true);
+    });
   // createPathGenerationControls();
   // createOffshootControls();
 }
@@ -11129,8 +11272,14 @@ async function bootstrap() {
 // =========================
 // 18) Run Area
 // =========================
-window.addEventListener('load', () => {
+function startBootstrap() {
   bootstrap().catch((error) => {
     console.error('Failed to bootstrap script_11.js', error);
   });
-});
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', startBootstrap, { once: true });
+} else {
+  startBootstrap();
+}
