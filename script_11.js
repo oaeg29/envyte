@@ -44,6 +44,13 @@ const FILTER_CACHE_HUE_STEP_DEG = 2;
 const FILTER_CACHE_BRIGHTNESS_STEP = 0.02;
 const HERO_VIDEO_PATH_DEFAULT = './hero_vid_7.webm';
 const HERO_VIDEO_PATH_IOS = './hero_vid_for_ios.mov';
+const HERO_VIDEO_SOURCE_RUNTIME = {
+  candidates: [],
+  activeIndex: -1,
+  fallbackUsed: false,
+  errorEvents: 0,
+  errorListenerInstalled: false,
+};
 
 function normalizeHostedAssetPath(path) {
   if (typeof path !== 'string') {
@@ -106,12 +113,131 @@ function resolveHeroVideoSourcePath() {
   return isLikelyIOSDevice() ? HERO_VIDEO_PATH_IOS : HERO_VIDEO_PATH_DEFAULT;
 }
 
-video.src = normalizeHostedAssetPath(resolveHeroVideoSourcePath());
-video.controls = false; // Displays play/pause and volume controls
-video.preload = 'auto';
-video.muted = true;
-video.playsInline = true;
-video.setAttribute('playsinline', '');
+function buildHeroVideoSourceCandidates() {
+  const primaryPath = normalizeHostedAssetPath(resolveHeroVideoSourcePath());
+  const fallbackPath = isLikelyIOSDevice()
+    ? normalizeHostedAssetPath(HERO_VIDEO_PATH_DEFAULT)
+    : '';
+  const candidates = [];
+  if (typeof primaryPath === 'string' && primaryPath.trim().length > 0) {
+    candidates.push(primaryPath.trim());
+  }
+  if (
+    typeof fallbackPath === 'string'
+    && fallbackPath.trim().length > 0
+    && !candidates.includes(fallbackPath.trim())
+  ) {
+    candidates.push(fallbackPath.trim());
+  }
+  return candidates;
+}
+
+function getHeroVideoCurrentSourcePath() {
+  return String(video.currentSrc || video.src || '').trim();
+}
+
+function setHeroVideoSourceByIndex(index, options = {}) {
+  const safeOptions = (options && typeof options === 'object') ? options : {};
+  const shouldForceLoad = safeOptions.forceLoad !== false;
+  const candidates = HERO_VIDEO_SOURCE_RUNTIME.candidates;
+  if (!Array.isArray(candidates) || candidates.length <= 0) {
+    return false;
+  }
+  if (!Number.isFinite(index) || index < 0 || index >= candidates.length) {
+    return false;
+  }
+  const nextPath = candidates[index];
+  if (typeof nextPath !== 'string' || nextPath.trim().length <= 0) {
+    return false;
+  }
+  const normalizedNextPath = nextPath.trim();
+  const currentPath = getHeroVideoCurrentSourcePath();
+  HERO_VIDEO_SOURCE_RUNTIME.activeIndex = index;
+  if (currentPath === normalizedNextPath) {
+    return true;
+  }
+  video.setAttribute('src', normalizedNextPath);
+  video.src = normalizedNextPath;
+  if (shouldForceLoad && typeof video.load === 'function') {
+    try {
+      video.load();
+    } catch (_error) {
+      // Ignore load() exceptions and rely on media events.
+    }
+  }
+  return true;
+}
+
+function readHeroVideoMediaErrorLabel() {
+  const mediaError = video && video.error ? video.error : null;
+  if (!mediaError || !Number.isFinite(mediaError.code)) {
+    return 'unknown';
+  }
+  switch (mediaError.code) {
+    case 1:
+      return 'aborted';
+    case 2:
+      return 'network';
+    case 3:
+      return 'decode';
+    case 4:
+      return 'src_not_supported';
+    default:
+      return String(mediaError.code);
+  }
+}
+
+function tryAdvanceHeroVideoSourceCandidate(reason = 'unknown') {
+  const candidates = HERO_VIDEO_SOURCE_RUNTIME.candidates;
+  if (!Array.isArray(candidates) || candidates.length <= 1) {
+    return false;
+  }
+  const nextIndex = Number.isFinite(HERO_VIDEO_SOURCE_RUNTIME.activeIndex)
+    ? HERO_VIDEO_SOURCE_RUNTIME.activeIndex + 1
+    : 1;
+  if (nextIndex < 0 || nextIndex >= candidates.length) {
+    return false;
+  }
+  const switched = setHeroVideoSourceByIndex(nextIndex, { forceLoad: true });
+  if (!switched) {
+    return false;
+  }
+  HERO_VIDEO_SOURCE_RUNTIME.fallbackUsed = true;
+  console.warn(`[HeroVideo] Switching source due to ${reason}: ${candidates[nextIndex]}`);
+  return true;
+}
+
+function configureHeroVideoElement() {
+  video.controls = false; // Displays play/pause and volume controls
+  video.preload = 'auto';
+  video.defaultMuted = true;
+  video.muted = true;
+  video.autoplay = true;
+  video.playsInline = true;
+  video.setAttribute('autoplay', '');
+  video.setAttribute('muted', '');
+  video.setAttribute('playsinline', '');
+  video.setAttribute('webkit-playsinline', '');
+
+  HERO_VIDEO_SOURCE_RUNTIME.candidates = buildHeroVideoSourceCandidates();
+  HERO_VIDEO_SOURCE_RUNTIME.activeIndex = -1;
+  HERO_VIDEO_SOURCE_RUNTIME.fallbackUsed = false;
+  setHeroVideoSourceByIndex(0, { forceLoad: false });
+
+  if (!HERO_VIDEO_SOURCE_RUNTIME.errorListenerInstalled) {
+    video.addEventListener('error', () => {
+      HERO_VIDEO_SOURCE_RUNTIME.errorEvents += 1;
+      const errorLabel = readHeroVideoMediaErrorLabel();
+      if (tryAdvanceHeroVideoSourceCandidate(`video-error:${errorLabel}`)) {
+        return;
+      }
+      console.warn(`[HeroVideo] Media error (${errorLabel}) on source: ${getHeroVideoCurrentSourcePath()}`);
+    });
+    HERO_VIDEO_SOURCE_RUNTIME.errorListenerInstalled = true;
+  }
+}
+
+configureHeroVideoElement();
 centerOverlayImageLayer.id = 'centerOverlayImage';
 centerOverlayImageLayer.alt = '';
 centerOverlayImageLayer.draggable = false;
@@ -849,6 +975,7 @@ const STATE = {
     monitorRafId: null,
     monitorVideoFrameCallbackId: null,
     stage: 'idle', // idle | introPlaying | waitingForOpenButton | postOpenButtonPlaying | postOpenButtonPaused
+    awaitingUserPlaybackStart: false,
     growthFrameReached: false,
     growthStarted: false,
     growthAnimationEnabledByConfig: false,
@@ -1654,6 +1781,9 @@ function waitForInitialHeroVideoReadyForStartup() {
     return Promise.resolve({ ready: true, unsupported: false });
   }
   if (isLikelyUnsupportedHeroVideoSource()) {
+    if (tryAdvanceHeroVideoSourceCandidate('initial-unsupported')) {
+      return waitForInitialHeroVideoReadyForStartup();
+    }
     return Promise.resolve({ ready: false, unsupported: true });
   }
   return new Promise((resolve) => {
@@ -1666,6 +1796,10 @@ function waitForInitialHeroVideoReadyForStartup() {
     };
     const onError = () => {
       cleanup();
+      if (tryAdvanceHeroVideoSourceCandidate('initial-load-error')) {
+        waitForInitialHeroVideoReadyForStartup().then(resolve);
+        return;
+      }
       resolve({
         ready: false,
         unsupported: isLikelyUnsupportedHeroVideoSource(),
@@ -2468,12 +2602,44 @@ function ensureHeroPlaybackGateMonitorRunning() {
   gateState.monitorRafId = requestAnimationFrame(stepHeroPlaybackGateMonitorRaf);
 }
 
+function tryResumeHeroVideoPlaybackFromUserGesture(event) {
+  const gateConfig = resolveHeroPlaybackGateConfig();
+  const gateState = STATE.heroPlaybackGate;
+  if (!gateConfig || gateConfig.enabled !== true || !gateState) {
+    return false;
+  }
+  if (gateState.awaitingUserPlaybackStart !== true) {
+    return false;
+  }
+  gateState.awaitingUserPlaybackStart = false;
+  gateState.stage = 'introPlaying';
+  video.defaultMuted = true;
+  video.muted = true;
+  video.setAttribute('muted', '');
+  const playbackPromise = video.play();
+  if (playbackPromise && typeof playbackPromise.catch === 'function') {
+    playbackPromise.catch(() => {
+      gateState.awaitingUserPlaybackStart = true;
+      renderScene({ skipAutoStart: true });
+    });
+  }
+  ensureHeroPlaybackGateMonitorRunning();
+  renderScene({ skipAutoStart: true });
+  if (event && typeof event.preventDefault === 'function') {
+    event.preventDefault();
+  }
+  return true;
+}
+
 function tryHandleHeroPlaybackOpenButtonClick(event) {
   const gateConfig = resolveHeroPlaybackGateConfig();
   if (gateConfig.enabled !== true) {
     return false;
   }
   const gateState = STATE.heroPlaybackGate;
+  if (gateState && gateState.awaitingUserPlaybackStart === true) {
+    return false;
+  }
   const stageAllowsOpen = gateState && (
     gateState.stage === 'waitingForOpenButton'
     || gateState.stage === 'introPlaying'
@@ -2522,6 +2688,7 @@ function startHeroPlaybackGateFlow() {
   gateState.growthFrameReached = false;
   gateState.growthStarted = false;
   gateState.growthAnimationEnabledByConfig = CONFIG.branchGrowth.enabled === true;
+  gateState.awaitingUserPlaybackStart = false;
   gateState.openButtonClickedAtMs = null;
   gateState.openButtonArrowRenderedPresence = false;
   gateState.openButtonArrowLastRenderMs = 0;
@@ -2530,6 +2697,7 @@ function startHeroPlaybackGateFlow() {
 
   if (gateConfig.enabled !== true) {
     gateState.stage = 'idle';
+    gateState.awaitingUserPlaybackStart = false;
     return;
   }
 
@@ -2549,7 +2717,8 @@ function startHeroPlaybackGateFlow() {
   const playbackPromise = video.play();
   if (playbackPromise && typeof playbackPromise.catch === 'function') {
     playbackPromise.catch(() => {
-      gateState.stage = 'waitingForOpenButton';
+      gateState.awaitingUserPlaybackStart = true;
+      gateState.stage = 'introPlaying';
       renderScene({ skipAutoStart: true });
     });
   }
@@ -10042,6 +10211,9 @@ function onMouseOut() {
 }
 
 function onMouseClick(event) {
+  if (tryResumeHeroVideoPlaybackFromUserGesture(event)) {
+    return;
+  }
   if (tryHandleHeroPlaybackOpenButtonClick(event)) {
     return;
   }
