@@ -63,6 +63,29 @@ function normalizeHostedAssetPath(path) {
   return trimmed;
 }
 
+function setLoadingScreenMessage(message) {
+  const messageEl = document.getElementById('loadingMessage');
+  if (!messageEl || typeof message !== 'string') {
+    return;
+  }
+  messageEl.textContent = message;
+}
+
+function setLoadingScreenVisible(visible) {
+  const splash = document.getElementById('loadingScreen');
+  if (!splash) {
+    return;
+  }
+  if (visible) {
+    splash.classList.remove('is-hidden', 'is-gone');
+    return;
+  }
+  splash.classList.add('is-hidden');
+  window.setTimeout(() => {
+    splash.classList.add('is-gone');
+  }, 240);
+}
+
 video.src = normalizeHostedAssetPath('./hero_vid_7.webm');
 video.controls = false; // Displays play/pause and volume controls
 video.preload = 'auto';
@@ -1242,7 +1265,18 @@ function refreshHeroVideoReferenceRect(options = null) {
   STATE.heroVideoReferenceRect = snapshot
     ? { ...snapshot }
     : null;
-  if (STATE.heroVideoReferenceRect && STATE.heroVideoReferenceRect.width > 0 && STATE.heroVideoReferenceRect.height > 0) {
+  const hasIntrinsicVideoDimensions = (
+    Number.isFinite(Number(video.videoWidth))
+    && Number(video.videoWidth) > 0
+    && Number.isFinite(Number(video.videoHeight))
+    && Number(video.videoHeight) > 0
+  );
+  if (
+    hasIntrinsicVideoDimensions
+    && STATE.heroVideoReferenceRect
+    && STATE.heroVideoReferenceRect.width > 0
+    && STATE.heroVideoReferenceRect.height > 0
+  ) {
     STATE.heroVideoReferenceRectLocked = true;
   } else if (force) {
     STATE.heroVideoReferenceRectLocked = false;
@@ -1567,6 +1601,7 @@ function setFoliageLoadReadyFlag(flagName, isReady) {
   if (STATE.branchGarden) {
     renderScene();
   }
+  setLoadingScreenVisible(false);
 }
 
 function isInitialHeroVideoReadyForStartup() {
@@ -1582,29 +1617,49 @@ function isInitialHeroVideoReadyForStartup() {
   return Number.isFinite(video.readyState) && video.readyState >= minReadyState;
 }
 
+function isLikelyUnsupportedHeroVideoSource() {
+  if (!video || typeof video.canPlayType !== 'function') {
+    return false;
+  }
+  const src = String(video.currentSrc || video.src || '').toLowerCase();
+  if (!src.includes('.webm')) {
+    return false;
+  }
+  const canPlayWebm = video.canPlayType('video/webm') || video.canPlayType('video/webm; codecs="vp8,vorbis"') || video.canPlayType('video/webm; codecs="vp9,opus"');
+  return !canPlayWebm;
+}
+
 function waitForInitialHeroVideoReadyForStartup() {
   if (isInitialHeroVideoReadyForStartup()) {
-    return Promise.resolve();
+    return Promise.resolve({ ready: true, unsupported: false });
   }
-  return new Promise((resolve, reject) => {
+  if (isLikelyUnsupportedHeroVideoSource()) {
+    return Promise.resolve({ ready: false, unsupported: true });
+  }
+  return new Promise((resolve) => {
     const onReady = () => {
       if (!isInitialHeroVideoReadyForStartup()) {
         return;
       }
       cleanup();
-      resolve();
+      resolve({ ready: true, unsupported: false });
     };
     const onError = () => {
       cleanup();
-      reject(new Error('Failed to load initial hero video data.'));
+      resolve({
+        ready: false,
+        unsupported: isLikelyUnsupportedHeroVideoSource(),
+      });
     };
     const cleanup = () => {
       video.removeEventListener('loadeddata', onReady);
       video.removeEventListener('canplay', onReady);
+      video.removeEventListener('loadedmetadata', onReady);
       video.removeEventListener('error', onError);
     };
     video.addEventListener('loadeddata', onReady);
     video.addEventListener('canplay', onReady);
+    video.addEventListener('loadedmetadata', onReady);
     video.addEventListener('error', onError);
     try {
       video.load();
@@ -2406,10 +2461,11 @@ function tryHandleHeroPlaybackOpenButtonClick(event) {
   if (!stageAllowsOpen) {
     return false;
   }
-  if (!event || !Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) {
+  const clientPoint = extractPrimaryClientPoint(event);
+  if (!clientPoint) {
     return false;
   }
-  if (!isPointInsideHeroPlaybackOpenButton(event.clientX, event.clientY, gateConfig)) {
+  if (!isPointInsideHeroPlaybackOpenButton(clientPoint.x, clientPoint.y, gateConfig)) {
     return false;
   }
 
@@ -2423,7 +2479,9 @@ function tryHandleHeroPlaybackOpenButtonClick(event) {
   }
   ensureHeroPlaybackGateMonitorRunning();
   renderScene({ skipAutoStart: true });
-  event.preventDefault();
+  if (event && typeof event.preventDefault === 'function') {
+    event.preventDefault();
+  }
   return true;
 }
 
@@ -9683,7 +9741,7 @@ function onResize() {
     ? STATE.lastFloralResponsiveScaleFactor
     : null;
   resizeCanvasToViewport();
-  refreshHeroVideoReferenceRect();
+  refreshHeroVideoReferenceRect({ force: true });
   applyHeroVideoWiggleAnchor(resolveHeroPlaybackGateConfig());
   if (STATE.flowerSystem && typeof STATE.flowerSystem.setPixiSurfaces === 'function') {
     STATE.flowerSystem.setPixiSurfaces({
@@ -9702,7 +9760,8 @@ function onResize() {
 }
 
 function onHeroVideoMetadataLoaded() {
-  refreshHeroVideoReferenceRect();
+  STATE.foliageLoad.videoReady = true;
+  refreshHeroVideoReferenceRect({ force: true });
   applyHeroVideoWiggleAnchor(resolveHeroPlaybackGateConfig());
   renderScene({ skipAutoStart: true });
 }
@@ -9826,6 +9885,26 @@ function getCanvasPointerPosition(event) {
   };
 }
 
+function extractPrimaryClientPoint(event) {
+  if (!event) {
+    return null;
+  }
+  if (Number.isFinite(event.clientX) && Number.isFinite(event.clientY)) {
+    return { x: event.clientX, y: event.clientY };
+  }
+  const touches = event.touches && event.touches.length > 0
+    ? event.touches
+    : (event.changedTouches && event.changedTouches.length > 0 ? event.changedTouches : null);
+  if (!touches || touches.length <= 0) {
+    return null;
+  }
+  const firstTouch = touches[0];
+  if (!firstTouch || !Number.isFinite(firstTouch.clientX) || !Number.isFinite(firstTouch.clientY)) {
+    return null;
+  }
+  return { x: firstTouch.clientX, y: firstTouch.clientY };
+}
+
 function onMouseMove(event) {
   const pointer = getCanvasPointerPosition(event);
   if (!pointer) {
@@ -9904,6 +9983,12 @@ function setupEventHandlers() {
   window.addEventListener('mousemove', onMouseMove);
   window.addEventListener('mouseout', onMouseOut);
   window.addEventListener('click', onMouseClick);
+  window.addEventListener('pointerdown', onMouseClick);
+  window.addEventListener('touchstart', onMouseClick, { passive: false });
+  if (document && document.body) {
+    document.body.addEventListener('click', onMouseClick);
+    document.body.addEventListener('touchstart', onMouseClick, { passive: false });
+  }
   if (video && typeof video.addEventListener === 'function') {
     video.addEventListener('timeupdate', onHeroVideoTimeUpdate);
     video.addEventListener('play', ensureHeroPlaybackGateMonitorRunning);
@@ -11175,16 +11260,26 @@ async function bootstrap() {
     return;
   }
   STATE.hasBootstrapped = true;
+  setLoadingScreenVisible(true);
+  setLoadingScreenMessage('please wait, something special is loading');
 
   resizeCanvasToViewport();
-  refreshHeroVideoReferenceRect();
+  refreshHeroVideoReferenceRect({ force: true });
   STATE.foliageLoad.videoReady = false;
   STATE.foliageLoad.stemReady = false;
   STATE.foliageLoad.leafReady = false;
   STATE.foliageLoad.flowerReady = false;
   STATE.foliageLoad.ready = false;
-  await waitForInitialHeroVideoReadyForStartup();
-  STATE.foliageLoad.videoReady = true;
+  setLoadingScreenMessage('please wait, something special is loading');
+  const initialVideoStatus = await waitForInitialHeroVideoReadyForStartup();
+  STATE.foliageLoad.videoReady = Boolean(initialVideoStatus && initialVideoStatus.ready);
+  refreshHeroVideoReferenceRect({ force: true });
+  if (!STATE.foliageLoad.videoReady) {
+    if (initialVideoStatus && initialVideoStatus.unsupported) {
+      setLoadingScreenMessage('this experience is not supported on this browser yet');
+      return;
+    }
+  }
 
   if (
     window.StemWarpFlowerSystem11
@@ -11224,6 +11319,7 @@ async function bootstrap() {
   renderScene();
   setupEventHandlers();
   exposeDevToolsApi();
+  setLoadingScreenMessage('please wait, something special is loading');
   // Load heavier visual assets in the background and progressively upgrade.
   loadStemTexture()
     .then((stemTexture) => {
@@ -11274,6 +11370,8 @@ async function bootstrap() {
 // =========================
 function startBootstrap() {
   bootstrap().catch((error) => {
+    setLoadingScreenVisible(true);
+    setLoadingScreenMessage('please refresh and try again');
     console.error('Failed to bootstrap script_11.js', error);
   });
 }
