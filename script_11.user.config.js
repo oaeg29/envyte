@@ -83,6 +83,20 @@
       loadTimeoutMs: 15000,
       playTimeoutMs: 15000,
       chooseFirstPlayableAsFinalSource: true,
+      candidateSources: [
+        {
+          path: './hero_vid_for_ios_1.mp4',
+          type: 'video/mp4; codecs="hvc1"',
+        },
+        {
+          path: './hero_vid_for_ios_2.mp4',
+          type: 'video/mp4; codecs="hvc1"',
+        },
+        {
+          path: './hero_vid_for_ios_3.mov',
+          type: 'video/quicktime; codecs="hvc1.1.6.H120.b0"',
+        },
+      ],
       candidatePaths: [
         './hero_vid_for_ios.mov',
         './hero_vid_for_ios_1.mp4',

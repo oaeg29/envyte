@@ -193,17 +193,41 @@ function resolveHeroVideoSourcePath() {
 function setHeroVideoSourcePath(path, options = {}) {
   const safeOptions = (options && typeof options === 'object') ? options : {};
   const shouldForceLoad = safeOptions.forceLoad !== false;
+  const sourceType = (
+    typeof safeOptions.sourceType === 'string'
+    && safeOptions.sourceType.trim().length > 0
+  )
+    ? safeOptions.sourceType.trim()
+    : '';
   const normalizedPath = normalizeHostedAssetPath(path);
   if (typeof normalizedPath !== 'string' || normalizedPath.trim().length <= 0) {
     return false;
   }
   const nextPath = normalizedPath.trim();
-  const currentPath = getHeroVideoCurrentSourcePath();
-  if (currentPath === nextPath) {
+  const assignedPath = String(video.getAttribute('data-hero-video-source-path') || '').trim();
+  const assignedType = String(video.getAttribute('data-hero-video-source-type') || '').trim();
+  if (assignedPath === nextPath && assignedType === sourceType) {
     return true;
   }
-  video.setAttribute('src', nextPath);
-  video.src = nextPath;
+  const existingSources = video.querySelectorAll('source');
+  for (let i = 0; i < existingSources.length; i += 1) {
+    existingSources[i].remove();
+  }
+  if (sourceType.length > 0) {
+    video.removeAttribute('src');
+    video.src = '';
+    const sourceEl = document.createElement('source');
+    sourceEl.setAttribute('src', nextPath);
+    sourceEl.setAttribute('type', sourceType);
+    video.appendChild(sourceEl);
+    video.setAttribute('data-hero-video-source-path', nextPath);
+    video.setAttribute('data-hero-video-source-type', sourceType);
+  } else {
+    video.removeAttribute('data-hero-video-source-type');
+    video.setAttribute('data-hero-video-source-path', nextPath);
+    video.setAttribute('src', nextPath);
+    video.src = nextPath;
+  }
   if (shouldForceLoad && typeof video.load === 'function') {
     try {
       video.load();
@@ -315,11 +339,48 @@ function configureHeroVideoElement() {
 
 function resolveHeroVideoDebugConfig(configCandidate = CONFIG.heroVideoDebug) {
   const safeConfig = isPlainObjectLiteral(configCandidate) ? configCandidate : {};
+  const candidateSourcesSource = Array.isArray(safeConfig.candidateSources)
+    ? safeConfig.candidateSources
+    : [];
   const candidatePathsSource = Array.isArray(safeConfig.candidatePaths)
     ? safeConfig.candidatePaths
     : [];
   const seenPaths = new Set();
+  const candidateEntriesByPath = new Map();
+  const candidateEntries = [];
   const candidatePaths = [];
+  function upsertCandidate(pathValue, sourceTypeValue = '') {
+    const normalizedPath = normalizeHostedAssetPath(pathValue);
+    if (typeof normalizedPath !== 'string') {
+      return;
+    }
+    const trimmedPath = normalizedPath.trim();
+    if (trimmedPath.length <= 0) {
+      return;
+    }
+    const normalizedType = (
+      typeof sourceTypeValue === 'string'
+      && sourceTypeValue.trim().length > 0
+    )
+      ? sourceTypeValue.trim()
+      : '';
+    const existingIndex = candidateEntriesByPath.get(trimmedPath);
+    if (Number.isFinite(existingIndex)) {
+      if (normalizedType.length > 0 && candidateEntries[existingIndex].sourceType.length <= 0) {
+        candidateEntries[existingIndex].sourceType = normalizedType;
+      }
+      return;
+    }
+    const nextIndex = candidateEntries.length;
+    candidateEntries.push({
+      path: trimmedPath,
+      sourceType: normalizedType,
+    });
+    candidateEntriesByPath.set(trimmedPath, nextIndex);
+    seenPaths.add(trimmedPath);
+    candidatePaths.push(trimmedPath);
+  }
+
   for (let i = 0; i < candidatePathsSource.length; i += 1) {
     const normalized = normalizeHostedAssetPath(candidatePathsSource[i]);
     if (typeof normalized !== 'string') {
@@ -329,8 +390,24 @@ function resolveHeroVideoDebugConfig(configCandidate = CONFIG.heroVideoDebug) {
     if (trimmed.length <= 0 || seenPaths.has(trimmed)) {
       continue;
     }
-    seenPaths.add(trimmed);
-    candidatePaths.push(trimmed);
+    upsertCandidate(trimmed, '');
+  }
+  for (let i = 0; i < candidateSourcesSource.length; i += 1) {
+    const entry = candidateSourcesSource[i];
+    if (!isPlainObjectLiteral(entry)) {
+      continue;
+    }
+    const entryPath = (
+      typeof entry.path === 'string' && entry.path.trim().length > 0
+    )
+      ? entry.path
+      : entry.src;
+    const entryType = (
+      typeof entry.type === 'string' && entry.type.trim().length > 0
+    )
+      ? entry.type
+      : entry.sourceType;
+    upsertCandidate(entryPath, entryType);
   }
   const frameRate = Number.isFinite(Number(safeConfig.frameRate))
     ? Math.max(1, Number(safeConfig.frameRate))
@@ -343,6 +420,7 @@ function resolveHeroVideoDebugConfig(configCandidate = CONFIG.heroVideoDebug) {
     iosOnly: safeConfig.iosOnly !== false,
     frameRate,
     testFrameCount,
+    candidateEntries,
     candidatePaths,
     labelEnabled: safeConfig.labelEnabled !== false,
     holdAfterEachMs: Number.isFinite(Number(safeConfig.holdAfterEachMs))
@@ -365,7 +443,7 @@ function shouldRunHeroVideoDebugCycle(debugConfig = resolveHeroVideoDebugConfig(
   if (debugConfig.iosOnly !== false && !isLikelyIOSDevice()) {
     return false;
   }
-  return Array.isArray(debugConfig.candidatePaths) && debugConfig.candidatePaths.length > 0;
+  return Array.isArray(debugConfig.candidateEntries) && debugConfig.candidateEntries.length > 0;
 }
 
 function ensureHeroVideoDebugLabelElement() {
@@ -551,19 +629,22 @@ async function runHeroVideoDebugCycle(debugConfig = resolveHeroVideoDebugConfig(
     return result;
   }
 
-  const candidatePaths = debugConfig.candidatePaths.slice();
+  const candidateEntries = debugConfig.candidateEntries.slice();
+  const candidatePaths = candidateEntries.map((entry) => entry.path);
   const sampleDurationSec = debugConfig.testFrameCount / debugConfig.frameRate;
   if (debugConfig.labelEnabled) {
     setHeroVideoDebugLabel('iOS video debug: starting', { visible: true });
   }
 
-  for (let i = 0; i < candidatePaths.length; i += 1) {
-    const candidatePath = candidatePaths[i];
+  for (let i = 0; i < candidateEntries.length; i += 1) {
+    const candidate = candidateEntries[i];
+    const candidatePath = candidate.path;
+    const candidateSourceType = candidate.sourceType;
     const shortName = candidatePath.split('/').pop() || candidatePath;
     if (debugConfig.labelEnabled) {
       setHeroVideoDebugLabel(`iOS video debug ${i + 1}/${candidatePaths.length}: loading ${shortName}`, { visible: true });
     }
-    setHeroVideoSourcePath(candidatePath, { forceLoad: true });
+    setHeroVideoSourcePath(candidatePath, { forceLoad: true, sourceType: candidateSourceType });
     const loadStatus = await waitForHeroVideoReadyOrError(debugConfig.loadTimeoutMs);
 
     const candidateResult = {
@@ -622,7 +703,9 @@ async function runHeroVideoDebugCycle(debugConfig = resolveHeroVideoDebugConfig(
   result.unsupported = result.ready !== true;
 
   if (result.selectedPath) {
-    setHeroVideoSourcePath(result.selectedPath, { forceLoad: true });
+    const selectedEntry = candidateEntries.find((entry) => entry.path === result.selectedPath);
+    const selectedSourceType = selectedEntry ? selectedEntry.sourceType : '';
+    setHeroVideoSourcePath(result.selectedPath, { forceLoad: true, sourceType: selectedSourceType });
     await waitForHeroVideoReadyOrError(debugConfig.loadTimeoutMs);
     if (debugConfig.labelEnabled) {
       const shortName = result.selectedPath.split('/').pop() || result.selectedPath;
