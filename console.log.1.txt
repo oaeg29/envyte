@@ -1,7 +1,0 @@
-[BranchPerf] fps=661.8 frameMs=1.51 samples/frame=2764 activeBranches=15.2 cacheBuilds=0 cacheReuses=956 cacheBuildMs=0.00 misses={"invalid":0,"pathData":0,"image":0,"brush":0}
-script_10.js:2855 [BranchPerf] fps=120.6 frameMs=8.29 samples/frame=10525 activeBranches=27.0 cacheBuilds=0 cacheReuses=1053 cacheBuildMs=0.00 misses={"invalid":0,"pathData":0,"image":0,"brush":0}
-script_10.js:2855 [BranchPerf] fps=36.6 frameMs=27.31 samples/frame=24505 activeBranches=40.8 cacheBuilds=0 cacheReuses=693 cacheBuildMs=0.00 misses={"invalid":0,"pathData":0,"image":0,"brush":0}
-script_10.js:2855 [BranchPerf] fps=19.4 frameMs=51.54 samples/frame=42369 activeBranches=51.2 cacheBuilds=0 cacheReuses=512 cacheBuildMs=0.00 misses={"invalid":0,"pathData":0,"image":0,"brush":0}
-script_10.js:2855 [BranchPerf] fps=14.1 frameMs=70.87 samples/frame=57277 activeBranches=57.5 cacheBuilds=0 cacheReuses=345 cacheBuildMs=0.00 misses={"invalid":0,"pathData":0,"image":0,"brush":0}
-script_10.js:2855 [BranchPerf] fps=12.8 frameMs=78.03 samples/frame=64805 activeBranches=58.0 cacheBuilds=0 cacheReuses=406 cacheBuildMs=0.00 misses={"invalid":0,"pathData":0,"image":0,"brush":0}
-script_10.js:2855 [BranchPerf] fps=12.5 frameMs=80.08 samples/frame=68171 activeBranches=58.0 cacheBuilds=0 cacheReuses=290 cacheBuildMs=0.00 misses={"invalid":0,"pathData":0,"image":0,"brush":0}
