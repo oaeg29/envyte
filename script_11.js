@@ -278,9 +278,9 @@ function configureHeroVideoElement() {
   video.preload = 'auto';
   video.defaultMuted = true;
   video.muted = true;
-  video.autoplay = true;
+  video.autoplay = false;
   video.playsInline = true;
-  video.setAttribute('autoplay', '');
+  video.removeAttribute('autoplay');
   video.setAttribute('muted', '');
   video.setAttribute('playsinline', '');
   video.setAttribute('webkit-playsinline', '');
@@ -2753,6 +2753,11 @@ function startHeroPlaybackGateFlow() {
     return;
   }
   if (!isLoadingScreenGone()) {
+    try {
+      video.pause();
+    } catch (_error) {
+      // Ignore pause errors while waiting for splash dismissal.
+    }
     if (gateState.pendingStartAfterSplashDismiss !== true) {
       gateState.pendingStartAfterSplashDismiss = true;
       runWhenLoadingScreenGone(() => {
@@ -9273,7 +9278,8 @@ function onBranchStructureChanged() {
     return;
   }
 
-  if (CONFIG.branchGrowth.autoStart && !isHeroPlaybackGrowthStartBlocked()) {
+  const heroGateEnabled = resolveHeroPlaybackGateConfig().enabled === true;
+  if (CONFIG.branchGrowth.autoStart && !heroGateEnabled && !isHeroPlaybackGrowthStartBlocked()) {
     restartBranchAnimation();
     return;
   }
