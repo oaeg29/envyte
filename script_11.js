@@ -51,6 +51,7 @@ const HERO_VIDEO_SOURCE_RUNTIME = {
   errorEvents: 0,
   errorListenerInstalled: false,
 };
+const HERO_VIDEO_DEBUG_LABEL_ID = 'heroVideoDebugLabel';
 
 function normalizeHostedAssetPath(path) {
   if (typeof path !== 'string') {
@@ -189,6 +190,30 @@ function resolveHeroVideoSourcePath() {
   return isLikelyIOSDevice() ? HERO_VIDEO_PATH_IOS : HERO_VIDEO_PATH_DEFAULT;
 }
 
+function setHeroVideoSourcePath(path, options = {}) {
+  const safeOptions = (options && typeof options === 'object') ? options : {};
+  const shouldForceLoad = safeOptions.forceLoad !== false;
+  const normalizedPath = normalizeHostedAssetPath(path);
+  if (typeof normalizedPath !== 'string' || normalizedPath.trim().length <= 0) {
+    return false;
+  }
+  const nextPath = normalizedPath.trim();
+  const currentPath = getHeroVideoCurrentSourcePath();
+  if (currentPath === nextPath) {
+    return true;
+  }
+  video.setAttribute('src', nextPath);
+  video.src = nextPath;
+  if (shouldForceLoad && typeof video.load === 'function') {
+    try {
+      video.load();
+    } catch (_error) {
+      // Ignore load() exceptions and rely on media events.
+    }
+  }
+  return true;
+}
+
 function buildHeroVideoSourceCandidates() {
   const primaryPath = normalizeHostedAssetPath(resolveHeroVideoSourcePath());
   const candidates = [];
@@ -203,8 +228,6 @@ function getHeroVideoCurrentSourcePath() {
 }
 
 function setHeroVideoSourceByIndex(index, options = {}) {
-  const safeOptions = (options && typeof options === 'object') ? options : {};
-  const shouldForceLoad = safeOptions.forceLoad !== false;
   const candidates = HERO_VIDEO_SOURCE_RUNTIME.candidates;
   if (!Array.isArray(candidates) || candidates.length <= 0) {
     return false;
@@ -217,21 +240,8 @@ function setHeroVideoSourceByIndex(index, options = {}) {
     return false;
   }
   const normalizedNextPath = nextPath.trim();
-  const currentPath = getHeroVideoCurrentSourcePath();
   HERO_VIDEO_SOURCE_RUNTIME.activeIndex = index;
-  if (currentPath === normalizedNextPath) {
-    return true;
-  }
-  video.setAttribute('src', normalizedNextPath);
-  video.src = normalizedNextPath;
-  if (shouldForceLoad && typeof video.load === 'function') {
-    try {
-      video.load();
-    } catch (_error) {
-      // Ignore load() exceptions and rely on media events.
-    }
-  }
-  return true;
+  return setHeroVideoSourcePath(normalizedNextPath, options);
 }
 
 function readHeroVideoMediaErrorLabel() {
@@ -301,6 +311,338 @@ function configureHeroVideoElement() {
     });
     HERO_VIDEO_SOURCE_RUNTIME.errorListenerInstalled = true;
   }
+}
+
+function resolveHeroVideoDebugConfig(configCandidate = CONFIG.heroVideoDebug) {
+  const safeConfig = isPlainObjectLiteral(configCandidate) ? configCandidate : {};
+  const candidatePathsSource = Array.isArray(safeConfig.candidatePaths)
+    ? safeConfig.candidatePaths
+    : [];
+  const seenPaths = new Set();
+  const candidatePaths = [];
+  for (let i = 0; i < candidatePathsSource.length; i += 1) {
+    const normalized = normalizeHostedAssetPath(candidatePathsSource[i]);
+    if (typeof normalized !== 'string') {
+      continue;
+    }
+    const trimmed = normalized.trim();
+    if (trimmed.length <= 0 || seenPaths.has(trimmed)) {
+      continue;
+    }
+    seenPaths.add(trimmed);
+    candidatePaths.push(trimmed);
+  }
+  const frameRate = Number.isFinite(Number(safeConfig.frameRate))
+    ? Math.max(1, Number(safeConfig.frameRate))
+    : 30;
+  const testFrameCount = Number.isFinite(Number(safeConfig.testFrameCount))
+    ? Math.max(1, Math.floor(Number(safeConfig.testFrameCount)))
+    : 150;
+  return {
+    enabled: safeConfig.enabled === true,
+    iosOnly: safeConfig.iosOnly !== false,
+    frameRate,
+    testFrameCount,
+    candidatePaths,
+    labelEnabled: safeConfig.labelEnabled !== false,
+    holdAfterEachMs: Number.isFinite(Number(safeConfig.holdAfterEachMs))
+      ? clamp(Number(safeConfig.holdAfterEachMs), 0, 2000)
+      : 250,
+    loadTimeoutMs: Number.isFinite(Number(safeConfig.loadTimeoutMs))
+      ? clamp(Number(safeConfig.loadTimeoutMs), 500, 45000)
+      : 12000,
+    playTimeoutMs: Number.isFinite(Number(safeConfig.playTimeoutMs))
+      ? clamp(Number(safeConfig.playTimeoutMs), 500, 45000)
+      : 12000,
+    chooseFirstPlayableAsFinalSource: safeConfig.chooseFirstPlayableAsFinalSource !== false,
+  };
+}
+
+function shouldRunHeroVideoDebugCycle(debugConfig = resolveHeroVideoDebugConfig()) {
+  if (!debugConfig || debugConfig.enabled !== true) {
+    return false;
+  }
+  if (debugConfig.iosOnly !== false && !isLikelyIOSDevice()) {
+    return false;
+  }
+  return Array.isArray(debugConfig.candidatePaths) && debugConfig.candidatePaths.length > 0;
+}
+
+function ensureHeroVideoDebugLabelElement() {
+  let labelEl = document.getElementById(HERO_VIDEO_DEBUG_LABEL_ID);
+  if (!labelEl) {
+    labelEl = document.createElement('div');
+    labelEl.id = HERO_VIDEO_DEBUG_LABEL_ID;
+    labelEl.style.position = 'fixed';
+    labelEl.style.left = '12px';
+    labelEl.style.top = '12px';
+    labelEl.style.zIndex = '22000';
+    labelEl.style.pointerEvents = 'none';
+    labelEl.style.fontFamily = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+    labelEl.style.fontSize = '12px';
+    labelEl.style.lineHeight = '1.35';
+    labelEl.style.letterSpacing = '0.02em';
+    labelEl.style.color = '#f7fbff';
+    labelEl.style.background = 'rgba(11, 16, 23, 0.62)';
+    labelEl.style.padding = '6px 8px';
+    labelEl.style.borderRadius = '4px';
+    labelEl.style.backdropFilter = 'blur(1.5px)';
+    labelEl.style.whiteSpace = 'nowrap';
+    labelEl.style.display = 'none';
+    document.body.appendChild(labelEl);
+  }
+  return labelEl;
+}
+
+function setHeroVideoDebugLabel(message, options = null) {
+  const safeOptions = isPlainObjectLiteral(options) ? options : {};
+  const visible = safeOptions.visible !== false;
+  const isError = safeOptions.isError === true;
+  const labelEl = ensureHeroVideoDebugLabelElement();
+  if (!visible) {
+    labelEl.style.display = 'none';
+    return;
+  }
+  labelEl.style.display = 'block';
+  labelEl.style.color = isError ? '#ffd7d7' : '#f7fbff';
+  labelEl.style.background = isError ? 'rgba(92, 22, 22, 0.7)' : 'rgba(11, 16, 23, 0.62)';
+  labelEl.textContent = typeof message === 'string' ? message : '';
+}
+
+function sleepMs(durationMs = 0) {
+  const safeDuration = Number.isFinite(Number(durationMs)) ? Math.max(0, Number(durationMs)) : 0;
+  if (safeDuration <= 0) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, safeDuration);
+  });
+}
+
+function waitForHeroVideoReadyOrError(timeoutMs = 12000) {
+  if (isInitialHeroVideoReadyForStartup()) {
+    return Promise.resolve({ ready: true, error: null, timedOut: false });
+  }
+  return new Promise((resolve) => {
+    let settled = false;
+    const timeoutId = window.setTimeout(() => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      resolve({
+        ready: isInitialHeroVideoReadyForStartup(),
+        error: 'timeout',
+        timedOut: true,
+      });
+    }, Math.max(500, timeoutMs));
+    const finish = (payload) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      resolve(payload);
+    };
+    const onReady = () => {
+      if (!isInitialHeroVideoReadyForStartup()) {
+        return;
+      }
+      finish({ ready: true, error: null, timedOut: false });
+    };
+    const onError = () => {
+      finish({
+        ready: false,
+        error: readHeroVideoMediaErrorLabel(),
+        timedOut: false,
+      });
+    };
+    const cleanup = () => {
+      clearTimeout(timeoutId);
+      video.removeEventListener('loadeddata', onReady);
+      video.removeEventListener('canplay', onReady);
+      video.removeEventListener('loadedmetadata', onReady);
+      video.removeEventListener('error', onError);
+    };
+    video.addEventListener('loadeddata', onReady);
+    video.addEventListener('canplay', onReady);
+    video.addEventListener('loadedmetadata', onReady);
+    video.addEventListener('error', onError);
+  });
+}
+
+function playHeroVideoForSampleWindow(sampleDurationSec, timeoutMs = 12000) {
+  const safeSampleDurationSec = Number.isFinite(Number(sampleDurationSec))
+    ? Math.max(0.05, Number(sampleDurationSec))
+    : 0.05;
+  const safeTimeoutMs = Number.isFinite(Number(timeoutMs)) ? Math.max(500, Number(timeoutMs)) : 12000;
+  return new Promise((resolve) => {
+    let settled = false;
+    let rafId = null;
+    const startPerfMs = performance.now();
+    const startTimeSec = Number.isFinite(Number(video.currentTime)) ? Math.max(0, Number(video.currentTime)) : 0;
+    const targetTimeSec = startTimeSec + safeSampleDurationSec;
+    const finish = (payload) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      video.removeEventListener('error', onError);
+      try {
+        video.pause();
+      } catch (_error) {
+        // Ignore pause errors in debug sampling.
+      }
+      resolve(payload);
+    };
+    const onError = () => {
+      finish({
+        ok: false,
+        reason: `error:${readHeroVideoMediaErrorLabel()}`,
+        reachedSec: Number.isFinite(Number(video.currentTime)) ? Number(video.currentTime) : startTimeSec,
+      });
+    };
+    const tick = () => {
+      if (settled) {
+        return;
+      }
+      const nowSec = Number.isFinite(Number(video.currentTime)) ? Number(video.currentTime) : startTimeSec;
+      if (video.ended === true || nowSec >= targetTimeSec) {
+        finish({ ok: true, reason: 'reached_target', reachedSec: nowSec });
+        return;
+      }
+      if ((performance.now() - startPerfMs) >= safeTimeoutMs) {
+        finish({ ok: false, reason: 'play_timeout', reachedSec: nowSec });
+        return;
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+    video.addEventListener('error', onError, { once: true });
+    const playPromise = video.play();
+    if (playPromise && typeof playPromise.catch === 'function') {
+      playPromise.catch((error) => {
+        const reason = (error && typeof error.name === 'string' && error.name.length > 0)
+          ? `play_rejected:${error.name}`
+          : 'play_rejected';
+        finish({
+          ok: false,
+          reason,
+          reachedSec: Number.isFinite(Number(video.currentTime)) ? Number(video.currentTime) : startTimeSec,
+        });
+      });
+    }
+    rafId = requestAnimationFrame(tick);
+  });
+}
+
+async function runHeroVideoDebugCycle(debugConfig = resolveHeroVideoDebugConfig()) {
+  const result = {
+    ready: false,
+    unsupported: false,
+    selectedPath: null,
+    results: [],
+  };
+  if (!shouldRunHeroVideoDebugCycle(debugConfig)) {
+    return result;
+  }
+
+  const candidatePaths = debugConfig.candidatePaths.slice();
+  const sampleDurationSec = debugConfig.testFrameCount / debugConfig.frameRate;
+  if (debugConfig.labelEnabled) {
+    setHeroVideoDebugLabel('iOS video debug: starting', { visible: true });
+  }
+
+  for (let i = 0; i < candidatePaths.length; i += 1) {
+    const candidatePath = candidatePaths[i];
+    const shortName = candidatePath.split('/').pop() || candidatePath;
+    if (debugConfig.labelEnabled) {
+      setHeroVideoDebugLabel(`iOS video debug ${i + 1}/${candidatePaths.length}: loading ${shortName}`, { visible: true });
+    }
+    setHeroVideoSourcePath(candidatePath, { forceLoad: true });
+    const loadStatus = await waitForHeroVideoReadyOrError(debugConfig.loadTimeoutMs);
+
+    const candidateResult = {
+      path: candidatePath,
+      loaded: Boolean(loadStatus && loadStatus.ready),
+      played: false,
+      error: loadStatus && loadStatus.error ? loadStatus.error : null,
+      reachedSec: 0,
+    };
+
+    if (!candidateResult.loaded) {
+      result.results.push(candidateResult);
+      if (debugConfig.labelEnabled) {
+        setHeroVideoDebugLabel(
+          `iOS video debug ${i + 1}/${candidatePaths.length}: ${shortName} failed (${candidateResult.error || 'load_failed'})`,
+          { visible: true, isError: true },
+        );
+      }
+      await sleepMs(debugConfig.holdAfterEachMs);
+      continue;
+    }
+
+    try {
+      video.currentTime = 0;
+    } catch (_error) {
+      // Ignore seek errors and continue.
+    }
+
+    if (debugConfig.labelEnabled) {
+      setHeroVideoDebugLabel(`iOS video debug ${i + 1}/${candidatePaths.length}: testing ${shortName}`, { visible: true });
+    }
+    const playStatus = await playHeroVideoForSampleWindow(sampleDurationSec, debugConfig.playTimeoutMs);
+    candidateResult.played = Boolean(playStatus && playStatus.ok);
+    candidateResult.reachedSec = (playStatus && Number.isFinite(Number(playStatus.reachedSec)))
+      ? Number(playStatus.reachedSec)
+      : 0;
+    if (!candidateResult.played && playStatus && typeof playStatus.reason === 'string') {
+      candidateResult.error = playStatus.reason;
+    }
+    result.results.push(candidateResult);
+    if (debugConfig.labelEnabled) {
+      setHeroVideoDebugLabel(
+        `iOS video debug ${i + 1}/${candidatePaths.length}: ${shortName} ${candidateResult.played ? 'ok' : `failed (${candidateResult.error || 'play_failed'})`}`,
+        { visible: true, isError: candidateResult.played !== true },
+      );
+    }
+    await sleepMs(debugConfig.holdAfterEachMs);
+  }
+
+  const playableResults = result.results.filter((entry) => entry.loaded === true && entry.played === true);
+  const selectedResult = playableResults.length > 0
+    ? (debugConfig.chooseFirstPlayableAsFinalSource ? playableResults[0] : playableResults[playableResults.length - 1])
+    : null;
+  result.selectedPath = selectedResult ? selectedResult.path : null;
+  result.ready = Boolean(selectedResult);
+  result.unsupported = result.ready !== true;
+
+  if (result.selectedPath) {
+    setHeroVideoSourcePath(result.selectedPath, { forceLoad: true });
+    await waitForHeroVideoReadyOrError(debugConfig.loadTimeoutMs);
+    if (debugConfig.labelEnabled) {
+      const shortName = result.selectedPath.split('/').pop() || result.selectedPath;
+      setHeroVideoDebugLabel(`iOS video debug final: ${shortName}`, { visible: true });
+    }
+  } else if (debugConfig.labelEnabled) {
+    setHeroVideoDebugLabel('iOS video debug: no candidate could play', { visible: true, isError: true });
+  }
+
+  HERO_VIDEO_SOURCE_RUNTIME.candidates = candidatePaths.slice();
+  if (result.selectedPath) {
+    HERO_VIDEO_SOURCE_RUNTIME.activeIndex = HERO_VIDEO_SOURCE_RUNTIME.candidates.indexOf(result.selectedPath);
+  } else {
+    HERO_VIDEO_SOURCE_RUNTIME.activeIndex = 0;
+  }
+  if (HERO_VIDEO_SOURCE_RUNTIME.activeIndex < 0) {
+    HERO_VIDEO_SOURCE_RUNTIME.activeIndex = 0;
+  }
+
+  return result;
 }
 
 configureHeroVideoElement();
@@ -427,484 +769,54 @@ gradient.addColorStop(1, color3);
 
 // Apply as a string to the backgroundColor property
 
-const CONFIG = {
-  backgroundColor: gradient,
-  globalFoliageScale: 0.85, // global foliage multiplier (branches + stems + leaves + flowers)
+function isPlainConfigObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
 
-  noise: {
-    // stepSize: 2,
-    // scale: 2.2,
-    // timeStep: 1 / 300,
-    // checkpointCount: 20,
-    // checkpointSpacingSteps: 2,
+function mergeConfigOverridesInPlace(target, patch) {
+  if (!isPlainConfigObject(target) || !isPlainConfigObject(patch)) {
+    return target;
+  }
+  const keys = Object.keys(patch);
+  for (let i = 0; i < keys.length; i += 1) {
+    const key = keys[i];
+    const patchValue = patch[key];
+    if (isPlainConfigObject(patchValue)) {
+      if (!isPlainConfigObject(target[key])) {
+        target[key] = {};
+      }
+      mergeConfigOverridesInPlace(target[key], patchValue);
+      continue;
+    }
+    target[key] = patchValue;
+  }
+  return target;
+}
 
-    stepSize: 0.1,
-    scale: 20,
-    timeStep: 1 / 300,
-    checkpointCount: 20,
-    checkpointSpacingSteps: 2,
-  },
+// ---------------------------------------------------------------------------
+// USER CONFIG (primary tweak area)
+// ---------------------------------------------------------------------------
+const USER_CONFIG = (
+  typeof window !== 'undefined'
+  && isPlainConfigObject(window.STEM_WARP_USER_CONFIG)
+)
+  ? window.STEM_WARP_USER_CONFIG
+  : {};
 
-  path: {
-    smoothingSubdivisionsPerSpan: 10,
-  },
- 
-  pathGeneration: {
-    
-    mode: 'manualTemplate', // random | manualTemplate
-    useAbsoluteNoiseX: false, // if true, X/lateral noise uses abs()
-    useAbsoluteNoiseY: false, // if true, Y/forward noise uses abs()
-    absoluteNoiseXRatio: 0.4, // when useAbsoluteNoiseX=false, blend signed->absolute by this ratio (0..1)
-    absoluteNoiseYRatio: 0.9, // when useAbsoluteNoiseY=false, blend signed->absolute by this ratio (0..1)
-    // templateScale: 0.5,
-    templateScaleRangeMin: 0.2,
-    templateScaleRangeMax: 0.5,
-    baseRotationDeg: 5, // rotates generated base path around its seed before rendering
-    templateNoiseAmount: 40 * valScaling,
-    templateNoiseStep: 1 / 7.5,
-    templateNoiseAmount2: 25 * valScaling,
-    templateNoiseStep2: 1 / 0.5,
-    templateNoiseAmount3: 40 * valScaling,
-    templateNoiseStep3: 1 / 3,
-    templateNoiseHighpassWindow3: 23,
-    templateNoiseDirectionalBias: 0.8,
-    templateInheritCheckpointSpacingSteps: true,
-    alignTemplateToGrowth: true,
-    templatePickMode: 'random', // random | fixed
-    templatePickDeterministic: true,
-    fixedTemplateIndex: 2,
-    // Additional base templates (arrays of {x,y}) besides generate_manual_points().
-    manualTemplates: [],
-  },
+const configDefaultsFactory = typeof window.createStemWarpConfigDefaults === 'function'
+  ? window.createStemWarpConfigDefaults
+  : null;
 
-  brush: {
-    stripWidth: 0.3,
-    scale: 0.18,
-    sclale: undefined, // typo compatibility
-    thicknessTaperEnabled: true,
-    thicknessMinScale: 0.48,
-    thicknessTaperExponent: 0.2,
-    thicknessMinWidth: 0, // absolute minimum rendered width in px (applied when taper is enabled)
-    globalHueDeg: 5,
-    globalBrightness: 0.89,
-    randomizeBranchFilter: true,
-    randomHueMinDeg: 15,
-    randomHueMaxDeg: 0,
-    randomBrightnessMin: 1.05,
-    randomBrightnessMax: 0.9,
-    randomFilterVariantCount: 15,
-    randomFilterAssignmentMode: 'inheritParent', // perBranch | inheritParent
-    pathOffset: 0,
-    repeatGap: 0,
-    repeatOverlap: 0.13, //usually 0.2
-    startOffset: 0,
-    cropPartialRepeat: true,
-  },
+if (!configDefaultsFactory) {
+  throw new Error('Missing config defaults factory. Make sure script_11.config.defaults.js loads before script_11.js.');
+}
 
-  seeds: {
-    countPerSide: defaultCountPerSide,
-    sidePad: -0.85 * window.innerWidth,
-    sideMargin: 2,
-    mode: 'explicitYRatios', // autoSpacing | explicitYRatios
-    explicitYRatioBasis: 'video', // video | viewport
-    explicitYRatios: [0.05, 0.1, 0.3, 0.5, 0.4 , 0.45, 0.89, 0.85, 0.9], // shared ratios for both sides (0..1 or 0..100)
-    explicitYRatiosBySide: null, // optional { left: [...], right: [...] }
-    explicitYRatiosLeft: null, // optional side override list
-    explicitYRatiosRight: null, // optional side override list
-    startY: window.innerHeight * 0.05, // explicit first-seed Y; null randomizes first seed per side
-    randomizeSpacing: true, // if true, per-seed spacing is sampled in [minSpacing, maxSpacing]
-    minSpacing: window.innerHeight/ defaultCountPerSide, // minimum vertical distance between seeds on the same side
-    // minSpacing: 300,
-    maxSpacing: null, // when null + randomizeSpacing=true, an automatic max is derived from minSpacing
-  },
-
-  // offshoot: {
-  //   enabled: true,
-  //   deterministic: true,
-  //   maxDepth: 1,
-  //   countRange: [0, 5],
-  //   spawnTMin: 0.01,
-  //   spawnTMax: 0.96,
-  //   biasExponent: 1.6,
-  //   angleDegRange: [0,1],
-  //   sideMode: 'alternate', // random | left | right | alternate
-  //   depthScale: 0.7,
-  //   minSpawnSpacingT: 0,
-  //   maxSpawnAttemptsPerChild: 80,
-  //   maxTotalBranches: 500,
-  // },
-
-  offshoot: {
-    enabled: true,
-    deterministic: true,
-    maxDepth: 1,
-    countRange: [0, 10],
-    spawnTMin: 0.01,
-    spawnTMax: 0.96,
-    biasExponent: 1.6,
-    angleDegRange: [45,45],
-    sideMode: 'alternate', // random | left | right | alternate
-    depthScale: 0.6,
-    minSpawnSpacingT: 0.02,
-    maxSpawnAttemptsPerChild: 800,
-    maxTotalBranches: 200,
-    pathGenerationMode: 'inherit', // inherit | random | manualTemplate
-    templateIndexPool: [2], // e.g. [1, 4, 7] => randomly pick one for each offshoot
-    centerBlockEnabled: true, // clip offshoot branches when they enter the center block area
-     centerBlockHalfWidthPxVideoHeightRatio: 0.182, // X half-width as ratio of sampled video height
-    centerBlockHalfHeightAbovePxVideoHeightRatio: 0.8, // Y extent above center as ratio of sampled video height
-    centerBlockHalfHeightBelowPxVideoHeightRatio: 0.8,  // Y extent below center as ratio of sampled video height
-  },
-
-  branchGrowth: {
-    enabled: true,
-    mode: 'linearBySeedY', // simultaneous | linearBySeedY
-    linearSweepDirection: 'up', // down (top->bottom) | up (bottom->top)
-    linearSweepDurationSec: 3.25, // sweep time across root seed Y range
-    speedMode: 'rate', // duration | rate
-    totalDurationSec: 1.5,
-    pixelsPerSecond: 160,
-    growthEase: 'easeOut', // linear | easeIn | easeOut | easeInOut
-    growthEasePower: 1,
-    autoStart: true,
-    requireFoliageLoadedBeforeStart: true,
-    useOffscreenLayerCache: true,
-  },
-
-  frameJumpHotkeys: {
-    enabled: true,
-    timelineFps: 30,
-    bindings: {
-      1: 0,
-      2: 130,
-      3: 261,
-      4: null,
-      5: null,
-      6: null,
-    },
-  },
-
-  heroPlaybackGate: {
-    enabled: true,
-    frameRate: 30,
-    introPauseFrame: 125,
-    postButtonPauseFrame: 261,
-    growthStartFrame: 253,
-    pauseGuardFrames: 2,
-    monitorUseVideoFrameCallback: true,
-    videoWiggle: {
-      enabled: true,
-      maxAngleDeg: 5.4,
-      durationMs: 760,
-      speedHz: 5.8,
-      dampingStrength: 3.2,
-      anchorOffsetXRatio: 0,
-      anchorOffsetYRatio: 0,
-      delayAfterIntroPauseMs: 0,
-    },
-    openButton: {
-      centerXRatio: 0.498, // 49.8% of rendered video width
-      centerYRatio: 0.7897135, // 78.97135% of rendered video height
-      diameterRatio: 0.062, // 6.2% of rendered video size (min(width,height))
-      hitMarginPercentOfButtonSize: 150, // 0..100 extra size percentage
-    },
-    openButtonDebug: {
-      enabled: true,
-      drawOnFrontLayer: true,
-      showBaseButtonCircle: true,
-      showPaddedHitCircle: true,
-      baseStrokeStyle: 'rgba(35, 208, 140, 0.95)',
-      baseFillStyle: 'rgba(35, 208, 140, 0.10)',
-      hitStrokeStyle: 'rgba(255, 170, 80, 0.98)',
-      hitFillStyle: 'rgba(255, 170, 80, 0.12)',
-      lineWidthPx: 2,
-    },
-    openButtonArrow: {
-      enabled: true,
-      spritePath: './arrow_2.png',
-      centerXRatio: 0.498,
-      centerYRatio: 0.42,
-      sizeRatio: 0.19, // width ratio against rendered video min(width,height)
-      appearAfterFrame: 90,
-      maxOpacity: 1,
-      fadeOutAfterOpenButtonClick: true,
-      fadeOutDurationSec: 0.45,
-    },
-  },
-
-  centerOverlayImage: {
-    enabled: true,
-    spritePath: './test_page2.png',
-    scale: 0.25,
-    offsetXPx: 0,
-    offsetYPx: -80,
-    displayAfterFrame: 255,
-    maxOpacity: 1,
-    fadeInEnabled: true,
-    fadeInDurationSec: 0.45,
-  },
-
-  floralResponsiveScale: {
-    enabled: true,
-    // [viewportWidthCssPx, scaleFactor]
-    points: [
-      [390, 0.62],
-      [768, 0.78],
-      [1024, 0.9],
-      [1366, 1.0],
-    ],
-    globalMultiplier: 1.5, // global floral size multiplier (applies to leaves + flowers)
-    pointerModifierEnabled: true,
-    pointerCoarseMultiplier: 0.95, // touch-first devices
-    pointerFineMultiplier: 1.0, // mouse/trackpad devices
-    pointerNoneMultiplier: 1.0,
-    pointerUnknownMultiplier: 1.0,
-    dprModifierEnabled: false,
-    dprBaseline: 2,
-    dprStrength: 0.14, // mild; > baseline shrinks slightly, < baseline grows slightly
-    dprMultiplierClamp: [0.92, 1.08],
-    landscapeModifierEnabled: true,
-    landscapeMultiplier: 3.0, // applied only when viewportWidth > viewportHeight
-    finalScaleClamp: [0.25, 10],
-  },
-
-  overlayWrap: {
-    enabled: true,
-    animationOnly: false,
-    centerHalfWidthPxFromVideoEnabled: true,
-    centerHalfWidthPxVideoHeightRatio: 0.187760416667, // 16.2760416667% of rendered hero video height
-    centerHalfWidthPxVideoHeightRatioBottom: 0.21, // second width ratio used below the switch Y
-    centerHalfWidthSwitchYVideoHeightRatio: 0.78, // switch Y as % of initially sampled video height (0..1 or 0..100)
-    centerHalfWidthPx: 50, // fallback when video size is unavailable
-    skipHiddenBackDrawEnabled: false,
-    showCenterBandOverlay: false,
-    centerBandOverlayFill: 'rgba(255, 95, 95, 0.16)',
-    centerBandOverlayStroke: 'rgba(255, 95, 95, 0.85)',
-    centerBandOverlayLineWidth: 1.5,
-  },
-
-  motion: {
-    swayMode: 'influence', // always | influence
-    maxSwayFps: 24, // <=0 disables cap for interaction-only render loop
-    leafViewportCullingEnabled: true,
-    flowerViewportCullingEnabled: true,
-    swayFastPathEnabled: true,
-    swayPerfLogEnabled: false,
-  },
-
-  flowers: {
-    enabled: true,
-    renderer: 'pixi', // pixi | canvas
-    pixiEnabled: true,
-    baked: {
-      enabled: false,
-      manifestPath: './flowers/flowers_atlas_manifest_master.json',
-      fallbackToLive: false,
-      allowFilenameFallback: true,
-      forceCanvasRenderer: true,
-      playbackFps: 0, // 0 = use FPS from manifest
-      playbackSpeedMultiplier: 1.6, // >1 speeds up baked motion cycle playback
-      neutralFrameIndex: null, // null = use neutral index from manifest
-      frameInterpolationEnabled: false, // when true: nearest-frame interpolation (no alpha cross-fade)
-      logEnabled: false,
-    },
-    performanceProfile: 'auto', // auto | desktop | mobile
-    autoProfile: {
-      mobileMaxHardwareConcurrency: 6,
-      mobileMinDevicePixelRatio: 2,
-      mobileMaxViewportWidth: 1024,
-      influenceDynamicCapRange: [14, 20], // [min, max] chosen by device budget
-      influenceNoPointerFallBoostRange: [3.0, 4.0], // [min, max]
-      mouseSpeedSwayAffectRange: [0.1, 0.2], // [min, max]
-      interactionRadiusScaleRange: [0.82, 1.0], // [min, max] multiplier on swayInteractionRadiusFactor
-      minSwayFallSpeed: 1.5,
-    },
-    assignmentMode: 'mixed', // single | mixed
-    singleType: 'lily',
-    mixRatios: {
-
-      lily: 1,
-      blue: 1,
-    },
-    endpointDirectionTailLengthPx: 26,
-    endpointDirectionSampleCount: 5,
-    drawSize: 67,
-    swayInteractionRadiusFactor: 3.1,
-    swayRiseSpeed: 5.5,
-    swayFallSpeed: 0.5,
-    swayEpsilon: 0.0008,
-    mouseSpeedSwayAffect: 0.7,
-    influenceDynamicCapEnabled: true,
-    influenceDynamicCap: 28,
-    influenceNoPointerFallBoost: 1.2,
-    influenceJumpCountsTowardCap: true,
-    alwaysAnimatedCacheEnabled: true,
-    alwaysAnimatedCacheFps: 12,
-    swaySpriteDebugEnabled: false,
-    swaySpriteDebugFrameStep: 1,
-    blueSwayRotateAroundPetalOrigin: false,
-    blueJumpRotateAroundPetalOrigin: true,
-    swayJumpRotateAroundPetalOrigin: true,
-    jumpEnabled: true,
-    jumpInteractionRadiusFactor: 1.4,
-    jumpStrengthDeg: 15,
-    jumpAttackSpeedDegPerSec: 60,
-    jumpReturnSpeedDegPerSec: 55,
-    jumpDistanceExponent: 1,
-    jumpJitterDeg: 30,
-    jumpEpsilonDeg: 0.5,
-    backfacing: false,
-    petalToggleAnimationDurationSec: 0.4,
-    petalToggleAnimationEasePower: 1,
-    petalToggleOpenBounceAmount: 0.6,
-    petalToggleOpenBounceOscillations: 1,
-    petalToggleSpriteSwapProgress: 0.97,
-    petalToggleEdgePairFlipEnabled: false,
-    petalToggleEdgePairFlipBackProgress: 0.67,
-    petalToggleEdgePairUseInnerSpritesEnabled: true,
-    petalTogglePairSpeedDisparityEnabled: true,
-    petalTogglePairSpeedStep: 0.1,
-    petalTogglePairSpeedCurve: 0,
-    performance: {
-      activeLayerCacheEnabled: true,
-      logEnabled: false,
-      logIntervalMs: 1000,
-    },
-    types: {
-      lily: {
-        method: 'sweep3', // legacy | sweep | sweep2 | sweep3
-        spritePath: './lily_sprite.png',
-        spriteCellWidth: 44,
-        spriteCellHeight: 44,
-        spriteScale: 8.3333333,
-        spriteCols: 8,
-        spriteRows: 6,
-        spriteRow: 1,
-        petalCountRange: [8, 8],
-        alignToBranchDirection: true,
-        alignmentDamping: 0.3,
-        petalBaseCenterDeg: 50,
-        petalSpreadDeg: 70,
-        displacementSpace: 'flower', // flower | screen
-        stamenRowMode: 'fixedRow', // petalRow | fixedRow
-        stamenFixedRow: 1, // 1-based row
-        stamenCount: 2, // total stamens per flower
-        stamenAdditionalMode: 'rowList', // randomRows | rowList
-        stamenRowList: [2,3,4,5,6,7,8], // 1-based rows used when stamenAdditionalMode='rowList'
-        closedUseMiddlePetalSprite: true, // if true, closed lilies use middle petal sprite for every petal
-        pairRotationDegByRowPair: {
-          1: { 1: 20, 2: 13, 3: 30},
-          2: { 1: 15, 2: 10, 3: 48 },
-          3: { 1: 15, 2: 20, 3: 60 },
-          4: { 1: 10, 2: 10, 3: 45 },
-          5: { 1: 10, 2: 15, 3: 30 },
-          6: { 1: 20, 2: 10, 3: 70 },
-          7: { 1: 0, 2: 0, 3: 0 },
-          8: { 1: 0, 2: 0, 3: 0 },
-        },
-        pairDisplacementYByRowPair: {
-          1: { 1: { right: 0, left: 0 }, 2: { right: 0, left: 0 }, 3: { right: 5, left: 5 } },
-          2: { 1: { right: 0, left: 0 }, 2: { right: 0, left: 0 }, 3: { right: 10, left: 12 } },
-          3: { 1: { right: 0, left: 0 }, 2: { right: 0, left: 0 }, 3: { right: 2, left: 5 } },
-          4: { 1: { right: 0, left: 0 }, 2: { right: 0, left: 0 }, 3: { right: 4, left: 0 } },
-          5: { 1: { right: 0, left: 0 }, 2: { right: 0, left: 0 }, 3: { right: 0, left: 0 } },
-          6: { 1: { right: 0, left: 0 }, 2: { right: 0, left: 0 }, 3: { right: 13, left: 10 } },
-          7: { 1: { right: 0, left: 0 }, 2: { right: 0, left: 0 }, 3: { right: 0, left: 0 } },
-          8: { 1: { right: 0, left: 0 }, 2: { right: 0, left: 0 }, 3: { right: 0, left: 0 } },
-        },
-        pairDisplacementXByRowPair: {
-          1: { 1: { right: 0, left: -5 }, 2: { right: 0, left: 0 }, 3: { right: -5, left: -5 } },
-          2: { 1: { right: 0, left: 0 }, 2: { right: 0, left: 0 }, 3: { right: 5, left: 3 } },
-          3: { 1: { right: 0, left: 0 }, 2: { right: 0, left: 0 }, 3: { right: 6, left: 9 } },
-          4: { 1: { right: 0, left: 0 }, 2: { right: 0, left: 0 }, 3: { right: 0, left: 0 } },
-          5: { 1: { right: 0, left: 0 }, 2: { right: 0, left: 0 }, 3: { right: 0, left: 0 } },
-          6: { 1: { right: 0, left: 0 }, 2: { right: 0, left: 0 }, 3: { right: 5, left: 7 } },
-          7: { 1: { right: 0, left: 0 }, 2: { right: 0, left: 0 }, 3: { right: 0, left: 0 } },
-          8: { 1: { right: 0, left: 0 }, 2: { right: 0, left: 0 }, 3: { right: 0, left: 0 } },
-        },
-        hoverAmplitudeDegRange: [2, 12],
-        hoverSpeedRange: [2.2, 4.2],
-      },
-      blue: {
-        spritePath: './blue_sprite_2_upscaled.png',
-        spritePathPool: [
-          './blue_sprite_2.png','./blue_sprite_1.png','./blue_sprite_3.png', './blue_sprite.png',
-          './blue_sprite_2.png'
-
-          // './blue_sprite_4.2.png', './blue_sprite_5.png'
-        ], // one full sprite sheet is picked per blue flower
-        spriteCellWidth: 44,
-        spriteCellHeight: 44,
-        spriteScale: 8.3333333,
-        spriteCols: 10,
-        spriteRows: 10,
-        baseSize: 50, // circle radius in px for point cloud generation
-        density: 130, // fixed number of points per flower
-        centerBiasExponent: 1, // larger = stronger center clustering
-        pointDrawSize: 40,
-        drawOrder: 'random', // outerFirst | random
-        hoverAmplitudeDegRange: [2, 6],
-        hoverSpeedRange: [2.2, 4.2],
-      },
-    },
-  },
-
-  leaves: {
-    enabled: true,
-    deterministic: true,
-    spritePath: './leaves_new.png',
-    spriteCellWidth: 44,
-    spriteCellHeight: 45.819,
-    spriteScale: 8.3333333,
-    spriteCols: 10,
-    spriteRows: 8,
-    spriteRowRange: [0, 2], // 1-based inclusive [min, max]
-    drawSize: 30,
-    drawSizeRange: [30,70], // [min, max]; overrides fixed drawSize when provided
-    drawSizeBaseMultiplier: 0.1, // 1 at branch base, linearly blends to this value at branch tip
-    drawSizeBaseMultiplierEaseIn: 0.1, // 0 = linear; closer to 1 delays size change until near the tip
-    growthEnabled: true,
-    growthMinScale: 0.05, // 0..1 fraction of final leaf drawSize
-    growthDurationSec: 1, // time from minScale to full size
-    growthEase: 'easeOut', // linear | easeIn | easeOut | easeInOut
-    growthEasePower: 2, // easing curve strength
-    swayEnabled: true,
-    swayInteractionRadiusFactor: 2.1,
-    swayRiseSpeed: 5.5,
-    swayFallSpeed: 0.5,
-    swayEpsilon: 0.0008,
-    mouseSpeedSwayAffect: 0.7,
-    swayAmplitudeDegRange: [0.8, 12.6],
-    swaySpeedRange: [1.9, 2.8],
-    countRange: [2, 10],
-    spawnTMin: 0.01,
-    spawnTMax: 0.5,
-    spawnBiasMode: 'towardBase', // uniform | towardBase | towardTip
-    spawnBiasExponent: 4, // >1 strengthens bias
-    minSpawnSpacingT: 0.001,
-    maxSpawnAttemptsPerLeaf: 1,
-    sideMode: 'alternate', // random | left | right | alternate
-    rotationAwayFromNormalDegRange: [0,80],
-  },
-
-  performance: {
-    enabled: false,
-    logIntervalMs: 1000,
-  },
-
-  debug: {
-    // enabled: true,
-    showStripBounds: false,
-    showStripCenters: true,
-    showPathOutline: true,
-    showTangents: false,
-    showNormals: false,
-    showControlPoints: true,
-    showControlCurve: true,
-    pathSampleStep: 8,
-    vectorSampleSpacing: 120,
-  },
-};
+const CONFIG = configDefaultsFactory({
+  gradient,
+  valScaling,
+  defaultCountPerSide,
+});
+mergeConfigOverridesInPlace(CONFIG, USER_CONFIG);
 
 // Backward compatibility: `animation` now maps to `branchGrowth`.
 CONFIG.animation = CONFIG.branchGrowth;
@@ -10566,6 +10478,18 @@ function applyHeroPlaybackGateOptions(nextOptions) {
   startHeroPlaybackGateFlow();
 }
 
+function applyHeroVideoDebugOptions(nextOptions) {
+  if (!isPlainObjectLiteral(nextOptions)) {
+    return;
+  }
+  const currentConfig = resolveHeroVideoDebugConfig();
+  const mergedConfig = {
+    ...currentConfig,
+    ...nextOptions,
+  };
+  CONFIG.heroVideoDebug = resolveHeroVideoDebugConfig(mergedConfig);
+}
+
 function applyCenterOverlayImageOptions(nextOptions) {
   if (!isPlainObjectLiteral(nextOptions)) {
     return;
@@ -11560,6 +11484,10 @@ function exposeDevToolsApi() {
       applyHeroPlaybackGateOptions(nextOptions);
     },
 
+    setHeroVideoDebugOptions(nextOptions) {
+      applyHeroVideoDebugOptions(nextOptions);
+    },
+
     setCenterOverlayImageOptions(nextOptions) {
       applyCenterOverlayImageOptions(nextOptions);
     },
@@ -11684,11 +11612,20 @@ async function bootstrap() {
   STATE.foliageLoad.flowerReady = false;
   STATE.foliageLoad.ready = false;
   setLoadingScreenMessage('please wait, something special is loading');
-  const initialVideoStatus = await waitForInitialHeroVideoReadyForStartup();
+  let initialVideoStatus = null;
+  const heroVideoDebugConfig = resolveHeroVideoDebugConfig();
+  if (shouldRunHeroVideoDebugCycle(heroVideoDebugConfig)) {
+    setLoadingScreenVisible(false);
+    initialVideoStatus = await runHeroVideoDebugCycle(heroVideoDebugConfig);
+  } else {
+    initialVideoStatus = await waitForInitialHeroVideoReadyForStartup();
+    setHeroVideoDebugLabel('', { visible: false });
+  }
   STATE.foliageLoad.videoReady = Boolean(initialVideoStatus && initialVideoStatus.ready);
   refreshHeroVideoReferenceRect({ force: true });
   if (!STATE.foliageLoad.videoReady) {
     if (initialVideoStatus && initialVideoStatus.unsupported) {
+      setLoadingScreenVisible(true);
       setLoadingScreenMessage('this experience is not supported on this browser yet');
       return;
     }
