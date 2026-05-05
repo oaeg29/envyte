@@ -86,42 +86,21 @@
       chooseFirstPlayableAsFinalSource: true,
       candidateSources: [
         {
-          path: './hero_vid_for_ios.mov',
+          path: './hero_vid_7_for_ios_5.mov',
           type: 'video/quicktime; codecs="hvc1.1.6.H120.b0"',
         },
         {
-          path: './hero_vid_for_ios_1.mp4',
-          type: 'video/mp4; codecs="hvc1"',
+          path: './hero_vid_7_for_ios_5.mov',
+          type: 'video/quicktime; codecs="hvc1"',
         },
         {
-          path: './hero_vid_for_ios_2.mp4',
-          type: 'video/mp4; codecs="hvc1"',
-        },
-        {
-          path: './hero_vid_for_ios_3.mov',
-          type: 'video/quicktime; codecs="hvc1.1.6.H120.b0"',
-        },
-        {
-          path: './hero_vid_for_ios_4.mov',
-          type: 'video/quicktime; codecs="hvc1.1.6.H120.b0"',
-        },
-        {
-          path: './vids/hero_vid_for_ios.mp4',
-          type: 'video/mp4; codecs="hvc1"',
-        },
-        {
-          path: './vids/hero_vid_for_ios_clean.mp4',
-          type: 'video/mp4; codecs="hvc1"',
+          path: './hero_vid_7.webm',
+          type: 'video/webm; codecs="vp09.00.41.08"',
         },
       ],
       candidatePaths: [
-        './hero_vid_for_ios.mov',
-        './hero_vid_for_ios_1.mp4',
-        './hero_vid_for_ios_2.mp4',
-        './hero_vid_for_ios_3.mov',
-        './hero_vid_for_ios_4.mov',
-        './vids/hero_vid_for_ios.mp4',
-        './vids/hero_vid_for_ios_clean.mp4',
+        './hero_vid_7_for_ios_5.mov',
+        './hero_vid_7.webm',
       ],
     },
 

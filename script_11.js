@@ -339,7 +339,7 @@ function resolveHeroVideoDebugConfig(configCandidate = CONFIG.heroVideoDebug) {
     ? safeConfig.candidatePaths
     : [];
   const seenPaths = new Set();
-  const candidateEntriesByPath = new Map();
+  const candidateEntriesByKey = new Set();
   const candidateEntries = [];
   const candidatePaths = [];
   function upsertCandidate(pathValue, sourceTypeValue = '') {
@@ -357,21 +357,19 @@ function resolveHeroVideoDebugConfig(configCandidate = CONFIG.heroVideoDebug) {
     )
       ? sourceTypeValue.trim()
       : '';
-    const existingIndex = candidateEntriesByPath.get(trimmedPath);
-    if (Number.isFinite(existingIndex)) {
-      if (normalizedType.length > 0 && candidateEntries[existingIndex].sourceType.length <= 0) {
-        candidateEntries[existingIndex].sourceType = normalizedType;
-      }
+    const dedupeKey = `${trimmedPath}|||${normalizedType}`;
+    if (candidateEntriesByKey.has(dedupeKey)) {
       return;
     }
-    const nextIndex = candidateEntries.length;
+    candidateEntriesByKey.add(dedupeKey);
     candidateEntries.push({
       path: trimmedPath,
       sourceType: normalizedType,
     });
-    candidateEntriesByPath.set(trimmedPath, nextIndex);
-    seenPaths.add(trimmedPath);
-    candidatePaths.push(trimmedPath);
+    if (!seenPaths.has(trimmedPath)) {
+      seenPaths.add(trimmedPath);
+      candidatePaths.push(trimmedPath);
+    }
   }
 
   for (let i = 0; i < candidatePathsSource.length; i += 1) {
@@ -645,7 +643,7 @@ async function runHeroVideoDebugCycle(debugConfig = resolveHeroVideoDebugConfig(
     if (debugConfig.labelEnabled) {
       const canPlayLabel = canPlayResult.length > 0 ? ` canPlayType=${canPlayResult}` : '';
       setHeroVideoDebugLabel(
-        `iOS video debug ${i + 1}/${candidatePaths.length}: loading ${shortName}${canPlayLabel}`,
+        `iOS video debug ${i + 1}/${candidateEntries.length}: loading ${shortName}${canPlayLabel}`,
         { visible: true },
       );
     }
@@ -657,6 +655,7 @@ async function runHeroVideoDebugCycle(debugConfig = resolveHeroVideoDebugConfig(
     ) {
       const candidateResult = {
         path: candidatePath,
+        sourceType: candidateSourceType,
         loaded: false,
         played: false,
         error: `canplaytype:${canPlayResult || 'none'}`,
@@ -665,7 +664,7 @@ async function runHeroVideoDebugCycle(debugConfig = resolveHeroVideoDebugConfig(
       result.results.push(candidateResult);
       if (debugConfig.labelEnabled) {
         setHeroVideoDebugLabel(
-          `iOS video debug ${i + 1}/${candidatePaths.length}: ${shortName} skipped (${candidateResult.error})`,
+          `iOS video debug ${i + 1}/${candidateEntries.length}: ${shortName} skipped (${candidateResult.error})`,
           { visible: true, isError: true },
         );
       }
@@ -677,6 +676,7 @@ async function runHeroVideoDebugCycle(debugConfig = resolveHeroVideoDebugConfig(
 
     const candidateResult = {
       path: candidatePath,
+      sourceType: candidateSourceType,
       loaded: Boolean(loadStatus && loadStatus.ready),
       played: false,
       error: loadStatus && loadStatus.error ? loadStatus.error : null,
@@ -687,7 +687,7 @@ async function runHeroVideoDebugCycle(debugConfig = resolveHeroVideoDebugConfig(
       result.results.push(candidateResult);
       if (debugConfig.labelEnabled) {
         setHeroVideoDebugLabel(
-          `iOS video debug ${i + 1}/${candidatePaths.length}: ${shortName} failed (${candidateResult.error || 'load_failed'})`,
+          `iOS video debug ${i + 1}/${candidateEntries.length}: ${shortName} failed (${candidateResult.error || 'load_failed'})`,
           { visible: true, isError: true },
         );
       }
@@ -702,7 +702,7 @@ async function runHeroVideoDebugCycle(debugConfig = resolveHeroVideoDebugConfig(
     }
 
     if (debugConfig.labelEnabled) {
-      setHeroVideoDebugLabel(`iOS video debug ${i + 1}/${candidatePaths.length}: testing ${shortName}`, { visible: true });
+      setHeroVideoDebugLabel(`iOS video debug ${i + 1}/${candidateEntries.length}: testing ${shortName}`, { visible: true });
     }
     const playStatus = await playHeroVideoForSampleWindow(sampleDurationSec, debugConfig.playTimeoutMs);
     candidateResult.played = Boolean(playStatus && playStatus.ok);
@@ -715,7 +715,7 @@ async function runHeroVideoDebugCycle(debugConfig = resolveHeroVideoDebugConfig(
     result.results.push(candidateResult);
     if (debugConfig.labelEnabled) {
       setHeroVideoDebugLabel(
-        `iOS video debug ${i + 1}/${candidatePaths.length}: ${shortName} ${candidateResult.played ? 'ok' : `failed (${candidateResult.error || 'play_failed'})`}`,
+        `iOS video debug ${i + 1}/${candidateEntries.length}: ${shortName} ${candidateResult.played ? 'ok' : `failed (${candidateResult.error || 'play_failed'})`}`,
         { visible: true, isError: candidateResult.played !== true },
       );
     }
@@ -727,13 +727,14 @@ async function runHeroVideoDebugCycle(debugConfig = resolveHeroVideoDebugConfig(
     ? (debugConfig.chooseFirstPlayableAsFinalSource ? playableResults[0] : playableResults[playableResults.length - 1])
     : null;
   result.selectedPath = selectedResult ? selectedResult.path : null;
+  result.selectedSourceType = selectedResult && typeof selectedResult.sourceType === 'string'
+    ? selectedResult.sourceType
+    : '';
   result.ready = Boolean(selectedResult);
   result.unsupported = result.ready !== true;
 
   if (result.selectedPath) {
-    const selectedEntry = candidateEntries.find((entry) => entry.path === result.selectedPath);
-    const selectedSourceType = selectedEntry ? selectedEntry.sourceType : '';
-    setHeroVideoSourcePath(result.selectedPath, { forceLoad: true, sourceType: selectedSourceType });
+    setHeroVideoSourcePath(result.selectedPath, { forceLoad: true, sourceType: result.selectedSourceType });
     await waitForHeroVideoReadyOrError(debugConfig.loadTimeoutMs);
     if (debugConfig.labelEnabled) {
       const shortName = result.selectedPath.split('/').pop() || result.selectedPath;
