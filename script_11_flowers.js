@@ -13,6 +13,26 @@
     return Math.max(min, Math.min(max, value));
   }
 
+  function normalizeHostedAssetPath(path) {
+    if (typeof path !== 'string') {
+      return path;
+    }
+    const trimmed = path.trim();
+    if (trimmed.length === 0) {
+      return trimmed;
+    }
+    if (/^(?:[a-z]+:)?\/\//i.test(trimmed)) {
+      return trimmed;
+    }
+    if (/^(?:data:|blob:|about:|javascript:)/i.test(trimmed)) {
+      return trimmed;
+    }
+    if (trimmed.startsWith('/')) {
+      return `.${trimmed}`;
+    }
+    return trimmed;
+  }
+
   function degToRad(degrees) {
     return (degrees * Math.PI) / 180;
   }
@@ -256,10 +276,11 @@
 
   function loadImage(path) {
     return new Promise((resolve, reject) => {
+      const resolvedPath = normalizeHostedAssetPath(path);
       const image = new Image();
       image.onload = () => resolve(image);
-      image.onerror = () => reject(new Error('Failed to load image: ' + path));
-      image.src = path;
+      image.onerror = () => reject(new Error('Failed to load image: ' + resolvedPath));
+      image.src = resolvedPath;
     });
   }
 
@@ -316,10 +337,13 @@
     if (/^(?:https?:)?\/\//i.test(safeFileName) || safeFileName.startsWith('data:')) {
       return safeFileName;
     }
+    if (safeFileName.startsWith('/')) {
+      return normalizeHostedAssetPath(safeFileName);
+    }
     const safeBasePath = typeof basePath === 'string' ? basePath : '';
     const slashIndex = safeBasePath.lastIndexOf('/');
     const baseDir = slashIndex >= 0 ? safeBasePath.slice(0, slashIndex + 1) : '';
-    return `${baseDir}${safeFileName}`;
+    return normalizeHostedAssetPath(`${baseDir}${safeFileName}`);
   }
 
   function buildFallbackAtlasFileNameCandidates(fileName) {
@@ -2486,7 +2510,7 @@
         };
       }
 
-      const manifestPath = safeCommonConfig.bakedManifestPath;
+      const manifestPath = normalizeHostedAssetPath(safeCommonConfig.bakedManifestPath);
       if (
         state.baked.prepared
         && state.baked.enabled

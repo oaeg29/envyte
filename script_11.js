@@ -43,8 +43,27 @@ const defaultCountPerSide = 9;
 const FILTER_CACHE_HUE_STEP_DEG = 2;
 const FILTER_CACHE_BRIGHTNESS_STEP = 0.02;
 
+function normalizeHostedAssetPath(path) {
+  if (typeof path !== 'string') {
+    return path;
+  }
+  const trimmed = path.trim();
+  if (trimmed.length === 0) {
+    return trimmed;
+  }
+  if (/^(?:[a-z]+:)?\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+  if (/^(?:data:|blob:|about:|javascript:)/i.test(trimmed)) {
+    return trimmed;
+  }
+  if (trimmed.startsWith('/')) {
+    return `.${trimmed}`;
+  }
+  return trimmed;
+}
 
-video.src = '/hero_vid_7.webm';
+video.src = normalizeHostedAssetPath('./hero_vid_7.webm');
 video.controls = false; // Displays play/pause and volume controls
 video.preload = 'auto';
 video.muted = true;
@@ -3495,7 +3514,7 @@ async function resolveManualTemplateSource(source, index = 0) {
     if (src.trim().length === 0) {
       throw new Error('svgFile source is missing src.');
     }
-    const response = await fetch(src);
+    const response = await fetch(normalizeHostedAssetPath(src));
     if (!response.ok) {
       throw new Error(`failed to fetch "${src}" (${response.status}).`);
     }
@@ -5394,10 +5413,11 @@ function plantSeeds(seedPacket, options = {}) {
 // =========================
 function loadImage(url) {
   return new Promise((resolve, reject) => {
+    const resolvedUrl = normalizeHostedAssetPath(url);
     const image = new Image();
     image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error('Failed to load image: ' + url));
-    image.src = url;
+    image.onerror = () => reject(new Error('Failed to load image: ' + resolvedUrl));
+    image.src = resolvedUrl;
   });
 }
 
