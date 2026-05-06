@@ -34,6 +34,7 @@ if (!flowersFrontCanvas) {
 }
 const video = document.createElement('video');
 const centerOverlayImageLayer = document.createElement('img');
+const wash1Layer = document.createElement('div');
 
 // =========================
 // 2) Config
@@ -334,12 +335,24 @@ function resolveLoadingScreenConfig(
       hslParams.baseLightness + hslStopOffsets.linearTop[2],
       null,
     );
+  const washCenterStopPercentRaw = clamp(sanitizeNumber(safeConfig.washCenterStopPercent, 0), 0, 100);
+  const washMidStopPercentRaw = clamp(sanitizeNumber(safeConfig.washMidStopPercent, 25), 0, 100);
+  const washMid2StopPercentRaw = clamp(sanitizeNumber(safeConfig.washMid2StopPercent, 48), 0, 100);
+  const washEdgeStopPercentRaw = clamp(sanitizeNumber(safeConfig.washEdgeStopPercent, 72), 0, 100);
+  const washOuterStopPercentRaw = clamp(sanitizeNumber(safeConfig.washOuterStopPercent, 100), 0, 100);
+  const washCenterStopPercent = washCenterStopPercentRaw;
+  const washMidStopPercent = Math.max(washCenterStopPercent, washMidStopPercentRaw);
+  const washMid2StopPercent = Math.max(washMidStopPercent, washMid2StopPercentRaw);
+  const washEdgeStopPercent = Math.max(washMid2StopPercent, washEdgeStopPercentRaw);
+  const washOuterStopPercent = Math.max(washEdgeStopPercent, washOuterStopPercentRaw);
 
   return {
+    enabled: safeConfig.enabled !== false,
     messageText: sanitizeText(safeConfig.messageText, 'please wait, something special is loading'),
     textSizePx: sanitizeNumber(safeConfig.textSizePx, 18, 8),
     edgePaddingPx: sanitizeNumber(safeConfig.edgePaddingPx, 26, 0),
     messageMaxWidthPx: sanitizeNumber(safeConfig.messageMaxWidthPx, 760, 120),
+    dotsGapFromTextPx: sanitizeNumber(safeConfig.dotsGapFromTextPx, 8),
     fontFamily: (
       typeof safeConfig.fontFamily === 'string' && safeConfig.fontFamily.trim().length > 0
         ? safeConfig.fontFamily.trim()
@@ -375,6 +388,7 @@ function resolveLoadingScreenConfig(
     gradientLinearMid: gradientColors.gradientLinearMid,
     gradientLinearBottom: gradientColors.gradientLinearBottom,
     topTintSampleColor,
+    textDropShadowEnabled: safeConfig.textDropShadowEnabled !== false,
     debugFreezeVisible: safeConfig.debugFreezeVisible === true,
     dotsLineHeight: sanitizeNumber(safeConfig.dotsLineHeight, 1.0, 0.1),
     washEnabled: safeConfig.washEnabled !== false,
@@ -382,15 +396,19 @@ function resolveLoadingScreenConfig(
     fadeOutDurationMs: sanitizeNumber(safeConfig.fadeOutDurationMs, 240, 80),
     washCenterColor: sanitizeColor(safeConfig.washCenterColor, 'rgba(255, 255, 255, 0.98)'),
     washMidColor: sanitizeColor(safeConfig.washMidColor, 'rgba(255, 255, 255, 0.80)'),
+    washMid2Color: sanitizeColor(safeConfig.washMid2Color, 'rgba(255, 255, 255, 0.45)'),
     washEdgeColor: sanitizeColor(safeConfig.washEdgeColor, 'rgba(255, 255, 255, 0)'),
+    washOuterColor: sanitizeColor(safeConfig.washOuterColor, 'rgba(255, 255, 255, 0)'),
     washScaleStart: sanitizeNumber(safeConfig.washScaleStart, 0.05, 0),
     washScaleEnd: sanitizeNumber(safeConfig.washScaleEnd, 2.4, 0.1),
     washOpacityStart: clampUnit(safeConfig.washOpacityStart, 0),
     washOpacityPeak: clampUnit(safeConfig.washOpacityPeak, 0.82),
     washOpacityEnd: clampUnit(safeConfig.washOpacityEnd, 1),
-    washCenterStopPercent: clamp(sanitizeNumber(safeConfig.washCenterStopPercent, 0), 0, 100),
-    washMidStopPercent: clamp(sanitizeNumber(safeConfig.washMidStopPercent, 25), 0, 100),
-    washEdgeStopPercent: clamp(sanitizeNumber(safeConfig.washEdgeStopPercent, 58), 0, 100),
+    washCenterStopPercent,
+    washMidStopPercent,
+    washMid2StopPercent,
+    washEdgeStopPercent,
+    washOuterStopPercent,
   };
 }
 
@@ -403,10 +421,15 @@ function applyLoadingScreenConfig(configCandidate = null) {
   splash.style.setProperty('--loading-font-size', `${config.textSizePx}px`);
   splash.style.setProperty('--loading-edge-padding', `${config.edgePaddingPx}px`);
   splash.style.setProperty('--loading-message-max-width', `${config.messageMaxWidthPx}px`);
+  splash.style.setProperty('--loading-dots-gap', `${config.dotsGapFromTextPx}px`);
   splash.style.setProperty('--loading-font-family', config.fontFamily);
   splash.style.setProperty('--loading-font-weight', String(config.fontWeight));
   splash.style.setProperty('--loading-line-height', String(config.lineHeight));
   splash.style.setProperty('--loading-text-color', config.textColor);
+  splash.style.setProperty(
+    '--loading-text-shadow',
+    config.textDropShadowEnabled === true ? '0 1px 8px rgba(0, 0, 0, 0.34)' : 'none',
+  );
   splash.style.setProperty('--loading-hsl-base-h', String(config.hslBaseHue));
   splash.style.setProperty('--loading-hsl-base-s', `${config.hslBaseSaturation}%`);
   splash.style.setProperty('--loading-hsl-base-l', `${config.hslBaseLightness}%`);
@@ -423,7 +446,9 @@ function applyLoadingScreenConfig(configCandidate = null) {
   splash.style.setProperty('--loading-wash-duration', `${config.washDurationMs}ms`);
   splash.style.setProperty('--loading-wash-center-color', config.washCenterColor);
   splash.style.setProperty('--loading-wash-mid-color', config.washMidColor);
+  splash.style.setProperty('--loading-wash-mid2-color', config.washMid2Color);
   splash.style.setProperty('--loading-wash-edge-color', config.washEdgeColor);
+  splash.style.setProperty('--loading-wash-outer-color', config.washOuterColor);
   splash.style.setProperty('--loading-wash-scale-start', String(config.washScaleStart));
   splash.style.setProperty('--loading-wash-scale-end', String(config.washScaleEnd));
   splash.style.setProperty('--loading-wash-opacity-start', String(config.washOpacityStart));
@@ -431,7 +456,9 @@ function applyLoadingScreenConfig(configCandidate = null) {
   splash.style.setProperty('--loading-wash-opacity-end', String(config.washOpacityEnd));
   splash.style.setProperty('--loading-wash-center-stop', `${config.washCenterStopPercent}%`);
   splash.style.setProperty('--loading-wash-mid-stop', `${config.washMidStopPercent}%`);
+  splash.style.setProperty('--loading-wash-mid2-stop', `${config.washMid2StopPercent}%`);
   splash.style.setProperty('--loading-wash-edge-stop', `${config.washEdgeStopPercent}%`);
+  splash.style.setProperty('--loading-wash-outer-stop', `${config.washOuterStopPercent}%`);
 }
 
 function getDefaultLoadingScreenMessage() {
@@ -439,6 +466,166 @@ function getDefaultLoadingScreenMessage() {
   return typeof config.messageText === 'string' && config.messageText.length > 0
     ? config.messageText
     : 'please wait, something special is loading';
+}
+
+function resolveWash1Config(configCandidate = CONFIG.wash1) {
+  const safeConfig = isPlainObjectLiteral(configCandidate) ? configCandidate : {};
+  const loadingConfig = resolveLoadingScreenConfig(CONFIG.loadingScreen);
+  const sanitizeNumber = (value, fallback) => {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : fallback;
+  };
+  const sanitizeColor = (value, fallback) => (
+    typeof value === 'string' && value.trim().length > 0 ? value.trim() : fallback
+  );
+  const positionBasis = (
+    safeConfig.positionBasis === 'video' || safeConfig.positionBasis === 'viewport'
+  )
+    ? safeConfig.positionBasis
+    : 'video';
+  const centerStopPercentRaw = clamp(sanitizeNumber(safeConfig.centerStopPercent, loadingConfig.washCenterStopPercent), 0, 100);
+  const midStopPercentRaw = clamp(sanitizeNumber(safeConfig.midStopPercent, loadingConfig.washMidStopPercent), 0, 100);
+  const mid2StopPercentRaw = clamp(
+    sanitizeNumber(safeConfig.mid2StopPercent, loadingConfig.washMid2StopPercent),
+    0,
+    100,
+  );
+  const edgeStopPercentRaw = clamp(sanitizeNumber(safeConfig.edgeStopPercent, loadingConfig.washEdgeStopPercent), 0, 100);
+  const outerStopPercentRaw = clamp(
+    sanitizeNumber(safeConfig.outerStopPercent, loadingConfig.washOuterStopPercent),
+    0,
+    100,
+  );
+  const centerStopPercent = centerStopPercentRaw;
+  const midStopPercent = Math.max(centerStopPercent, midStopPercentRaw);
+  const mid2StopPercent = Math.max(midStopPercent, mid2StopPercentRaw);
+  const edgeStopPercent = Math.max(mid2StopPercent, edgeStopPercentRaw);
+  const outerStopPercent = Math.max(edgeStopPercent, outerStopPercentRaw);
+  return {
+    enabled: safeConfig.enabled === true,
+    triggerFrame: Math.max(0, Math.floor(sanitizeNumber(safeConfig.triggerFrame, 0))),
+    retriggerOnLoop: safeConfig.retriggerOnLoop !== false,
+    positionBasis,
+    centerXRatio: clamp(sanitizeNumber(safeConfig.centerXRatio, 0.5), 0, 1),
+    centerYRatio: clamp(sanitizeNumber(safeConfig.centerYRatio, 0.5), 0, 1),
+    offsetXPx: sanitizeNumber(safeConfig.offsetXPx, 0),
+    offsetYPx: sanitizeNumber(safeConfig.offsetYPx, 0),
+    durationMs: Math.max(40, sanitizeNumber(safeConfig.durationMs, loadingConfig.washDurationMs)),
+    centerColor: sanitizeColor(safeConfig.centerColor, loadingConfig.washCenterColor),
+    midColor: sanitizeColor(safeConfig.midColor, loadingConfig.washMidColor),
+    mid2Color: sanitizeColor(safeConfig.mid2Color, loadingConfig.washMid2Color),
+    edgeColor: sanitizeColor(safeConfig.edgeColor, loadingConfig.washEdgeColor),
+    outerColor: sanitizeColor(safeConfig.outerColor, loadingConfig.washOuterColor),
+    scaleStart: Math.max(0, sanitizeNumber(safeConfig.scaleStart, loadingConfig.washScaleStart)),
+    scaleEnd: Math.max(0.01, sanitizeNumber(safeConfig.scaleEnd, loadingConfig.washScaleEnd)),
+    opacityStart: clamp(sanitizeNumber(safeConfig.opacityStart, loadingConfig.washOpacityStart), 0, 1),
+    opacityPeak: clamp(sanitizeNumber(safeConfig.opacityPeak, loadingConfig.washOpacityPeak), 0, 1),
+    opacityEnd: clamp(sanitizeNumber(safeConfig.opacityEnd, loadingConfig.washOpacityEnd), 0, 1),
+    centerStopPercent,
+    midStopPercent,
+    mid2StopPercent,
+    edgeStopPercent,
+    outerStopPercent,
+  };
+}
+
+function triggerWash1Pulse() {
+  if (!wash1Layer) {
+    return;
+  }
+  wash1Layer.classList.remove('is-active');
+  void wash1Layer.offsetWidth;
+  wash1Layer.classList.add('is-active');
+}
+
+function syncWash1Layer(currentFrame = null) {
+  if (!wash1Layer || !wash1Layer.style) {
+    return;
+  }
+  const config = resolveWash1Config();
+  if (config.enabled !== true) {
+    wash1Layer.classList.remove('is-active');
+    wash1Layer.style.display = 'none';
+    STATE.wash1LastFrame = Number.NaN;
+    STATE.wash1LoopCounter = 0;
+    STATE.wash1LastTriggeredLoopCounter = -1;
+    STATE.wash1TriggeredOnce = false;
+    return;
+  }
+
+  const videoRect = getHeroVideoRenderedRect();
+  let centerX = (Number.isFinite(STATE.viewportWidth) ? STATE.viewportWidth : window.innerWidth) * 0.5;
+  let centerY = (Number.isFinite(STATE.viewportHeight) ? STATE.viewportHeight : window.innerHeight) * 0.5;
+  if (
+    config.positionBasis === 'video'
+    && videoRect
+    && Number.isFinite(videoRect.left)
+    && Number.isFinite(videoRect.top)
+    && Number.isFinite(videoRect.width)
+    && Number.isFinite(videoRect.height)
+    && videoRect.width > 0
+    && videoRect.height > 0
+  ) {
+    centerX = videoRect.left + videoRect.width * config.centerXRatio;
+    centerY = videoRect.top + videoRect.height * config.centerYRatio;
+  } else {
+    const vw = Number.isFinite(STATE.viewportWidth) ? STATE.viewportWidth : window.innerWidth;
+    const vh = Number.isFinite(STATE.viewportHeight) ? STATE.viewportHeight : window.innerHeight;
+    centerX = vw * config.centerXRatio;
+    centerY = vh * config.centerYRatio;
+  }
+  centerX += config.offsetXPx;
+  centerY += config.offsetYPx;
+
+  wash1Layer.style.display = 'block';
+  wash1Layer.style.setProperty('--wash1-duration', `${config.durationMs}ms`);
+  wash1Layer.style.setProperty('--wash1-center-color', config.centerColor);
+  wash1Layer.style.setProperty('--wash1-mid-color', config.midColor);
+  wash1Layer.style.setProperty('--wash1-mid2-color', config.mid2Color);
+  wash1Layer.style.setProperty('--wash1-edge-color', config.edgeColor);
+  wash1Layer.style.setProperty('--wash1-outer-color', config.outerColor);
+  wash1Layer.style.setProperty('--wash1-scale-start', String(config.scaleStart));
+  wash1Layer.style.setProperty('--wash1-scale-end', String(config.scaleEnd));
+  wash1Layer.style.setProperty('--wash1-opacity-start', String(config.opacityStart));
+  wash1Layer.style.setProperty('--wash1-opacity-peak', String(config.opacityPeak));
+  wash1Layer.style.setProperty('--wash1-opacity-end', String(config.opacityEnd));
+  wash1Layer.style.setProperty('--wash1-center-stop', `${config.centerStopPercent}%`);
+  wash1Layer.style.setProperty('--wash1-mid-stop', `${config.midStopPercent}%`);
+  wash1Layer.style.setProperty('--wash1-mid2-stop', `${config.mid2StopPercent}%`);
+  wash1Layer.style.setProperty('--wash1-edge-stop', `${config.edgeStopPercent}%`);
+  wash1Layer.style.setProperty('--wash1-outer-stop', `${config.outerStopPercent}%`);
+  wash1Layer.style.setProperty('--wash1-center-x', `${centerX}px`);
+  wash1Layer.style.setProperty('--wash1-center-y', `${centerY}px`);
+  wash1Layer.style.transformOrigin = `${centerX}px ${centerY}px`;
+
+  const frameNow = Number.isFinite(currentFrame)
+    ? currentFrame
+    : getCurrentHeroVideoFrame(resolveHeroPlaybackGateConfig());
+  if (!Number.isFinite(frameNow)) {
+    return;
+  }
+  const previousFrame = STATE.wash1LastFrame;
+  const hasPrevious = Number.isFinite(previousFrame);
+  const looped = hasPrevious && frameNow + 0.5 < previousFrame;
+  if (looped) {
+    STATE.wash1LoopCounter += 1;
+  }
+  const crossed = (
+    frameNow >= config.triggerFrame
+    && (!hasPrevious || previousFrame < config.triggerFrame || looped)
+  );
+  const loopId = STATE.wash1LoopCounter;
+  if (crossed) {
+    const allowTrigger = config.retriggerOnLoop
+      ? STATE.wash1LastTriggeredLoopCounter !== loopId
+      : STATE.wash1TriggeredOnce !== true;
+    if (allowTrigger) {
+      triggerWash1Pulse();
+      STATE.wash1LastTriggeredLoopCounter = loopId;
+      STATE.wash1TriggeredOnce = true;
+    }
+  }
+  STATE.wash1LastFrame = frameNow;
 }
 
 let loadingScreenHideTimerId = null;
@@ -479,6 +666,10 @@ function flushLoadingScreenGoneCallbacks() {
 }
 
 function isLoadingScreenGone() {
+  const splashConfig = resolveLoadingScreenConfig();
+  if (splashConfig.enabled !== true) {
+    return true;
+  }
   const splash = document.getElementById('loadingScreen');
   if (!splash) {
     return true;
@@ -509,6 +700,18 @@ function setLoadingScreenVisible(visible) {
   }
   const splashConfig = resolveLoadingScreenConfig();
   applyLoadingScreenConfig(splashConfig);
+  if (splashConfig.enabled !== true) {
+    if (loadingScreenHideTimerId !== null) {
+      clearTimeout(loadingScreenHideTimerId);
+      loadingScreenHideTimerId = null;
+    }
+    splash.classList.remove('is-hidden', 'is-washing');
+    splash.classList.add('is-gone');
+    loadingScreenTopTintOverride = '';
+    syncSafariTopTintShim();
+    flushLoadingScreenGoneCallbacks();
+    return;
+  }
   loadingScreenTopTintOverride = splashConfig.topTintSampleColor;
   syncSafariTopTintShim();
   if (splashConfig.debugFreezeVisible === true) {
@@ -880,7 +1083,7 @@ function resolveSafariTopTintShimConfig() {
     enabled: safeConfig.enabled !== false,
     iosOnly: safeConfig.iosOnly !== false,
     iosMinMajor: Number.isFinite(iosMinMajorInput) ? Math.max(0, Math.floor(iosMinMajorInput)) : 26,
-    rootBackgroundOnly: safeConfig.rootBackgroundOnly !== false,
+    rootBackgroundOnly: safeConfig.rootBackgroundOnly === true,
     opacity: Number.isFinite(opacityInput)
       ? clamp(opacityInput, 0.01, 1)
       : 0.01,
@@ -1280,6 +1483,16 @@ function setHeroVideoSourcePath(path, options = {}) {
   } else {
     video.removeAttribute('data-hero-video-source-type');
   }
+  try {
+    video.pause();
+  } catch (_error) {
+    // Ignore pause errors during source switching.
+  }
+  try {
+    video.currentTime = 0;
+  } catch (_error) {
+    // Ignore seek exceptions before metadata is available.
+  }
   video.setAttribute('data-hero-video-source-path', nextPath);
   video.setAttribute('src', nextPath);
   video.src = nextPath;
@@ -1367,18 +1580,18 @@ function configureHeroVideoElement() {
   video.preload = 'auto';
   video.defaultMuted = true;
   video.muted = true;
-  video.autoplay = true;
+  video.autoplay = false;
   video.playsInline = true;
   video.loop = true;
   video.disablePictureInPicture = true;
   video.controlsList = 'nodownload noplaybackrate noremoteplayback nofullscreen';
-  video.setAttribute('autoplay', '');
   video.setAttribute('muted', '');
   video.setAttribute('playsinline', '');
   video.setAttribute('webkit-playsinline', '');
   video.setAttribute('loop', '');
   video.setAttribute('disablepictureinpicture', '');
   video.setAttribute('controlslist', 'nodownload noplaybackrate noremoteplayback nofullscreen');
+  video.removeAttribute('autoplay');
 
   HERO_VIDEO_SOURCE_RUNTIME.candidates = buildHeroVideoSourceCandidates();
   HERO_VIDEO_SOURCE_RUNTIME.activeIndex = -1;
@@ -1829,14 +2042,21 @@ configureHeroVideoElement();
 centerOverlayImageLayer.id = 'centerOverlayImage';
 centerOverlayImageLayer.alt = '';
 centerOverlayImageLayer.draggable = false;
+wash1Layer.id = 'wash1Layer';
 // video.height = window.innerHeight;   // Set height in pixels
 
 document.body.appendChild(flowersBackCanvas);
+document.body.appendChild(wash1Layer);
 document.body.appendChild(video);  // Adds it to the page
 document.body.appendChild(centerOverlayImageLayer);
 // Keep front overlay canvas in root stacking context so it can render above the video.
 document.body.appendChild(frontCanvas);
 document.body.appendChild(flowersFrontCanvas);
+wash1Layer.addEventListener('animationend', (event) => {
+  if (event && event.animationName === 'wash1Pulse') {
+    wash1Layer.classList.remove('is-active');
+  }
+});
 const frontCtx = frontCanvas.getContext('2d');
 
 
@@ -2037,6 +2257,10 @@ const STATE = {
   centerOverlayImageFailedPath: '',
   centerOverlayImageVisibleSinceMs: 0,
   centerOverlayImageLastShouldBeVisible: false,
+  wash1LastFrame: Number.NaN,
+  wash1LoopCounter: 0,
+  wash1LastTriggeredLoopCounter: -1,
+  wash1TriggeredOnce: false,
   flowerSystem: null,
   flowerInteractionRafId: null,
   flowerPerfLastLogMs: 0,
@@ -2144,6 +2368,8 @@ const STATE = {
     monitorVideoFrameCallbackId: null,
     stage: 'idle', // idle | introPlaying | waitingForOpenButton | postOpenButtonPlaying | postOpenButtonPaused
     pendingStartAfterSplashDismiss: false,
+    pendingStartAfterSplashDelay: false,
+    startAfterSplashDelayTimerId: null,
     awaitingUserPlaybackStart: false,
     growthFrameReached: false,
     growthStarted: false,
@@ -2776,6 +3002,9 @@ function resolveHeroPlaybackGateConfig(configCandidate = CONFIG.heroPlaybackGate
   const pauseGuardFrames = Number.isFinite(Number(safeConfig.pauseGuardFrames))
     ? clamp(Number(safeConfig.pauseGuardFrames), 0, 12)
     : 2;
+  const startDelayAfterSplashDismissMs = Number.isFinite(Number(safeConfig.startDelayAfterSplashDismissMs))
+    ? Math.max(0, Number(safeConfig.startDelayAfterSplashDismissMs))
+    : 500;
   const monitorUseVideoFrameCallback = safeConfig.monitorUseVideoFrameCallback !== false;
   const postButtonPauseFrame = Math.max(introPauseFrame, postButtonPauseFrameRaw);
   const growthStartFrame = Math.min(growthStartFrameRaw, postButtonPauseFrame);
@@ -2964,6 +3193,7 @@ function resolveHeroPlaybackGateConfig(configCandidate = CONFIG.heroPlaybackGate
     postButtonPauseFrame,
     growthStartFrame,
     pauseGuardFrames,
+    startDelayAfterSplashDismissMs,
     monitorUseVideoFrameCallback,
     videoWiggle,
     openButton,
@@ -3088,6 +3318,9 @@ function isHeroPlaybackGrowthStartBlocked(gateConfig = resolveHeroPlaybackGateCo
   if (gateState.pendingStartAfterSplashDismiss === true) {
     return true;
   }
+  if (gateState.pendingStartAfterSplashDelay === true) {
+    return true;
+  }
   if (gateState.growthAnimationEnabledByConfig !== true) {
     return false;
   }
@@ -3171,6 +3404,10 @@ function isHeroPlaybackWiggleButtonEnabledAtFrame(
     return false;
   }
   if (gateConfig.wiggleButton.enabled !== true) {
+    return false;
+  }
+  const gateState = STATE.heroPlaybackGate;
+  if (gateState && Number.isFinite(gateState.openButtonClickedAtMs)) {
     return false;
   }
   if (!Number.isFinite(currentFrame)) {
@@ -3833,6 +4070,18 @@ function resolveHeroPlaybackWiggleButtonHitBounds(gateConfig = resolveHeroPlayba
   return resolveHeroPlaybackWiggleButtonHitRect(gateConfig);
 }
 
+function cancelHeroPlaybackGateStartDelay() {
+  const gateState = STATE.heroPlaybackGate;
+  if (!gateState) {
+    return;
+  }
+  if (gateState.startAfterSplashDelayTimerId !== null) {
+    clearTimeout(gateState.startAfterSplashDelayTimerId);
+    gateState.startAfterSplashDelayTimerId = null;
+  }
+  gateState.pendingStartAfterSplashDelay = false;
+}
+
 function cancelHeroPlaybackGateMonitor() {
   const gateState = STATE.heroPlaybackGate;
   if (!gateState) {
@@ -4113,6 +4362,9 @@ function tryHandleHeroPlaybackWiggleButtonClick(event) {
   if (gateState && gateState.awaitingUserPlaybackStart === true) {
     return false;
   }
+  if (gateState && Number.isFinite(gateState.openButtonClickedAtMs)) {
+    return false;
+  }
   const stageAllowsWiggle = gateState && (
     gateState.stage === 'waitingForOpenButton'
     || gateState.stage === 'introPlaying'
@@ -4145,12 +4397,15 @@ function tryHandleHeroPlaybackGateClick(event) {
   return tryHandleHeroPlaybackOpenButtonClick(event);
 }
 
-function startHeroPlaybackGateFlow() {
+function startHeroPlaybackGateFlow(options = null) {
+  const safeOptions = isPlainObjectLiteral(options) ? options : {};
+  const skipStartDelay = safeOptions.skipStartDelay === true;
   const gateConfig = resolveHeroPlaybackGateConfig();
   const gateState = STATE.heroPlaybackGate;
   if (!gateState) {
     return;
   }
+  cancelHeroPlaybackGateStartDelay();
   // Set this immediately so pre-splash renders cannot auto-start branch growth.
   gateState.growthAnimationEnabledByConfig = CONFIG.branchGrowth.enabled === true;
   if (!isLoadingScreenGone()) {
@@ -4196,6 +4451,25 @@ function startHeroPlaybackGateFlow() {
     return;
   }
 
+  if (!skipStartDelay && gateConfig.startDelayAfterSplashDismissMs > 0) {
+    try {
+      video.pause();
+    } catch (_error) {
+      // Ignore pause errors while waiting for delayed start.
+    }
+    gateState.stage = 'idle';
+    gateState.pendingStartAfterSplashDelay = true;
+    gateState.startAfterSplashDelayTimerId = window.setTimeout(() => {
+      if (!STATE.hasBootstrapped || !STATE.heroPlaybackGate) {
+        return;
+      }
+      STATE.heroPlaybackGate.startAfterSplashDelayTimerId = null;
+      STATE.heroPlaybackGate.pendingStartAfterSplashDelay = false;
+      startHeroPlaybackGateFlow({ skipStartDelay: true });
+    }, gateConfig.startDelayAfterSplashDismissMs);
+    return;
+  }
+
   if (
     gateState.growthAnimationEnabledByConfig === true
     && (STATE.branchGrowth.running || STATE.branchGrowth.rafId !== null || STATE.branchGrowth.elapsedSec > 0)
@@ -4205,10 +4479,17 @@ function startHeroPlaybackGateFlow() {
 
   gateState.stage = 'introPlaying';
   try {
+    video.pause();
+  } catch (_error) {
+    // Ignore pause errors before controlled intro playback begins.
+  }
+  lockHeroVideoToFrame(0, gateConfig);
+  try {
     video.currentTime = 0;
   } catch (_error) {
     // Ignore seek errors here; monitor and play controls remain safe.
   }
+  renderScene({ skipAutoStart: true });
   const playbackPromise = video.play();
   if (playbackPromise && typeof playbackPromise.catch === 'function') {
     playbackPromise.catch((error) => {
@@ -8535,14 +8816,51 @@ function getThicknessTaperFactorAtDistance(distanceOnPath, referenceLength, brus
   return 1 + (minScale - 1) * weightedDistance;
 }
 
+function isLikelyMobileForBrushOverrides() {
+  const flowersConfig = isPlainObjectLiteral(CONFIG.flowers) ? CONFIG.flowers : {};
+  const autoProfile = isPlainObjectLiteral(flowersConfig.autoProfile) ? flowersConfig.autoProfile : {};
+  const deviceInfo = resolveFlowerAdaptiveProfileDeviceInfo(autoProfile);
+  return Boolean(deviceInfo && deviceInfo.likelyMobile === true);
+}
+
+function resolveBrushStripRuntimeSettings(brushConfig) {
+  const likelyMobile = isLikelyMobileForBrushOverrides();
+  const stripWidthDesktop = Number(brushConfig && brushConfig.stripWidth);
+  const stripWidthMobile = Number(brushConfig && brushConfig.stripWidthMobile);
+  const hasMobileStripWidth = (
+    brushConfig
+    && brushConfig.stripWidthMobile !== null
+    && brushConfig.stripWidthMobile !== undefined
+    && Number.isFinite(stripWidthMobile)
+    && stripWidthMobile > 0
+  );
+  const stripWidth = likelyMobile && hasMobileStripWidth
+    ? stripWidthMobile
+    : stripWidthDesktop;
+
+  const repeatOverlapDesktop = Number(brushConfig && brushConfig.repeatOverlap);
+  const repeatOverlapMobile = Number(brushConfig && brushConfig.repeatOverlapMobile);
+  const hasMobileRepeatOverlap = (
+    brushConfig
+    && brushConfig.repeatOverlapMobile !== null
+    && brushConfig.repeatOverlapMobile !== undefined
+    && Number.isFinite(repeatOverlapMobile)
+  );
+  const repeatOverlap = likelyMobile && hasMobileRepeatOverlap
+    ? repeatOverlapMobile
+    : repeatOverlapDesktop;
+
+  return {
+    stripWidth: Number.isFinite(stripWidth) ? Math.max(0.1, stripWidth) : 0.1,
+    repeatOverlap: Number.isFinite(repeatOverlap) ? repeatOverlap : 0,
+  };
+}
+
 function getBrushCacheKey(brushConfig) {
   const brushScale = getBrushScale(brushConfig);
-  const stripWidth = Number.isFinite(Number(brushConfig.stripWidth))
-    ? Math.max(0.1, Number(brushConfig.stripWidth))
-    : 0.1;
-  const repeatOverlap = Number.isFinite(Number(brushConfig.repeatOverlap))
-    ? Number(brushConfig.repeatOverlap)
-    : 0;
+  const stripRuntime = resolveBrushStripRuntimeSettings(brushConfig);
+  const stripWidth = stripRuntime.stripWidth;
+  const repeatOverlap = stripRuntime.repeatOverlap;
   const repeatGap = Number.isFinite(Number(brushConfig.repeatGap))
     ? Number(brushConfig.repeatGap)
     : 0;
@@ -9780,8 +10098,9 @@ function buildBranchStripCache(branch, brushConfig, defaultImage, flippedImage) 
   let defaultSliceAccumulator = 0;
 
   const brushScale = getBrushScale(brushConfig);
-  const stripLength = Math.max(0.1, brushConfig.stripWidth);
-  const stripStep = Math.max(0.1, stripLength - brushConfig.repeatOverlap);
+  const stripRuntime = resolveBrushStripRuntimeSettings(brushConfig);
+  const stripLength = stripRuntime.stripWidth;
+  const stripStep = Math.max(0.1, stripLength - stripRuntime.repeatOverlap);
   const widthOnPath = defaultImage.width * brushScale;
   const tileDrawLength = defaultImage.height * brushScale;
   const tileStep = Math.max(stripLength * 0.5, tileDrawLength + brushConfig.repeatGap);
@@ -11133,9 +11452,10 @@ function ensureScrollStageLayoutStructure() {
   }
 
   const orderedStageChildren = [
-    video,
     canvas,
     flowersBackCanvas,
+    wash1Layer,
+    video,
     centerOverlayImageLayer,
     frontCanvas,
     flowersFrontCanvas,
@@ -11165,8 +11485,9 @@ function ensureRootBackgroundLayoutStructure() {
 
   const orderedLayers = [
     canvas,
-    video,
     flowersBackCanvas,
+    wash1Layer,
+    video,
     centerOverlayImageLayer,
     frontCanvas,
     flowersFrontCanvas,
@@ -11816,6 +12137,7 @@ function renderScene(options = {}) {
   const heroPlaybackFrame = getCurrentHeroVideoFrame(heroPlaybackGateConfig);
   const overlayNowMs = performance.now();
   syncCenterOverlayImageLayer(overlayNowMs, heroPlaybackFrame);
+  syncWash1Layer(heroPlaybackFrame);
   if (enforceHeroPlaybackGatePauseFrames(heroPlaybackFrame, heroPlaybackGateConfig, { rerenderOnPause: false })) {
     return;
   }

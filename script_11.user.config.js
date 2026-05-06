@@ -59,6 +59,7 @@
 
   brush: {
     stripWidth: 0.3,
+    stripWidthMobile: null, // null uses stripWidth; set a number to override on likely-mobile devices
     scale: 0.18,
     sclale: undefined, // typo compatibility
     thicknessTaperEnabled: true,
@@ -77,6 +78,7 @@
     pathOffset: 0,
     repeatGap: 0,
     repeatOverlap: 0.13, //usually 0.2
+    repeatOverlapMobile: null, // null uses repeatOverlap; set a number to override on likely-mobile devices
     startOffset: 0,
     cropPartialRepeat: true,
   },
@@ -173,6 +175,7 @@
     postButtonPauseFrame: 261,
     growthStartFrame: 253,
     pauseGuardFrames: 2,
+    startDelayAfterSplashDismissMs: 500,
     monitorUseVideoFrameCallback: true,
     videoWiggle: {
       enabled: true,
@@ -231,14 +234,17 @@
   },
 
   loadingScreen: {
+    enabled: true,
     messageText: 'please wait, \n something special is loading',
     textSizePx: 17,
     edgePaddingPx: 30,
     messageMaxWidthPx: 300,
+    dotsGapFromTextPx: 10, // distance between message text and loading dots row
     fontFamily: '"Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, "Times New Roman", serif',
     fontWeight: 100,
     lineHeight: 1.2,
-    textColor: '#f2f6fa',
+    textColor: '#000000',
+    textDropShadowEnabled: false,
     colorModel: 'hslOffsets', // hslOffsets | explicit
     hslBaseHue: 222, // base (darkest) hue
     hslBaseSaturation: 2, // base (darkest) saturation %
@@ -253,7 +259,7 @@
       radialStart: [0, 0, 60],
     },
     debugFreezeVisible: false, // keep splash pinned on screen for tuning
-    dotsLineHeight: 4.0, // line-height used by the loading dots row only
+    dotsLineHeight: 0.5, // line-height used by the loading dots row only
     // Legacy global interval + step fallback (used if hslStopOffsets entries are missing)
     // hslHueInterval: 0, // per-step hue delta
     // hslSaturationInterval: 0, // per-step saturation delta
@@ -272,7 +278,25 @@
     // gradientRadialStartAlpha: 0.36,
 
 
-        hslHueInterval: 0, // per-step hue delta
+    //     hslHueInterval: 0, // per-step hue delta
+    // hslSaturationInterval: 0, // per-step saturation delta
+    // hslLightnessInterval: 10, // per-step lightness delta
+    // gradientStepLinearBottom: 0, // base + interval * step
+    // gradientStepLinearMid: 1,
+    // gradientStepLinearTop: 2,
+    // gradientStepRadialEnd: 2,
+    // gradientStepRadialMid: 4,
+    // gradientStepRadialStart: 6,
+    // gradientLinearBottomAlpha: 1,
+    // gradientLinearMidAlpha: 1,
+    // gradientLinearTopAlpha: 0.5,
+    // gradientRadialEndAlpha: 1,
+    // gradientRadialMidAlpha: 1,
+    // gradientRadialStartAlpha: 1,
+
+
+
+          hslHueInterval: 0, // per-step hue delta
     hslSaturationInterval: 0, // per-step saturation delta
     hslLightnessInterval: 10, // per-step lightness delta
     gradientStepLinearBottom: 0, // base + interval * step
@@ -281,12 +305,12 @@
     gradientStepRadialEnd: 2,
     gradientStepRadialMid: 4,
     gradientStepRadialStart: 6,
-    gradientLinearBottomAlpha: 1,
-    gradientLinearMidAlpha: 1,
-    gradientLinearTopAlpha: 0.5,
-    gradientRadialEndAlpha: 1,
-    gradientRadialMidAlpha: 1,
-    gradientRadialStartAlpha: 1,
+    gradientLinearBottomAlpha: 0,
+    gradientLinearMidAlpha: 0,
+    gradientLinearTopAlpha: 0,
+    gradientRadialEndAlpha: 0,
+    gradientRadialMidAlpha: 0,
+    gradientRadialStartAlpha: 0,
 
     // Legacy explicit colors (used only when colorModel === 'explicit')
     // gradientRadialStart: 'rgba(248, 251, 255, 0.36)',
@@ -300,7 +324,9 @@
     fadeOutDurationMs: 200,
     washCenterColor: 'rgba(255, 255, 255, 0)',
     washMidColor: 'rgba(255, 255, 255, 0.84)',
-    washEdgeColor: 'rgba(255, 255, 255, 0)',
+    washMid2Color: 'rgba(255, 255, 255, 0.45)',
+    washEdgeColor: 'rgba(255, 255, 255, 0.12)',
+    washOuterColor: 'rgba(255, 255, 255, 0)',
     washScaleStart: 0.05, // starting bloom scale
     washScaleEnd: 10, // ending bloom scale (increase to fill the whole screen)
     washOpacityStart: 1,
@@ -308,8 +334,64 @@
     washOpacityEnd: 0,
     washCenterStopPercent: 0, // radial gradient stop locations for bloom
     washMidStopPercent: 25,
-    washEdgeStopPercent: 58,
+    washMid2StopPercent: 48,
+    washEdgeStopPercent: 72,
+    washOuterStopPercent: 100,
   },
+
+  // wash1: {
+  //   enabled: true,
+  //   triggerFrame: 56, // fires when hero video playback frame crosses this value
+  //   retriggerOnLoop: true,
+  //   positionBasis: 'video', // video | viewport
+  //   centerXRatio: 0.5,
+  //   centerYRatio: 0.5,
+  //   offsetXPx: 0,
+  //   offsetYPx: 0,
+  //   // Uses loadingScreen wash values as fallbacks, but you can override here:
+  //   durationMs: 700,
+  //   centerColor: 'rgba(255, 229, 61, 0.81)',
+  //   midColor: 'rgba(255, 217, 0, 0.44)',
+  //   edgeColor: 'rgba(136, 178, 215, 0.61)',
+  //   scaleStart: 0.1,
+  //   scaleEnd: 10,
+  //   opacityStart: 0.3,
+  //   opacityPeak: 1,
+  //   opacityEnd: 0,
+  //   centerStopPercent: 0,
+  //   midStopPercent: 25,
+  //   edgeStopPercent: 58,
+  // },
+
+
+    wash1: {
+    enabled: true,
+    triggerFrame: 56, // fires when hero video playback frame crosses this value
+    retriggerOnLoop: true,
+    positionBasis: 'video', // video | viewport
+    centerXRatio: 0.5,
+    centerYRatio: 0.67,
+    offsetXPx: 0,
+    offsetYPx: 0,
+    // Uses loadingScreen wash values as fallbacks, but you can override here:
+    durationMs: 700,
+    centerColor: 'rgb(161, 214, 228)',
+    midColor: 'rgba(242, 234, 182, 0.63)',
+    mid2Color: 'rgba(255, 246, 209, 0.75)',
+    edgeColor: 'rgba(136, 178, 215, 0)',
+    outerColor: 'rgba(136, 178, 215, 0)',
+    scaleStart: 0.1,
+    scaleEnd: 5,
+    opacityStart: 1,
+    opacityPeak: 1,
+    opacityEnd: 0,
+    centerStopPercent: 12,
+    midStopPercent: 24,
+    mid2StopPercent: 34,
+    edgeStopPercent: 74,
+    outerStopPercent: 100,
+  },
+
 
   centerOverlayImage: {
     enabled: true,
@@ -345,7 +427,7 @@
     dprStrength: 0.14, // mild; > baseline shrinks slightly, < baseline grows slightly
     dprMultiplierClamp: [0.92, 1.08],
     landscapeModifierEnabled: true,
-    landscapeMultiplier: 3.0, // applied only when viewportWidth > viewportHeight
+    landscapeMultiplier: 1.5, // applied only when viewportWidth > viewportHeight
     finalScaleClamp: [0.25, 10],
   },
 
@@ -376,7 +458,7 @@
   renderDpr: {
     enabled: true,
     mobileOnly: true,
-    mobileCap: 2.0,
+    mobileCap: 1.2,
     desktopCap: null, // ignored when mobileOnly=true; null disables desktop cap
   },
 
@@ -384,7 +466,7 @@
     enabled: true, // iOS Safari 26 top-bar tint shim experiment
     iosOnly: true,
     iosMinMajor: 26,
-    rootBackgroundOnly: true, // keep existing non-rootbg modes untouched
+    rootBackgroundOnly: false, // false => allow shim on base relative166 mode too
     opacity: 0.01, // if Safari ignores this, set to 1 while keeping shim height tiny
   },
 

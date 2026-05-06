@@ -59,6 +59,7 @@
 
   brush: {
     stripWidth: 0.3,
+    stripWidthMobile: null, // null uses stripWidth; set a number to override on likely-mobile devices
     scale: 0.18,
     sclale: undefined, // typo compatibility
     thicknessTaperEnabled: true,
@@ -77,6 +78,7 @@
     pathOffset: 0,
     repeatGap: 0,
     repeatOverlap: 0.13, //usually 0.2
+    repeatOverlapMobile: null, // null uses repeatOverlap; set a number to override on likely-mobile devices
     startOffset: 0,
     cropPartialRepeat: true,
   },
@@ -173,6 +175,7 @@
     postButtonPauseFrame: 261,
     growthStartFrame: 253,
     pauseGuardFrames: 2,
+    startDelayAfterSplashDismissMs: 500,
     monitorUseVideoFrameCallback: true,
     videoWiggle: {
       enabled: true,
@@ -231,14 +234,17 @@
   },
 
   loadingScreen: {
+    enabled: true,
     messageText: 'please wait, something special is loading',
     textSizePx: 17,
     edgePaddingPx: 30,
     messageMaxWidthPx: 760,
+    dotsGapFromTextPx: 8, // distance between message text and loading dots row
     fontFamily: '"Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, "Times New Roman", serif',
     fontWeight: 700,
     lineHeight: 1.26,
     textColor: '#f2f6fa',
+    textDropShadowEnabled: true,
     colorModel: 'hslOffsets', // hslOffsets | explicit
     hslBaseHue: 214, // base (darkest) hue
     hslBaseSaturation: 36, // base (darkest) saturation %
@@ -282,7 +288,9 @@
     fadeOutDurationMs: 240,
     washCenterColor: 'rgba(255, 255, 255, 0.99)',
     washMidColor: 'rgba(255, 255, 255, 0.84)',
-    washEdgeColor: 'rgba(255, 255, 255, 0)',
+    washMid2Color: 'rgba(255, 255, 255, 0.45)',
+    washEdgeColor: 'rgba(255, 255, 255, 0.12)',
+    washOuterColor: 'rgba(255, 255, 255, 0)',
     washScaleStart: 0.05, // starting bloom scale
     washScaleEnd: 2.4, // ending bloom scale (increase to fill the whole screen)
     washOpacityStart: 0,
@@ -290,7 +298,37 @@
     washOpacityEnd: 1,
     washCenterStopPercent: 0, // radial gradient stop locations for bloom
     washMidStopPercent: 25,
-    washEdgeStopPercent: 58,
+    washMid2StopPercent: 48,
+    washEdgeStopPercent: 72,
+    washOuterStopPercent: 100,
+  },
+
+  wash1: {
+    enabled: false,
+    triggerFrame: 120, // fires when hero video playback frame crosses this value
+    retriggerOnLoop: true,
+    positionBasis: 'video', // video | viewport
+    centerXRatio: 0.5,
+    centerYRatio: 0.5,
+    offsetXPx: 0,
+    offsetYPx: 0,
+    // Uses loadingScreen wash values as fallbacks, but you can override here:
+    durationMs: 720,
+    centerColor: 'rgba(255, 255, 255, 0.99)',
+    midColor: 'rgba(255, 255, 255, 0.84)',
+    mid2Color: 'rgba(255, 255, 255, 0.45)',
+    edgeColor: 'rgba(255, 255, 255, 0.12)',
+    outerColor: 'rgba(255, 255, 255, 0)',
+    scaleStart: 0.05,
+    scaleEnd: 2.4,
+    opacityStart: 0,
+    opacityPeak: 0.82,
+    opacityEnd: 1,
+    centerStopPercent: 0,
+    midStopPercent: 25,
+    mid2StopPercent: 48,
+    edgeStopPercent: 72,
+    outerStopPercent: 100,
   },
 
   centerOverlayImage: {
@@ -370,7 +408,7 @@
     enabled: true, // iOS Safari 26 top-bar tint shim experiment
     iosOnly: true,
     iosMinMajor: 26,
-    rootBackgroundOnly: true, // keep existing non-rootbg modes untouched
+    rootBackgroundOnly: false, // false => allow shim on base relative166 mode too
     opacity: 0.01, // if Safari ignores this, set to 1 while keeping shim height tiny
   },
 
