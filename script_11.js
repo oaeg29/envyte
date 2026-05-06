@@ -2344,53 +2344,20 @@ function isPlainConfigObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function mergeConfigOverridesInPlace(target, patch) {
-  if (!isPlainConfigObject(target) || !isPlainConfigObject(patch)) {
-    return target;
-  }
-  const keys = Object.keys(patch);
-  for (let i = 0; i < keys.length; i += 1) {
-    const key = keys[i];
-    const patchValue = patch[key];
-    if (patchValue === undefined) {
-      continue;
-    }
-    if (isPlainConfigObject(patchValue)) {
-      if (!isPlainConfigObject(target[key])) {
-        target[key] = {};
-      }
-      mergeConfigOverridesInPlace(target[key], patchValue);
-      continue;
-    }
-    target[key] = patchValue;
-  }
-  return target;
-}
-
 // ---------------------------------------------------------------------------
 // USER CONFIG (primary tweak area)
 // ---------------------------------------------------------------------------
-const USER_CONFIG = (
+const CONFIG = (
   typeof window !== 'undefined'
   && isPlainConfigObject(window.STEM_WARP_USER_CONFIG)
 )
   ? window.STEM_WARP_USER_CONFIG
-  : {};
-
-const configDefaultsFactory = typeof window.createStemWarpConfigDefaults === 'function'
-  ? window.createStemWarpConfigDefaults
   : null;
 
-if (!configDefaultsFactory) {
-  throw new Error('Missing config defaults factory. Make sure script_11.config.defaults.js loads before script_11.js.');
+if (!CONFIG) {
+  throw new Error('Missing user config object. Make sure script_11.user.config.js loads before script_11.js.');
 }
 
-const CONFIG = configDefaultsFactory({
-  gradient,
-  valScaling,
-  defaultCountPerSide,
-});
-mergeConfigOverridesInPlace(CONFIG, USER_CONFIG);
 applyLoadingScreenConfig(CONFIG.loadingScreen);
 
 // Backward compatibility: `animation` now maps to `branchGrowth`.
@@ -2597,8 +2564,12 @@ function resolveGlobalFoliageScale() {
   return Math.max(0.01, numeric);
 }
 
+function resolveResponsiveFoliageScale() {
+  return resolveGlobalFoliageScale() * resolveFloralResponsiveScaleFactor();
+}
+
 function syncGlobalFoliageScaleIfNeeded() {
-  const nextScale = resolveGlobalFoliageScale();
+  const nextScale = resolveResponsiveFoliageScale();
   if (!Number.isFinite(STATE.lastAppliedGlobalFoliageScale)) {
     STATE.lastAppliedGlobalFoliageScale = nextScale;
     return false;
@@ -5235,7 +5206,7 @@ function getFlowersRuntimeConfig() {
   const flowersConfig = isPlainObjectLiteral(CONFIG.flowers) ? CONFIG.flowers : {};
   const swayMode = resolveGlobalSwayMode();
   const adaptivePatch = getFlowersAdaptiveRuntimePatch(flowersConfig, swayMode);
-  const floralScale = resolveFloralResponsiveScaleFactor() * resolveGlobalFoliageScale();
+  const floralScale = resolveResponsiveFoliageScale();
   const runtimeConfig = {
     ...flowersConfig,
     ...(adaptivePatch || {}),
@@ -6143,7 +6114,7 @@ function resolveTemplateScaleRange(templateConfig = CONFIG.pathGeneration || {})
 }
 
 function resolvePerBranchTemplateScale(stableKey = '', templateConfig = CONFIG.pathGeneration || {}) {
-  const foliageScale = resolveGlobalFoliageScale();
+  const foliageScale = resolveResponsiveFoliageScale();
   const { minScale, maxScale } = resolveTemplateScaleRange(templateConfig);
   if (Math.abs(maxScale - minScale) < 1e-8) {
     return minScale * foliageScale;
@@ -8048,6 +8019,10 @@ const LEGACY_LILY_FLOWER_KEYS = [
   'stamenAdditionalMode',
   'stamenRowList',
   'closedUseMiddlePetalSprite',
+  'closedSpritePath',
+  'closedSpriteCols',
+  'closedSpriteRows',
+  'closedSpriteScale',
   'pairRotationDegByRowPair',
   'pairDisplacementYByRowPair',
   'pairDisplacementXByRowPair',
@@ -8703,7 +8678,7 @@ function drawStripCenters(stripCenters) {
 }
 
 function getBrushScale(brushConfig) {
-  const foliageScale = resolveGlobalFoliageScale();
+  const foliageScale = resolveResponsiveFoliageScale();
   if (Number.isFinite(brushConfig.scale) && brushConfig.scale > 0) {
     return brushConfig.scale * foliageScale;
   }
@@ -8952,7 +8927,7 @@ function getBrushThicknessTaperExponent(brushConfig) {
 }
 
 function getBrushThicknessMinWidth(brushConfig) {
-  const foliageScale = resolveGlobalFoliageScale();
+  const foliageScale = resolveResponsiveFoliageScale();
   if (!brushConfig || typeof brushConfig !== 'object') {
     return 0;
   }
@@ -9239,7 +9214,7 @@ function getBranchRenderId(branch) {
 
 function resolveLeavesConfig(leavesConfigCandidate = CONFIG.leaves || {}) {
   const safeConfig = isPlainObjectLiteral(leavesConfigCandidate) ? leavesConfigCandidate : {};
-  const floralScale = resolveFloralResponsiveScaleFactor() * resolveGlobalFoliageScale();
+  const floralScale = resolveResponsiveFoliageScale();
   const enabled = safeConfig.enabled !== false;
   const deterministic = safeConfig.deterministic !== false;
   const spritePath = (typeof safeConfig.spritePath === 'string' && safeConfig.spritePath.length > 0)
@@ -11478,7 +11453,8 @@ function getStableViewportHeightForLayout(visualViewportHeight, fallbackHeight) 
   const safeVisualViewportHeight = Number.isFinite(visualViewportHeight)
     ? Math.max(0, visualViewportHeight)
     : 0;
-  if (safeVisualViewportHeight > 0 && !isViewportScaleUnstable()) {
+  const shouldGuardForUnstableScale = isLikelySafariOnIOS() && isViewportScaleUnstable();
+  if (safeVisualViewportHeight > 0 && !shouldGuardForUnstableScale) {
     return safeVisualViewportHeight;
   }
   return safeFallbackHeight;

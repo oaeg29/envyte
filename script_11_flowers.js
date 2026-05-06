@@ -7,6 +7,10 @@
   const ALWAYS_SWAY_SIM_DT_SEC = 1 / ALWAYS_SWAY_SIM_HZ;
   const ALWAYS_SWAY_MAX_STEPS_PER_FRAME = 4;
   const DEFAULT_LILY_SPRITE_PATH = './lily_sprite.png';
+  const DEFAULT_LILY_CLOSED_SPRITE_PATH = './closed_lily.png';
+  const DEFAULT_LILY_CLOSED_SPRITE_COLS = 8;
+  const DEFAULT_LILY_CLOSED_SPRITE_ROWS = 1;
+  const DEFAULT_LILY_CLOSED_SPRITE_SCALE = 4.1590909091;
   const DEFAULT_BLUE_SPRITE_PATH = './blue_sprite_2_upscaled.png';
 
   function clamp(value, min, max) {
@@ -707,6 +711,10 @@
       stamenAdditionalMode: safeConfig.stamenAdditionalMode,
       stamenRowList: safeConfig.stamenRowList,
       closedUseMiddlePetalSprite: safeConfig.closedUseMiddlePetalSprite,
+      closedSpritePath: safeConfig.closedSpritePath,
+      closedSpriteCols: safeConfig.closedSpriteCols,
+      closedSpriteRows: safeConfig.closedSpriteRows,
+      closedSpriteScale: safeConfig.closedSpriteScale,
       hoverAmplitudeDegRange: safeConfig.hoverAmplitudeDegRange,
       hoverSpeedRange: safeConfig.hoverSpeedRange,
     };
@@ -734,7 +742,11 @@
       stamenCount: 1, // total stamens per flower
       stamenAdditionalMode: 'randomRows', // randomRows | rowList
       stamenRowList: [1], // 1-based rows used when stamenAdditionalMode='rowList'
-      closedUseMiddlePetalSprite: false, // if true, closed lilies use middle petal sprite for every petal
+      closedUseMiddlePetalSprite: false, // if true, closed lilies use closed sprite sheet variants
+      closedSpritePath: DEFAULT_LILY_CLOSED_SPRITE_PATH,
+      closedSpriteCols: DEFAULT_LILY_CLOSED_SPRITE_COLS,
+      closedSpriteRows: DEFAULT_LILY_CLOSED_SPRITE_ROWS,
+      closedSpriteScale: DEFAULT_LILY_CLOSED_SPRITE_SCALE,
       hoverAmplitudeDegRange: [2, 6],
       hoverSpeedRange: [2.2, 4.2],
     };
@@ -807,6 +819,51 @@
     return (typeof typeConfig.spritePath === 'string' && typeConfig.spritePath.length > 0)
       ? typeConfig.spritePath
       : DEFAULT_LILY_SPRITE_PATH;
+  }
+
+  function resolveLilyClosedAssetPath(typeConfig) {
+    return (typeof typeConfig.closedSpritePath === 'string' && typeConfig.closedSpritePath.length > 0)
+      ? typeConfig.closedSpritePath
+      : DEFAULT_LILY_CLOSED_SPRITE_PATH;
+  }
+
+  function resolveLilyClosedSpriteCols(typeConfig) {
+    return Number.isFinite(typeConfig.closedSpriteCols)
+      ? Math.max(1, Math.floor(typeConfig.closedSpriteCols))
+      : DEFAULT_LILY_CLOSED_SPRITE_COLS;
+  }
+
+  function resolveLilyClosedSpriteRows(typeConfig) {
+    return Number.isFinite(typeConfig.closedSpriteRows)
+      ? Math.max(1, Math.floor(typeConfig.closedSpriteRows))
+      : DEFAULT_LILY_CLOSED_SPRITE_ROWS;
+  }
+
+  function resolveLilyClosedSpriteScale(typeConfig) {
+    return Number.isFinite(typeConfig.closedSpriteScale)
+      ? Math.max(0.01, typeConfig.closedSpriteScale)
+      : DEFAULT_LILY_CLOSED_SPRITE_SCALE;
+  }
+
+  function getLilyClosedSpriteSourceRect(typeConfig, col, row) {
+    return getSpriteSourceRect(
+      {
+        ...typeConfig,
+        spriteScale: resolveLilyClosedSpriteScale(typeConfig),
+      },
+      col,
+      row,
+    );
+  }
+
+  function sampleLilyClosedSpriteCell(typeConfig, rng) {
+    const cols = resolveLilyClosedSpriteCols(typeConfig);
+    const rows = resolveLilyClosedSpriteRows(typeConfig);
+    const safeRandom = typeof rng === 'function' ? rng : Math.random;
+    return {
+      col: clamp(Math.floor(safeRandom() * cols), 0, Math.max(0, cols - 1)),
+      row: clamp(Math.floor(safeRandom() * rows), 0, Math.max(0, rows - 1)),
+    };
   }
 
   function resolveBlueAssetPaths(typeConfig) {
@@ -1195,8 +1252,7 @@
   }
 
   function drawLilyFlower(ctx, flower, typeConfig, commonConfig, runtimeState) {
-    const image = runtimeState.getImage(flower.assetPath);
-    if (!image || !Array.isArray(flower.petals) || flower.petals.length === 0) {
+    if (!Array.isArray(flower.petals) || flower.petals.length === 0) {
       return false;
     }
 
@@ -1272,10 +1328,19 @@
     const pairSpeedCurve = clamp(Number(commonConfig.petalTogglePairSpeedCurve) || 0, 0, 1);
     const maxPairDistance = resolveLilyMaxPairDistance(typeConfig);
     const drawBackfacing = commonConfig.backfacing === true;
-    const useClosedMiddlePetalSprite = (
+    const useClosedLilySpriteSheet = (
       typeConfig.closedUseMiddlePetalSprite === true
       && useClosedPetalSprites
     );
+    const image = useClosedLilySpriteSheet
+      ? (
+        runtimeState.getImage(flower.closedAssetPath || resolveLilyClosedAssetPath(typeConfig))
+        || runtimeState.getImage(flower.assetPath)
+      )
+      : runtimeState.getImage(flower.assetPath);
+    if (!image) {
+      return false;
+    }
     const useFastPath = commonConfig.swayFastPathEnabled === true;
     const useSpriteDebugSway = commonConfig.swaySpriteDebugEnabled === true;
     const debugFrameIndex = Number.isFinite(runtimeState.debugFrameIndex) ? runtimeState.debugFrameIndex : 0;
@@ -1291,7 +1356,7 @@
       && !useSpriteDebugSway
       && !petalToggleIsActive
       && drawBackfacing === false
-      && useClosedMiddlePetalSprite === false
+      && useClosedLilySpriteSheet === false
       && basePetalOpenAmount >= 0.999999
     );
     if (canUseFastPath) {
@@ -1328,7 +1393,6 @@
       }
       return true;
     }
-    const closedMiddlePetalColumn = resolveLilyMiddlePetalColumn(typeConfig);
     const offsetScratch = { x: 0, y: 0 };
 
     const petalCount = flower.petals.length;
@@ -1374,11 +1438,17 @@
         )
       );
       const shouldFlipEdgePair = edgePairFlipEnabled && isInsideEdgePairToggleWindow;
-      let sourceCol = useClosedMiddlePetalSprite ? closedMiddlePetalColumn : petal.col;
+      let sourceCol = useClosedLilySpriteSheet
+        ? (
+          Number.isFinite(flower.closedSpriteCol)
+            ? flower.closedSpriteCol
+            : resolveLilyMiddlePetalColumn(typeConfig)
+        )
+        : petal.col;
       if (
         edgePairUseInnerSpritesEnabled
         && isInsideEdgePairToggleWindow
-        && !useClosedMiddlePetalSprite
+        && !useClosedLilySpriteSheet
       ) {
         if (sourceCol === 0) {
           sourceCol = 1;
@@ -1387,8 +1457,8 @@
         }
       }
       let sourceRect = petal.sourceRect;
-      if (useClosedMiddlePetalSprite) {
-        sourceRect = petal.closedMiddleSourceRect || sourceRect;
+      if (useClosedLilySpriteSheet) {
+        sourceRect = petal.closedLilySourceRect || petal.closedMiddleSourceRect || sourceRect;
       } else if (
         edgePairUseInnerSpritesEnabled
         && isInsideEdgePairToggleWindow
@@ -1397,9 +1467,18 @@
         sourceRect = petal.innerSourceRect || sourceRect;
       }
       if (!sourceRect) {
-        sourceRect = getSpriteSourceRect(typeConfig, sourceCol, petal.row);
+        const fallbackRow = useClosedLilySpriteSheet
+          ? (
+            Number.isFinite(flower.closedSpriteRow)
+              ? flower.closedSpriteRow
+              : 0
+          )
+          : petal.row;
+        sourceRect = useClosedLilySpriteSheet
+          ? getLilyClosedSpriteSourceRect(typeConfig, sourceCol, fallbackRow)
+          : getSpriteSourceRect(typeConfig, sourceCol, fallbackRow);
       }
-      if (useSpriteDebugSway) {
+      if (useSpriteDebugSway && !useClosedLilySpriteSheet) {
         const baseCol = Number.isFinite(sourceCol) ? sourceCol : petal.col;
         const animatedCol = ((baseCol + (debugFrameIndex * debugFrameStep)) % spriteCols + spriteCols) % spriteCols;
         const animatedRow = clamp(
@@ -1627,7 +1706,14 @@
       },
 
       getAssetPaths(typeConfig) {
-        return [resolveLilyAssetPath(typeConfig)];
+        const out = [resolveLilyAssetPath(typeConfig)];
+        if (typeConfig.closedUseMiddlePetalSprite === true) {
+          const closedPath = resolveLilyClosedAssetPath(typeConfig);
+          if (typeof closedPath === 'string' && closedPath.length > 0) {
+            out.push(closedPath);
+          }
+        }
+        return Array.from(new Set(out));
       },
 
       buildFlower(endpoint, typeConfig, commonConfig, rng) {
@@ -2740,6 +2826,15 @@
           ? Math.max(1, Math.floor(typeConfig.spriteRows))
           : 1;
         const closedMiddlePetalCol = resolveLilyMiddlePetalColumn(typeConfig);
+        const useClosedLilySpriteSheet = (
+          typeName === 'lily'
+          && typeConfig.closedUseMiddlePetalSprite === true
+        );
+        const closedLilySpriteCell = useClosedLilySpriteSheet
+          ? sampleLilyClosedSpriteCell(typeConfig, rng)
+          : null;
+        const closedLilySpriteCol = closedLilySpriteCell ? closedLilySpriteCell.col : null;
+        const closedLilySpriteRow = closedLilySpriteCell ? closedLilySpriteCell.row : null;
 
         for (let p = 0; p < built.petals.length; p += 1) {
           const rawPetal = built.petals[p] || {};
@@ -2796,6 +2891,13 @@
               closedMiddlePetalCol,
               row,
             );
+            if (closedLilySpriteCell) {
+              normalizedPetal.closedLilySourceRect = getLilyClosedSpriteSourceRect(
+                typeConfig,
+                closedLilySpriteCell.col,
+                closedLilySpriteCell.row,
+              );
+            }
           }
 
           petals.push(normalizedPetal);
@@ -2810,6 +2912,9 @@
           type: typeName,
           typeConfig,
           assetPath: typeof built.assetPath === 'string' ? built.assetPath : '',
+          closedAssetPath: useClosedLilySpriteSheet ? resolveLilyClosedAssetPath(typeConfig) : '',
+          closedSpriteCol: closedLilySpriteCol,
+          closedSpriteRow: closedLilySpriteRow,
           centerAngleRad: Number.isFinite(built.centerAngleRad) ? built.centerAngleRad : 0,
           branchId: endpoint && Number.isFinite(endpoint.branchId) ? endpoint.branchId : null,
           x: endpoint && Number.isFinite(endpoint.x) ? endpoint.x : 0,
@@ -4026,12 +4131,11 @@
         && typeof runtimeState.getPetalToggleIsActive === 'function'
         && runtimeState.getPetalToggleIsActive() === true
       );
-      const useClosedMiddlePetalSprite = (
+      const useClosedLilySpriteSheet = (
         typeConfig.closedUseMiddlePetalSprite === true
         && useClosedPetalSprites
       );
       const drawBackfacing = commonConfig.backfacing === true;
-      const closedMiddlePetalColumn = resolveLilyMiddlePetalColumn(typeConfig);
       const offsetScratch = { x: 0, y: 0 };
       const petalCount = flower.petals.length;
       const startIndex = drawBackfacing ? petalCount - 1 : 0;
@@ -4107,11 +4211,17 @@
           )
         );
         const shouldFlipEdgePair = edgePairFlipEnabled && isInsideEdgePairToggleWindow;
-        let sourceCol = useClosedMiddlePetalSprite ? closedMiddlePetalColumn : petal.col;
+        let sourceCol = useClosedLilySpriteSheet
+          ? (
+            Number.isFinite(flower.closedSpriteCol)
+              ? flower.closedSpriteCol
+              : resolveLilyMiddlePetalColumn(typeConfig)
+          )
+          : petal.col;
         if (
           edgePairUseInnerSpritesEnabled
           && isInsideEdgePairToggleWindow
-          && !useClosedMiddlePetalSprite
+          && !useClosedLilySpriteSheet
         ) {
           if (sourceCol === 0) {
             sourceCol = 1;
@@ -4120,8 +4230,8 @@
           }
         }
         let sourceRect = petal.sourceRect;
-        if (useClosedMiddlePetalSprite) {
-          sourceRect = petal.closedMiddleSourceRect || sourceRect;
+        if (useClosedLilySpriteSheet) {
+          sourceRect = petal.closedLilySourceRect || petal.closedMiddleSourceRect || sourceRect;
         } else if (
           edgePairUseInnerSpritesEnabled
           && isInsideEdgePairToggleWindow
@@ -4130,9 +4240,18 @@
           sourceRect = petal.innerSourceRect || sourceRect;
         }
         if (!sourceRect) {
-          sourceRect = getSpriteSourceRect(typeConfig, sourceCol, petal.row);
+          const fallbackRow = useClosedLilySpriteSheet
+            ? (
+              Number.isFinite(flower.closedSpriteRow)
+                ? flower.closedSpriteRow
+                : 0
+            )
+            : petal.row;
+          sourceRect = useClosedLilySpriteSheet
+            ? getLilyClosedSpriteSourceRect(typeConfig, sourceCol, fallbackRow)
+            : getSpriteSourceRect(typeConfig, sourceCol, fallbackRow);
         }
-        if (useSpriteDebugSway) {
+        if (useSpriteDebugSway && !useClosedLilySpriteSheet) {
           const baseCol = Number.isFinite(sourceCol) ? sourceCol : petal.col;
           const animatedCol = ((baseCol + (debugFrameIndex * debugFrameStep)) % spriteCols + spriteCols) % spriteCols;
           const animatedRow = clamp(
@@ -4142,7 +4261,10 @@
           );
           sourceRect = getSpriteSourceRect(typeConfig, animatedCol, animatedRow);
         }
-        const texture = getPixiTextureForSourceRect(flower.assetPath, sourceRect);
+        const textureAssetPath = useClosedLilySpriteSheet
+          ? (flower.closedAssetPath || resolveLilyClosedAssetPath(typeConfig))
+          : flower.assetPath;
+        const texture = getPixiTextureForSourceRect(textureAssetPath, sourceRect);
         if (!texture) {
           continue;
         }
@@ -4962,7 +5084,7 @@
       };
     }
 
-    function normalizePetalRecord(typeName, rawPetal, typeConfig) {
+    function normalizePetalRecord(typeName, rawPetal, typeConfig, options = null) {
       const spriteCols = Number.isFinite(typeConfig.spriteCols) ? Math.max(1, Math.floor(typeConfig.spriteCols)) : 1;
       const spriteRows = Number.isFinite(typeConfig.spriteRows) ? Math.max(1, Math.floor(typeConfig.spriteRows)) : 1;
       const col = clamp(
@@ -5006,6 +5128,17 @@
       normalized.baseCos = Math.cos(normalized.baseAngleRad);
       normalized.baseSin = Math.sin(normalized.baseAngleRad);
       if (typeName === 'lily') {
+        const closedSpriteCols = resolveLilyClosedSpriteCols(typeConfig);
+        const closedSpriteRows = resolveLilyClosedSpriteRows(typeConfig);
+        const requestedClosedSpriteCol = Number(options && options.closedSpriteCol);
+        const requestedClosedSpriteRow = Number(options && options.closedSpriteRow);
+        const hasClosedSpriteCell = Number.isFinite(requestedClosedSpriteCol) && Number.isFinite(requestedClosedSpriteRow);
+        const closedSpriteCol = hasClosedSpriteCell
+          ? clamp(Math.floor(requestedClosedSpriteCol), 0, Math.max(0, closedSpriteCols - 1))
+          : 0;
+        const closedSpriteRow = hasClosedSpriteCell
+          ? clamp(Math.floor(requestedClosedSpriteRow), 0, Math.max(0, closedSpriteRows - 1))
+          : 0;
         const closedMiddlePetalCol = resolveLilyMiddlePetalColumn(typeConfig);
         let innerCol = col;
         if (col === 0) {
@@ -5015,6 +5148,13 @@
         }
         normalized.innerSourceRect = getSpriteSourceRect(typeConfig, innerCol, row);
         normalized.closedMiddleSourceRect = getSpriteSourceRect(typeConfig, closedMiddlePetalCol, row);
+        if (hasClosedSpriteCell) {
+          normalized.closedLilySourceRect = getLilyClosedSpriteSourceRect(
+            typeConfig,
+            closedSpriteCol,
+            closedSpriteRow,
+          );
+        }
       }
       return normalized;
     }
@@ -5065,10 +5205,19 @@
         };
         const rng = mulberry32(hashSeed(`flower-export|${variantKey}`));
         const built = buildLilyFlower(endpoint, typeConfig, commonConfig, rng);
+        const closedLilySpriteCell = sampleLilyClosedSpriteCell(typeConfig, rng);
         const petals = [];
         const targetRowZeroBased = clamp(rowOneBased - 1, 0, Math.max(0, lilyRows - 1));
         for (let p = 0; p < built.petals.length; p += 1) {
-          const normalized = normalizePetalRecord('lily', built.petals[p], typeConfig);
+          const normalized = normalizePetalRecord(
+            'lily',
+            built.petals[p],
+            typeConfig,
+            {
+              closedSpriteCol: closedLilySpriteCell.col,
+              closedSpriteRow: closedLilySpriteCell.row,
+            },
+          );
           assignExporterLoopStyleToPetal(normalized, p, 'lily');
           const isStamenPetal = lilyMethod === 'sweep3' && normalized.col === lilyStamenCol;
           if (!isStamenPetal) {
@@ -5100,6 +5249,9 @@
             type: 'lily',
             typeConfig,
             assetPath: typeof built.assetPath === 'string' ? built.assetPath : resolveLilyAssetPath(typeConfig),
+            closedAssetPath: resolveLilyClosedAssetPath(typeConfig),
+            closedSpriteCol: closedLilySpriteCell.col,
+            closedSpriteRow: closedLilySpriteCell.row,
             centerAngleRad: Number.isFinite(built.centerAngleRad) ? built.centerAngleRad : 0,
             x: 0,
             y: 0,

@@ -382,7 +382,7 @@
       [1024, 0.9],
       [1366, 1.0],
     ],
-    globalMultiplier: 1.5, // global floral size multiplier (applies to leaves + flowers)
+    globalMultiplier: 1.5, // global floral size multiplier (applies to full foliage: branches + leaves + flowers)
     pointerModifierEnabled: true,
     pointerCoarseMultiplier: 0.95, // touch-first devices
     pointerFineMultiplier: 1.0, // mouse/trackpad devices
@@ -539,7 +539,11 @@
         stamenCount: 2, // total stamens per flower
         stamenAdditionalMode: 'rowList', // randomRows | rowList
         stamenRowList: [2,3,4,5,6,7,8], // 1-based rows used when stamenAdditionalMode='rowList'
-        closedUseMiddlePetalSprite: true, // if true, closed lilies use middle petal sprite for every petal
+        closedUseMiddlePetalSprite: true, // if true, closed lilies use the closed-lily sheet (random variant per flower)
+        closedSpritePath: './closed_lily.png',
+        closedSpriteCols: 8,
+        closedSpriteRows: 1,
+        closedSpriteScale: 4.1590909091,
         pairRotationDegByRowPair: {
           1: { 1: 20, 2: 13, 3: 30},
           2: { 1: 15, 2: 10, 3: 48 },

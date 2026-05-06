@@ -556,7 +556,11 @@ const CONFIG = {
         stamenCount: 2, // total stamens per flower
         stamenAdditionalMode: 'rowList', // randomRows | rowList
         stamenRowList: [2,3,4,5,6,7,8], // 1-based rows used when stamenAdditionalMode='rowList'
-        closedUseMiddlePetalSprite: true, // if true, closed lilies use middle petal sprite for every petal
+        closedUseMiddlePetalSprite: true, // if true, closed lilies use the closed-lily sheet (random variant per flower)
+        closedSpritePath: './closed_lily.png',
+        closedSpriteCols: 8,
+        closedSpriteRows: 1,
+        closedSpriteScale: 4.1590909091,
         pairRotationDegByRowPair: {
           1: { 1: 20, 2: 13, 3: 30},
           2: { 1: 15, 2: 10, 3: 48 },
@@ -5706,6 +5710,10 @@ const LEGACY_LILY_FLOWER_KEYS = [
   'stamenAdditionalMode',
   'stamenRowList',
   'closedUseMiddlePetalSprite',
+  'closedSpritePath',
+  'closedSpriteCols',
+  'closedSpriteRows',
+  'closedSpriteScale',
   'pairRotationDegByRowPair',
   'pairDisplacementYByRowPair',
   'pairDisplacementXByRowPair',

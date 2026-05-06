@@ -104,6 +104,10 @@
           stamenAdditionalMode: 'rowList',
           stamenRowList: [2, 3, 4, 5, 6, 7, 8],
           closedUseMiddlePetalSprite: true,
+          closedSpritePath: './closed_lily.png',
+          closedSpriteCols: 8,
+          closedSpriteRows: 1,
+          closedSpriteScale: 4.1590909091,
           pairRotationDegByRowPair: {
             1: { 1: 20, 2: 13, 3: 30 },
             2: { 1: 15, 2: 10, 3: 48 },
