@@ -148,6 +148,7 @@ let safariTopTintShimElement = null;
 let lastSafariTopTint = '';
 let themeColorMetaElement = null;
 let lastThemeColor = '';
+let pageBackgroundGradientStops = [];
 let viewportScrollNudgeApplied = false;
 let viewportBodyFixedOriginalInlineStyles = null;
 let viewportBodyFixedStylesApplied = false;
@@ -225,9 +226,14 @@ function isLikelyIOSDevice() {
   const maxTouchPoints = Number.isFinite(Number(navigator.maxTouchPoints))
     ? Number(navigator.maxTouchPoints)
     : 0;
+  const hasTouchEndEvent = typeof document !== 'undefined' && 'ontouchend' in document;
+  const hasMsStream = typeof window !== 'undefined' && typeof window.MSStream !== 'undefined';
   const isIOSFamily = /iPad|iPhone|iPod/i.test(userAgent);
-  const isIpadOsDesktopMode = platform === 'MacIntel' && maxTouchPoints > 1;
-  return isIOSFamily || isIpadOsDesktopMode;
+  const isIpadOsDesktopMode = (
+    (platform === 'MacIntel' && maxTouchPoints > 1)
+    || (/Macintosh/i.test(userAgent) && hasTouchEndEvent)
+  );
+  return (isIOSFamily || isIpadOsDesktopMode) && !hasMsStream;
 }
 
 function parseIOSMajorVersion() {
@@ -653,7 +659,43 @@ function parseCssColorToRgb(colorValue) {
   };
 }
 
+function setPageBackgroundGradientColors(topColor, midColor, bottomColor) {
+  if (document && document.documentElement && document.documentElement.style) {
+    const rootStyle = document.documentElement.style;
+    if (typeof topColor === 'string' && topColor.trim().length > 0) {
+      rootStyle.setProperty('--app-page-bg-top', topColor.trim());
+    }
+    if (typeof midColor === 'string' && midColor.trim().length > 0) {
+      rootStyle.setProperty('--app-page-bg-mid', midColor.trim());
+    }
+    if (typeof bottomColor === 'string' && bottomColor.trim().length > 0) {
+      rootStyle.setProperty('--app-page-bg-bottom', bottomColor.trim());
+    }
+  }
+
+  const topRgb = parseCssColorToRgb(topColor);
+  const midRgb = parseCssColorToRgb(midColor);
+  const bottomRgb = parseCssColorToRgb(bottomColor);
+  const stops = [];
+  if (topRgb) {
+    stops.push({ pos: 0, color: topRgb });
+  }
+  if (midRgb) {
+    stops.push({ pos: 0.5, color: midRgb });
+  }
+  if (bottomRgb) {
+    stops.push({ pos: 1, color: bottomRgb });
+  }
+  pageBackgroundGradientStops = stops;
+  if (stops.length > 0) {
+    lastSafariTopTint = '';
+  }
+}
+
 function resolvePageBackgroundGradientStopsFromCssVariables() {
+  if (Array.isArray(pageBackgroundGradientStops) && pageBackgroundGradientStops.length > 0) {
+    return pageBackgroundGradientStops;
+  }
   if (!document || !document.documentElement || typeof window.getComputedStyle !== 'function') {
     return [];
   }
@@ -801,6 +843,7 @@ function isLikelySafariOnIOS() {
   }
   const userAgent = typeof navigator.userAgent === 'string' ? navigator.userAgent : '';
   const vendor = typeof navigator.vendor === 'string' ? navigator.vendor : '';
+  const hasWebKitObject = typeof window !== 'undefined' && typeof window.webkit !== 'undefined';
   const uaData = navigator.userAgentData && typeof navigator.userAgentData === 'object'
     ? navigator.userAgentData
     : null;
@@ -823,7 +866,11 @@ function isLikelySafariOnIOS() {
   if (!hasStandaloneProperty) {
     return false;
   }
-  return hasAppleWebKitToken && hasSafariToken && hasVersionToken && hasAppleVendor;
+  return hasAppleWebKitToken
+    && hasWebKitObject
+    && hasSafariToken
+    && hasVersionToken
+    && hasAppleVendor;
 }
 
 function resolveInitialViewportRelativeAdjustableValue() {
@@ -1533,6 +1580,7 @@ let gradient = ctx.createLinearGradient(0, 0, 0, window.innerHeight );
 gradient.addColorStop(0, color1);
 gradient.addColorStop(0.5, color2);
 gradient.addColorStop(1, color3);
+setPageBackgroundGradientColors(color1, color2, color3);
 
 
 // Apply as a string to the backgroundColor property

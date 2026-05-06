@@ -7,7 +7,7 @@
   --app-page-bg-top: hsl(205, 15%, 100%);
   --app-page-bg-mid: hsl(208, 15%, 89%);
   --app-page-bg-bottom: hsl(208, 20%, 82%);
-  --app-page-bg-solid: var(--app-page-bg-bottom);
+  --app-page-bg-solid: var(--app-page-bg-top);
   --app-page-bg-gradient: linear-gradient(
     180deg,
     var(--app-page-bg-top) 0%,
@@ -38,8 +38,8 @@ html, body {
   padding: 0;
   overflow: hidden;
   overscroll-behavior: none;
-  background-color: var(--app-page-bg-solid);
-  background-image: var(--app-page-bg-gradient);
+  background-color: var(--safari-top-tint, var(--app-page-bg-solid));
+  background-image: none;
 }
 
 html.ios-safari-top-tint-fallback,
@@ -49,16 +49,16 @@ html.ios-safari-top-tint-fallback body {
 
 body {
   position: relative;
-  background-color: var(--app-page-bg-solid);
-  background-image: var(--app-page-bg-gradient);
+  background-color: var(--safari-top-tint, var(--app-page-bg-solid));
+  background-image: none;
 }
 
 html[data-viewport-layout-mode="scrollstage"],
 body[data-viewport-layout-mode="scrollstage"] {
   height: auto;
   min-height: 100vh;
-  background-color: var(--app-page-bg-solid);
-  background-image: var(--app-page-bg-gradient);
+  background-color: var(--safari-top-tint, var(--app-page-bg-solid));
+  background-image: none;
   overflow-x: hidden;
   overflow-y: auto;
 }
@@ -71,8 +71,8 @@ body[data-viewport-layout-mode="scrollstage"] {
 }
 
 body[data-viewport-layout-mode="scrollstage"] {
-  background-color: var(--app-page-bg-solid);
-  background-image: var(--app-page-bg-gradient);
+  background-color: var(--safari-top-tint, var(--app-page-bg-solid));
+  background-image: none;
 }
 
 #ios-scroll-stage {
@@ -207,14 +207,14 @@ body.ios26-fixed-workaround #loadingScreen {
 }
 
 html[data-viewport-layout-mode="rootbg"] {
-  background-color: var(--app-page-bg-solid);
-  background-image: var(--app-page-bg-gradient);
+  background-color: var(--safari-top-tint, var(--app-page-bg-solid));
+  background-image: none;
 }
 
 body[data-viewport-layout-mode="rootbg"] {
   position: relative;
-  background-color: var(--app-page-bg-solid);
-  background-image: var(--app-page-bg-gradient);
+  background-color: var(--safari-top-tint, var(--app-page-bg-solid));
+  background-image: none;
 }
 
 body[data-viewport-layout-mode="rootbg"] video {
