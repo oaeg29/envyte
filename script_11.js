@@ -83,7 +83,7 @@ const VIEWPORT_LAYOUT_RELATIVE_190_OVERDRAW_PX = 45;
 const VIEWPORT_LAYOUT_RELATIVE_112_TOP_OVERDRAW_PX = 0;
 const VIEWPORT_LAYOUT_RELATIVE_112_EXTRA_HEIGHT_PX = 12;
 const VIEWPORT_LAYOUT_RELATIVE_166_TOP_OVERDRAW_PX = 0;
-const VIEWPORT_LAYOUT_RELATIVE_166_TARGET_DVH = 155;
+const VIEWPORT_LAYOUT_RELATIVE_166_TARGET_VALUE = 155;
 const VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_20_TOP_OVERDRAW_PX = 20;
 const VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_20_EXTRA_HEIGHT_PX = 40;
 const VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_40_TOP_OVERDRAW_PX = 40;
@@ -142,6 +142,305 @@ function setLoadingScreenMessage(message) {
   messageEl.textContent = message;
 }
 
+function resolveLoadingScreenConfig(
+  configCandidate = (
+    typeof CONFIG !== 'undefined'
+    && CONFIG
+    && typeof CONFIG === 'object'
+    ? CONFIG.loadingScreen
+    : null
+  ),
+) {
+  const safeConfig = isPlainConfigObject(configCandidate) ? configCandidate : {};
+  const sanitizeColor = (value, fallback) => (
+    typeof value === 'string' && value.trim().length > 0 ? value.trim() : fallback
+  );
+  const sanitizeText = (value, fallback) => {
+    if (typeof value !== 'string') {
+      return fallback;
+    }
+    return value.trim().length > 0 ? value : fallback;
+  };
+  const sanitizeNumber = (value, fallback, min = null) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) {
+      return fallback;
+    }
+    if (Number.isFinite(min)) {
+      return Math.max(min, numeric);
+    }
+    return numeric;
+  };
+  const clampUnit = (value, fallback) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) {
+      return clamp(fallback, 0, 1);
+    }
+    return clamp(numeric, 0, 1);
+  };
+  const normalizeHue = (value, fallback) => {
+    const numeric = Number.isFinite(Number(value)) ? Number(value) : fallback;
+    const wrapped = numeric % 360;
+    return wrapped < 0 ? wrapped + 360 : wrapped;
+  };
+  const clampPercent = (value, fallback) => (
+    clamp(sanitizeNumber(value, fallback), 0, 100)
+  );
+  const formatNum = (value, fallback = 0, decimals = 3) => (
+    Number((Number.isFinite(value) ? value : fallback).toFixed(decimals))
+  );
+  const toHslCss = (hue, saturation, lightness, alpha = null) => {
+    const h = formatNum(normalizeHue(hue, 0), 0, 3);
+    const s = formatNum(clamp(saturation, 0, 100), 0, 3);
+    const l = formatNum(clamp(lightness, 0, 100), 0, 3);
+    if (alpha === null) {
+      return `hsl(${h}, ${s}%, ${l}%)`;
+    }
+    const a = formatNum(clamp(alpha, 0, 1), 1, 4);
+    return `hsla(${h}, ${s}%, ${l}%, ${a})`;
+  };
+  const buildHslStopFromStep = (hslParams, stepValue, alphaValue, fallbackStep, fallbackAlpha) => {
+    const step = sanitizeNumber(stepValue, fallbackStep);
+    const hue = hslParams.baseHue + (hslParams.hueInterval * step);
+    const saturation = hslParams.baseSaturation + (hslParams.saturationInterval * step);
+    const lightness = hslParams.baseLightness + (hslParams.lightnessInterval * step);
+    return toHslCss(hue, saturation, lightness, clampUnit(alphaValue, fallbackAlpha));
+  };
+  const parseHslOffsetTriplet = (candidate, fallback) => {
+    const safeFallback = Array.isArray(fallback) && fallback.length >= 3
+      ? fallback
+      : [0, 0, 0];
+    if (Array.isArray(candidate) && candidate.length >= 3) {
+      const h = Number(candidate[0]);
+      const s = Number(candidate[1]);
+      const l = Number(candidate[2]);
+      if (Number.isFinite(h) && Number.isFinite(s) && Number.isFinite(l)) {
+        return [h, s, l];
+      }
+    }
+    if (isPlainConfigObject(candidate)) {
+      const h = Number(candidate.h);
+      const s = Number(candidate.s);
+      const l = Number(candidate.l);
+      if (Number.isFinite(h) && Number.isFinite(s) && Number.isFinite(l)) {
+        return [h, s, l];
+      }
+    }
+    return [safeFallback[0], safeFallback[1], safeFallback[2]];
+  };
+  const buildHslStopFromOffset = (hslParams, offsetTriplet, alphaValue, fallbackAlpha) => {
+    const offset = Array.isArray(offsetTriplet) ? offsetTriplet : [0, 0, 0];
+    const hue = hslParams.baseHue + (Number.isFinite(Number(offset[0])) ? Number(offset[0]) : 0);
+    const saturation = hslParams.baseSaturation + (Number.isFinite(Number(offset[1])) ? Number(offset[1]) : 0);
+    const lightness = hslParams.baseLightness + (Number.isFinite(Number(offset[2])) ? Number(offset[2]) : 0);
+    return toHslCss(hue, saturation, lightness, clampUnit(alphaValue, fallbackAlpha));
+  };
+
+  const colorModel = (
+    typeof safeConfig.colorModel === 'string' && safeConfig.colorModel.trim().toLowerCase() === 'explicit'
+  )
+    ? 'explicit'
+    : 'hslOffsets';
+  const hslParams = {
+    baseHue: normalizeHue(safeConfig.hslBaseHue, 214),
+    baseSaturation: clampPercent(safeConfig.hslBaseSaturation, 36),
+    baseLightness: clampPercent(safeConfig.hslBaseLightness, 10),
+    hueInterval: sanitizeNumber(safeConfig.hslHueInterval, 0),
+    saturationInterval: sanitizeNumber(safeConfig.hslSaturationInterval, 0),
+    lightnessInterval: sanitizeNumber(safeConfig.hslLightnessInterval, 10),
+  };
+  const legacyGradientSteps = {
+    linearBottom: sanitizeNumber(safeConfig.gradientStepLinearBottom, 0),
+    linearMid: sanitizeNumber(safeConfig.gradientStepLinearMid, 1),
+    linearTop: sanitizeNumber(safeConfig.gradientStepLinearTop, 2),
+    radialEnd: sanitizeNumber(safeConfig.gradientStepRadialEnd, 2),
+    radialMid: sanitizeNumber(safeConfig.gradientStepRadialMid, 4),
+    radialStart: sanitizeNumber(safeConfig.gradientStepRadialStart, 6),
+  };
+  const gradientAlphas = {
+    linearBottom: clampUnit(safeConfig.gradientLinearBottomAlpha, 0.995),
+    linearMid: clampUnit(safeConfig.gradientLinearMidAlpha, 0.985),
+    linearTop: clampUnit(safeConfig.gradientLinearTopAlpha, 0.97),
+    radialEnd: clampUnit(safeConfig.gradientRadialEndAlpha, 0),
+    radialMid: clampUnit(safeConfig.gradientRadialMidAlpha, 0.16),
+    radialStart: clampUnit(safeConfig.gradientRadialStartAlpha, 0.36),
+  };
+  const legacyOffsetDefaults = {
+    linearBottom: [
+      hslParams.hueInterval * legacyGradientSteps.linearBottom,
+      hslParams.saturationInterval * legacyGradientSteps.linearBottom,
+      hslParams.lightnessInterval * legacyGradientSteps.linearBottom,
+    ],
+    linearMid: [
+      hslParams.hueInterval * legacyGradientSteps.linearMid,
+      hslParams.saturationInterval * legacyGradientSteps.linearMid,
+      hslParams.lightnessInterval * legacyGradientSteps.linearMid,
+    ],
+    linearTop: [
+      hslParams.hueInterval * legacyGradientSteps.linearTop,
+      hslParams.saturationInterval * legacyGradientSteps.linearTop,
+      hslParams.lightnessInterval * legacyGradientSteps.linearTop,
+    ],
+    radialEnd: [
+      hslParams.hueInterval * legacyGradientSteps.radialEnd,
+      hslParams.saturationInterval * legacyGradientSteps.radialEnd,
+      hslParams.lightnessInterval * legacyGradientSteps.radialEnd,
+    ],
+    radialMid: [
+      hslParams.hueInterval * legacyGradientSteps.radialMid,
+      hslParams.saturationInterval * legacyGradientSteps.radialMid,
+      hslParams.lightnessInterval * legacyGradientSteps.radialMid,
+    ],
+    radialStart: [
+      hslParams.hueInterval * legacyGradientSteps.radialStart,
+      hslParams.saturationInterval * legacyGradientSteps.radialStart,
+      hslParams.lightnessInterval * legacyGradientSteps.radialStart,
+    ],
+  };
+  const rawStopOffsets = isPlainConfigObject(safeConfig.hslStopOffsets)
+    ? safeConfig.hslStopOffsets
+    : {};
+  const hslStopOffsets = {
+    linearBottom: parseHslOffsetTriplet(rawStopOffsets.linearBottom, legacyOffsetDefaults.linearBottom),
+    linearMid: parseHslOffsetTriplet(rawStopOffsets.linearMid, legacyOffsetDefaults.linearMid),
+    linearTop: parseHslOffsetTriplet(rawStopOffsets.linearTop, legacyOffsetDefaults.linearTop),
+    radialEnd: parseHslOffsetTriplet(rawStopOffsets.radialEnd, legacyOffsetDefaults.radialEnd),
+    radialMid: parseHslOffsetTriplet(rawStopOffsets.radialMid, legacyOffsetDefaults.radialMid),
+    radialStart: parseHslOffsetTriplet(rawStopOffsets.radialStart, legacyOffsetDefaults.radialStart),
+  };
+  const hslGradientColors = {
+    gradientLinearBottom: buildHslStopFromOffset(hslParams, hslStopOffsets.linearBottom, gradientAlphas.linearBottom, 0.995),
+    gradientLinearMid: buildHslStopFromOffset(hslParams, hslStopOffsets.linearMid, gradientAlphas.linearMid, 0.985),
+    gradientLinearTop: buildHslStopFromOffset(hslParams, hslStopOffsets.linearTop, gradientAlphas.linearTop, 0.97),
+    gradientRadialEnd: buildHslStopFromOffset(hslParams, hslStopOffsets.radialEnd, gradientAlphas.radialEnd, 0),
+    gradientRadialMid: buildHslStopFromOffset(hslParams, hslStopOffsets.radialMid, gradientAlphas.radialMid, 0.16),
+    gradientRadialStart: buildHslStopFromOffset(hslParams, hslStopOffsets.radialStart, gradientAlphas.radialStart, 0.36),
+  };
+  const explicitGradientColors = {
+    gradientRadialStart: sanitizeColor(safeConfig.gradientRadialStart, 'rgba(62, 92, 126, 0.34)'),
+    gradientRadialMid: sanitizeColor(safeConfig.gradientRadialMid, 'rgba(28, 44, 63, 0.14)'),
+    gradientRadialEnd: sanitizeColor(safeConfig.gradientRadialEnd, 'rgba(11, 16, 24, 0)'),
+    gradientLinearTop: sanitizeColor(safeConfig.gradientLinearTop, 'rgba(16, 24, 36, 0.97)'),
+    gradientLinearMid: sanitizeColor(safeConfig.gradientLinearMid, 'rgba(12, 18, 27, 0.985)'),
+    gradientLinearBottom: sanitizeColor(safeConfig.gradientLinearBottom, 'rgba(9, 14, 21, 0.995)'),
+  };
+  const gradientColors = colorModel === 'explicit' ? explicitGradientColors : hslGradientColors;
+  const parsedTopTintRgb = parseCssColorToRgb(gradientColors.gradientLinearTop);
+  const topTintSampleColor = parsedTopTintRgb
+    ? rgbColorToCss(parsedTopTintRgb)
+    : toHslCss(
+      hslParams.baseHue + hslStopOffsets.linearTop[0],
+      hslParams.baseSaturation + hslStopOffsets.linearTop[1],
+      hslParams.baseLightness + hslStopOffsets.linearTop[2],
+      null,
+    );
+
+  return {
+    messageText: sanitizeText(safeConfig.messageText, 'please wait, something special is loading'),
+    textSizePx: sanitizeNumber(safeConfig.textSizePx, 18, 8),
+    edgePaddingPx: sanitizeNumber(safeConfig.edgePaddingPx, 26, 0),
+    messageMaxWidthPx: sanitizeNumber(safeConfig.messageMaxWidthPx, 760, 120),
+    fontFamily: (
+      typeof safeConfig.fontFamily === 'string' && safeConfig.fontFamily.trim().length > 0
+        ? safeConfig.fontFamily.trim()
+        : '"Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, "Times New Roman", serif'
+    ),
+    fontWeight: sanitizeNumber(safeConfig.fontWeight, 700, 100),
+    lineHeight: sanitizeNumber(safeConfig.lineHeight, 1.28, 0.6),
+    textColor: sanitizeColor(safeConfig.textColor, '#f2f6fa'),
+    colorModel,
+    hslBaseHue: hslParams.baseHue,
+    hslBaseSaturation: hslParams.baseSaturation,
+    hslBaseLightness: hslParams.baseLightness,
+    hslHueInterval: hslParams.hueInterval,
+    hslSaturationInterval: hslParams.saturationInterval,
+    hslLightnessInterval: hslParams.lightnessInterval,
+    hslStopOffsets,
+    gradientStepLinearBottom: legacyGradientSteps.linearBottom,
+    gradientStepLinearMid: legacyGradientSteps.linearMid,
+    gradientStepLinearTop: legacyGradientSteps.linearTop,
+    gradientStepRadialEnd: legacyGradientSteps.radialEnd,
+    gradientStepRadialMid: legacyGradientSteps.radialMid,
+    gradientStepRadialStart: legacyGradientSteps.radialStart,
+    gradientLinearBottomAlpha: gradientAlphas.linearBottom,
+    gradientLinearMidAlpha: gradientAlphas.linearMid,
+    gradientLinearTopAlpha: gradientAlphas.linearTop,
+    gradientRadialEndAlpha: gradientAlphas.radialEnd,
+    gradientRadialMidAlpha: gradientAlphas.radialMid,
+    gradientRadialStartAlpha: gradientAlphas.radialStart,
+    gradientRadialStart: gradientColors.gradientRadialStart,
+    gradientRadialMid: gradientColors.gradientRadialMid,
+    gradientRadialEnd: gradientColors.gradientRadialEnd,
+    gradientLinearTop: gradientColors.gradientLinearTop,
+    gradientLinearMid: gradientColors.gradientLinearMid,
+    gradientLinearBottom: gradientColors.gradientLinearBottom,
+    topTintSampleColor,
+    debugFreezeVisible: safeConfig.debugFreezeVisible === true,
+    dotsLineHeight: sanitizeNumber(safeConfig.dotsLineHeight, 1.0, 0.1),
+    washEnabled: safeConfig.washEnabled !== false,
+    washDurationMs: sanitizeNumber(safeConfig.washDurationMs, 620, 80),
+    fadeOutDurationMs: sanitizeNumber(safeConfig.fadeOutDurationMs, 240, 80),
+    washCenterColor: sanitizeColor(safeConfig.washCenterColor, 'rgba(255, 255, 255, 0.98)'),
+    washMidColor: sanitizeColor(safeConfig.washMidColor, 'rgba(255, 255, 255, 0.80)'),
+    washEdgeColor: sanitizeColor(safeConfig.washEdgeColor, 'rgba(255, 255, 255, 0)'),
+    washScaleStart: sanitizeNumber(safeConfig.washScaleStart, 0.05, 0),
+    washScaleEnd: sanitizeNumber(safeConfig.washScaleEnd, 2.4, 0.1),
+    washOpacityStart: clampUnit(safeConfig.washOpacityStart, 0),
+    washOpacityPeak: clampUnit(safeConfig.washOpacityPeak, 0.82),
+    washOpacityEnd: clampUnit(safeConfig.washOpacityEnd, 1),
+    washCenterStopPercent: clamp(sanitizeNumber(safeConfig.washCenterStopPercent, 0), 0, 100),
+    washMidStopPercent: clamp(sanitizeNumber(safeConfig.washMidStopPercent, 25), 0, 100),
+    washEdgeStopPercent: clamp(sanitizeNumber(safeConfig.washEdgeStopPercent, 58), 0, 100),
+  };
+}
+
+function applyLoadingScreenConfig(configCandidate = null) {
+  const splash = document.getElementById('loadingScreen');
+  if (!splash || !splash.style) {
+    return;
+  }
+  const config = resolveLoadingScreenConfig(configCandidate);
+  splash.style.setProperty('--loading-font-size', `${config.textSizePx}px`);
+  splash.style.setProperty('--loading-edge-padding', `${config.edgePaddingPx}px`);
+  splash.style.setProperty('--loading-message-max-width', `${config.messageMaxWidthPx}px`);
+  splash.style.setProperty('--loading-font-family', config.fontFamily);
+  splash.style.setProperty('--loading-font-weight', String(config.fontWeight));
+  splash.style.setProperty('--loading-line-height', String(config.lineHeight));
+  splash.style.setProperty('--loading-text-color', config.textColor);
+  splash.style.setProperty('--loading-hsl-base-h', String(config.hslBaseHue));
+  splash.style.setProperty('--loading-hsl-base-s', `${config.hslBaseSaturation}%`);
+  splash.style.setProperty('--loading-hsl-base-l', `${config.hslBaseLightness}%`);
+  splash.style.setProperty('--loading-hsl-hue-interval', String(config.hslHueInterval));
+  splash.style.setProperty('--loading-hsl-saturation-interval', String(config.hslSaturationInterval));
+  splash.style.setProperty('--loading-hsl-lightness-interval', String(config.hslLightnessInterval));
+  splash.style.setProperty('--loading-dots-line-height', String(config.dotsLineHeight));
+  splash.style.setProperty('--loading-gradient-radial-start', config.gradientRadialStart);
+  splash.style.setProperty('--loading-gradient-radial-mid', config.gradientRadialMid);
+  splash.style.setProperty('--loading-gradient-radial-end', config.gradientRadialEnd);
+  splash.style.setProperty('--loading-gradient-linear-top', config.gradientLinearTop);
+  splash.style.setProperty('--loading-gradient-linear-mid', config.gradientLinearMid);
+  splash.style.setProperty('--loading-gradient-linear-bottom', config.gradientLinearBottom);
+  splash.style.setProperty('--loading-wash-duration', `${config.washDurationMs}ms`);
+  splash.style.setProperty('--loading-wash-center-color', config.washCenterColor);
+  splash.style.setProperty('--loading-wash-mid-color', config.washMidColor);
+  splash.style.setProperty('--loading-wash-edge-color', config.washEdgeColor);
+  splash.style.setProperty('--loading-wash-scale-start', String(config.washScaleStart));
+  splash.style.setProperty('--loading-wash-scale-end', String(config.washScaleEnd));
+  splash.style.setProperty('--loading-wash-opacity-start', String(config.washOpacityStart));
+  splash.style.setProperty('--loading-wash-opacity-peak', String(config.washOpacityPeak));
+  splash.style.setProperty('--loading-wash-opacity-end', String(config.washOpacityEnd));
+  splash.style.setProperty('--loading-wash-center-stop', `${config.washCenterStopPercent}%`);
+  splash.style.setProperty('--loading-wash-mid-stop', `${config.washMidStopPercent}%`);
+  splash.style.setProperty('--loading-wash-edge-stop', `${config.washEdgeStopPercent}%`);
+}
+
+function getDefaultLoadingScreenMessage() {
+  const config = resolveLoadingScreenConfig();
+  return typeof config.messageText === 'string' && config.messageText.length > 0
+    ? config.messageText
+    : 'please wait, something special is loading';
+}
+
 let loadingScreenHideTimerId = null;
 const loadingScreenGoneCallbacks = [];
 let visualViewportHandlersInstalled = false;
@@ -149,6 +448,7 @@ let viewportLayoutDebugToggleButton = null;
 let viewportRelativeAdjustableControls = null;
 let safariTopTintShimElement = null;
 let lastSafariTopTint = '';
+let loadingScreenTopTintOverride = '';
 let themeColorMetaElement = null;
 let lastThemeColor = '';
 let pageBackgroundGradientStops = [];
@@ -196,6 +496,23 @@ function runWhenLoadingScreenGone(callback) {
 function setLoadingScreenVisible(visible) {
   const splash = document.getElementById('loadingScreen');
   if (!splash) {
+    loadingScreenTopTintOverride = '';
+    syncSafariTopTintShim();
+    if (!visible) {
+      flushLoadingScreenGoneCallbacks();
+    }
+    return;
+  }
+  const splashConfig = resolveLoadingScreenConfig();
+  applyLoadingScreenConfig(splashConfig);
+  loadingScreenTopTintOverride = splashConfig.topTintSampleColor;
+  syncSafariTopTintShim();
+  if (splashConfig.debugFreezeVisible === true) {
+    if (loadingScreenHideTimerId !== null) {
+      clearTimeout(loadingScreenHideTimerId);
+      loadingScreenHideTimerId = null;
+    }
+    splash.classList.remove('is-hidden', 'is-washing', 'is-gone');
     if (!visible) {
       flushLoadingScreenGoneCallbacks();
     }
@@ -206,18 +523,29 @@ function setLoadingScreenVisible(visible) {
       clearTimeout(loadingScreenHideTimerId);
       loadingScreenHideTimerId = null;
     }
-    splash.classList.remove('is-hidden', 'is-gone');
+    splash.classList.remove('is-hidden', 'is-washing', 'is-gone');
     return;
   }
-  splash.classList.add('is-hidden');
+  if (splashConfig.washEnabled) {
+    splash.classList.remove('is-hidden');
+    splash.classList.add('is-washing');
+  } else {
+    splash.classList.remove('is-washing');
+    splash.classList.add('is-hidden');
+  }
   if (loadingScreenHideTimerId !== null) {
     clearTimeout(loadingScreenHideTimerId);
   }
+  const hideDelayMs = splashConfig.washEnabled
+    ? splashConfig.washDurationMs
+    : splashConfig.fadeOutDurationMs;
   loadingScreenHideTimerId = window.setTimeout(() => {
     loadingScreenHideTimerId = null;
     splash.classList.add('is-gone');
+    loadingScreenTopTintOverride = '';
+    syncSafariTopTintShim();
     flushLoadingScreenGoneCallbacks();
-  }, 240);
+  }, hideDelayMs);
 }
 
 function isLikelyIOSDevice() {
@@ -370,32 +698,13 @@ function resolveViewportLayoutRelativeAdjustableOverdrawConfig() {
   };
 }
 
-function resolveViewportHeightPxForDvhCalculations() {
-  const vv = window && window.visualViewport ? window.visualViewport : null;
-  const visualViewportHeight = vv && Number.isFinite(Number(vv.height))
-    ? Math.max(0, Number(vv.height))
-    : 0;
-  if (visualViewportHeight > 0) {
-    return visualViewportHeight;
-  }
-  const innerHeight = Number.isFinite(window.innerHeight) ? Math.max(0, window.innerHeight) : 0;
-  const root = document && document.documentElement ? document.documentElement : null;
-  const clientHeight = root && Number.isFinite(root.clientHeight) ? Math.max(0, root.clientHeight) : 0;
-  return Math.max(innerHeight, clientHeight);
-}
-
-function resolveViewportLayoutRelativeDvhOverdrawConfig(targetDvh) {
-  const safeTargetDvh = Number.isFinite(Number(targetDvh))
-    ? Math.max(100, Number(targetDvh))
-    : 100;
-  const viewportHeightPx = resolveViewportHeightPxForDvhCalculations();
-  const extraDvh = Math.max(0, safeTargetDvh - 100);
-  const extraHeightPx = viewportHeightPx > 0
-    ? (viewportHeightPx * extraDvh) / 100
-    : extraDvh;
+function resolveViewportLayoutConfig() {
+  const safeConfig = isPlainObjectLiteral(CONFIG.viewportLayout) ? CONFIG.viewportLayout : {};
+  const targetValueInput = Number(safeConfig.iosSafariRelative166TargetValue);
   return {
-    topPx: 0,
-    extraHeightPx,
+    iosSafariRelative166TargetValue: Number.isFinite(targetValueInput)
+      ? clamp(Math.round(targetValueInput), 100, 400)
+      : VIEWPORT_LAYOUT_RELATIVE_166_TARGET_VALUE,
   };
 }
 
@@ -407,12 +716,10 @@ function resolveViewportLayoutBiasOverdrawConfig(mode) {
     };
   }
   if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_166) {
-    const relativeDvhOverdraw = resolveViewportLayoutRelativeDvhOverdrawConfig(
-      VIEWPORT_LAYOUT_RELATIVE_166_TARGET_DVH,
-    );
+    const viewportLayoutConfig = resolveViewportLayoutConfig();
     return {
       topPx: VIEWPORT_LAYOUT_RELATIVE_166_TOP_OVERDRAW_PX,
-      extraHeightPx: relativeDvhOverdraw.extraHeightPx,
+      extraHeightPx: Math.max(0, viewportLayoutConfig.iosSafariRelative166TargetValue - 100),
     };
   }
   if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_ADJUSTABLE) {
@@ -772,6 +1079,16 @@ function resolvePageBackgroundGradientStopsFromCssVariables() {
 }
 
 function updateSafariTopTintFromGradient() {
+  const splashTintOverride = typeof loadingScreenTopTintOverride === 'string'
+    ? loadingScreenTopTintOverride.trim()
+    : '';
+  if (splashTintOverride.length > 0) {
+    if (splashTintOverride !== lastSafariTopTint) {
+      setSafariTopTint(splashTintOverride);
+      lastSafariTopTint = splashTintOverride;
+    }
+    return splashTintOverride;
+  }
   const gradientStops = resolvePageBackgroundGradientStopsFromCssVariables();
   const nextTint = getGradientColorAt(gradientStops, 0);
   if (nextTint === lastSafariTopTint) {
@@ -1680,6 +1997,7 @@ const CONFIG = configDefaultsFactory({
   defaultCountPerSide,
 });
 mergeConfigOverridesInPlace(CONFIG, USER_CONFIG);
+applyLoadingScreenConfig(CONFIG.loadingScreen);
 
 // Backward compatibility: `animation` now maps to `branchGrowth`.
 CONFIG.animation = CONFIG.branchGrowth;
@@ -13445,8 +13763,9 @@ async function bootstrap() {
     return;
   }
   STATE.hasBootstrapped = true;
+  const defaultLoadingMessage = getDefaultLoadingScreenMessage();
   setLoadingScreenVisible(true);
-  setLoadingScreenMessage('please wait, something special is loading');
+  setLoadingScreenMessage(defaultLoadingMessage);
 
   STATE.viewportLayoutMode = resolveInitialViewportLayoutMode();
   viewportScrollNudgeApplied = false;
@@ -13466,7 +13785,7 @@ async function bootstrap() {
   STATE.foliageLoad.leafReady = false;
   STATE.foliageLoad.flowerReady = false;
   STATE.foliageLoad.ready = false;
-  setLoadingScreenMessage('please wait, something special is loading');
+  setLoadingScreenMessage(defaultLoadingMessage);
   const initialVideoStatus = await waitForInitialHeroVideoReadyForStartup();
   STATE.foliageLoad.videoReady = Boolean(initialVideoStatus && initialVideoStatus.ready);
   refreshHeroVideoReferenceRect({ force: true });
@@ -13517,7 +13836,7 @@ async function bootstrap() {
   applyViewportScrollNudgeIfNeeded();
   setupEventHandlers();
   exposeDevToolsApi();
-  setLoadingScreenMessage('please wait, something special is loading');
+  setLoadingScreenMessage(defaultLoadingMessage);
   // Load heavier visual assets in the background and progressively upgrade.
   loadStemTexture()
     .then((stemTexture) => {

@@ -230,6 +230,87 @@
     },
   },
 
+  loadingScreen: {
+    messageText: 'please wait, \n something special is loading',
+    textSizePx: 17,
+    edgePaddingPx: 30,
+    messageMaxWidthPx: 300,
+    fontFamily: '"Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, "Times New Roman", serif',
+    fontWeight: 100,
+    lineHeight: 1.2,
+    textColor: '#f2f6fa',
+    colorModel: 'hslOffsets', // hslOffsets | explicit
+    hslBaseHue: 222, // base (darkest) hue
+    hslBaseSaturation: 15, // base (darkest) saturation %
+    hslBaseLightness: 17, // base (darkest) lightness %
+    // Per-stop H/S/L offsets from base, as [h, s, l]
+    hslStopOffsets: {
+      linearBottom: [0, 0, 0],
+      linearMid: [0, 0, 10],
+      linearTop: [0, 0, 10],
+      radialEnd: [0, 0, 30],
+      radialMid: [0, 0, 40],
+      radialStart: [0, 0, 60],
+    },
+    debugFreezeVisible: false, // keep splash pinned on screen for tuning
+    dotsLineHeight: 4.0, // line-height used by the loading dots row only
+    // Legacy global interval + step fallback (used if hslStopOffsets entries are missing)
+    // hslHueInterval: 0, // per-step hue delta
+    // hslSaturationInterval: 0, // per-step saturation delta
+    // hslLightnessInterval: 10, // per-step lightness delta
+    // gradientStepLinearBottom: 0, // base + interval * step
+    // gradientStepLinearMid: 1,
+    // gradientStepLinearTop: 2,
+    // gradientStepRadialEnd: 2,
+    // gradientStepRadialMid: 4,
+    // gradientStepRadialStart: 6,
+    // gradientLinearBottomAlpha: 0.995,
+    // gradientLinearMidAlpha: 0.985,
+    // gradientLinearTopAlpha: 0.97,
+    // gradientRadialEndAlpha: 0,
+    // gradientRadialMidAlpha: 0.16,
+    // gradientRadialStartAlpha: 0.36,
+
+
+        hslHueInterval: 0, // per-step hue delta
+    hslSaturationInterval: 0, // per-step saturation delta
+    hslLightnessInterval: 10, // per-step lightness delta
+    gradientStepLinearBottom: 0, // base + interval * step
+    gradientStepLinearMid: 1,
+    gradientStepLinearTop: 2,
+    gradientStepRadialEnd: 2,
+    gradientStepRadialMid: 4,
+    gradientStepRadialStart: 6,
+    gradientLinearBottomAlpha: 0,
+    gradientLinearMidAlpha: 0,
+    gradientLinearTopAlpha: 0,
+    gradientRadialEndAlpha: 1,
+    gradientRadialMidAlpha: 1,
+    gradientRadialStartAlpha: 1,
+
+    // Legacy explicit colors (used only when colorModel === 'explicit')
+    // gradientRadialStart: 'rgba(248, 251, 255, 0.36)',
+    // gradientRadialMid: 'rgba(238, 243, 248, 0.16)',
+    // gradientRadialEnd: 'rgba(255, 255, 255, 0)',
+    // gradientLinearTop: 'rgba(28, 38, 52, 0.97)',
+    // gradientLinearMid: 'rgba(18, 26, 38, 0.985)',
+    // gradientLinearBottom: 'rgba(12, 18, 27, 0.995)',
+    washEnabled: false,
+    washDurationMs: 1200,
+    fadeOutDurationMs: 200,
+    washCenterColor: 'rgba(255, 255, 255, 0)',
+    washMidColor: 'rgba(255, 255, 255, 0.84)',
+    washEdgeColor: 'rgba(255, 255, 255, 0)',
+    washScaleStart: 0.05, // starting bloom scale
+    washScaleEnd: 10, // ending bloom scale (increase to fill the whole screen)
+    washOpacityStart: 1,
+    washOpacityPeak: 0,
+    washOpacityEnd: 0,
+    washCenterStopPercent: 0, // radial gradient stop locations for bloom
+    washMidStopPercent: 25,
+    washEdgeStopPercent: 58,
+  },
+
   centerOverlayImage: {
     enabled: true,
     spritePath: './test_page2.png',

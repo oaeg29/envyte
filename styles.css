@@ -302,19 +302,63 @@ body[data-viewport-layout-mode="relativeAdjustable"] #loadingScreen {
   display: flex;
   align-items: center;
   justify-content: center;
+  box-sizing: border-box;
+  padding: var(--loading-edge-padding, 24px);
   background:
-    radial-gradient(120% 95% at 50% 18%, rgba(62, 92, 126, 0.34) 0%, rgba(28, 44, 63, 0.14) 42%, rgba(11, 16, 24, 0) 74%),
-    linear-gradient(180deg, rgba(16, 24, 36, 0.97) 0%, rgba(12, 18, 27, 0.985) 48%, rgba(9, 14, 21, 0.995) 100%);
-  color: #f2f6fa;
-  font: 700 21px/1.28 "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, "Times New Roman", serif;
+    radial-gradient(
+      120% 95% at 50% 18%,
+      var(--loading-gradient-radial-start, rgba(62, 92, 126, 0.34)) 0%,
+      var(--loading-gradient-radial-mid, rgba(28, 44, 63, 0.14)) 42%,
+      var(--loading-gradient-radial-end, rgba(11, 16, 24, 0)) 74%
+    ),
+    linear-gradient(
+      180deg,
+      var(--loading-gradient-linear-top, rgba(16, 24, 36, 0.97)) 0%,
+      var(--loading-gradient-linear-mid, rgba(12, 18, 27, 0.985)) 48%,
+      var(--loading-gradient-linear-bottom, rgba(9, 14, 21, 0.995)) 100%
+    );
+  color: var(--loading-text-color, #f2f6fa);
+  font: var(--loading-font-weight, 700)
+    var(--loading-font-size, 18px) / var(--loading-line-height, 1.28)
+    var(--loading-font-family, "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, "Times New Roman", serif);
   text-align: center;
   pointer-events: none;
   opacity: 1;
   transition: opacity 220ms ease;
+  isolation: isolate;
+}
+
+#loadingScreen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transform: scale(var(--loading-wash-scale-start, 0.05));
+  transform-origin: 50% 50%;
+  background:
+    radial-gradient(
+      circle at 50% 50%,
+      var(--loading-wash-center-color, rgba(255, 255, 255, 0.98)) var(--loading-wash-center-stop, 0%),
+      var(--loading-wash-mid-color, rgba(255, 255, 255, 0.8)) var(--loading-wash-mid-stop, 25%),
+      var(--loading-wash-edge-color, rgba(255, 255, 255, 0)) var(--loading-wash-edge-stop, 58%)
+    );
 }
 
 #loadingScreen.is-hidden {
   opacity: 0;
+}
+
+#loadingScreen.is-washing {
+  opacity: 1;
+}
+
+#loadingScreen.is-washing::after {
+  animation: loadingScreenWash var(--loading-wash-duration, 620ms) ease-out forwards;
+}
+
+#loadingScreen.is-washing .loading-card {
+  animation: loadingContentFade var(--loading-wash-duration, 620ms) ease-out forwards;
 }
 
 #loadingScreen.is-gone {
@@ -322,6 +366,7 @@ body[data-viewport-layout-mode="relativeAdjustable"] #loadingScreen {
 }
 
 .loading-card {
+  max-width: min(100%, var(--loading-message-max-width, 760px));
   padding: 0;
   border-radius: 0;
   background: transparent;
@@ -329,15 +374,19 @@ body[data-viewport-layout-mode="relativeAdjustable"] #loadingScreen {
 }
 
 #loadingMessage {
+  max-width: 100%;
   letter-spacing: 0.03em;
   text-transform: lowercase;
   text-shadow: 0 1px 8px rgba(0, 0, 0, 0.34);
+  overflow-wrap: break-word;
+  white-space: pre-line;
 }
 
 .loading-dots {
   margin-top: 8px;
   display: inline-flex;
   gap: 6px;
+  line-height: var(--loading-dots-line-height, 1);
 }
 
 .loading-dots span {
@@ -359,4 +408,29 @@ body[data-viewport-layout-mode="relativeAdjustable"] #loadingScreen {
 @keyframes loadingPulse {
   0%, 80%, 100% { transform: translateY(0) scale(0.85); opacity: 0.4; }
   40% { transform: translateY(-3px) scale(1); opacity: 1; }
+}
+
+@keyframes loadingScreenWash {
+  0% {
+    opacity: var(--loading-wash-opacity-start, 0);
+    transform: scale(var(--loading-wash-scale-start, 0.05));
+  }
+  12% {
+    opacity: var(--loading-wash-opacity-peak, 0.82);
+  }
+  100% {
+    opacity: var(--loading-wash-opacity-end, 1);
+    transform: scale(var(--loading-wash-scale-end, 2.4));
+  }
+}
+
+@keyframes loadingContentFade {
+  0% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
 }

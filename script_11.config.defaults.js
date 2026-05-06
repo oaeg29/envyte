@@ -230,6 +230,69 @@
     },
   },
 
+  loadingScreen: {
+    messageText: 'please wait, something special is loading',
+    textSizePx: 17,
+    edgePaddingPx: 30,
+    messageMaxWidthPx: 760,
+    fontFamily: '"Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, "Times New Roman", serif',
+    fontWeight: 700,
+    lineHeight: 1.26,
+    textColor: '#f2f6fa',
+    colorModel: 'hslOffsets', // hslOffsets | explicit
+    hslBaseHue: 214, // base (darkest) hue
+    hslBaseSaturation: 36, // base (darkest) saturation %
+    hslBaseLightness: 10, // base (darkest) lightness %
+    // Per-stop H/S/L offsets from base, as [h, s, l]
+    hslStopOffsets: {
+      linearBottom: [0, 0, 0],
+      linearMid: [0, 0, 10],
+      linearTop: [0, 0, 20],
+      radialEnd: [0, 0, 20],
+      radialMid: [0, 0, 40],
+      radialStart: [0, 0, 60],
+    },
+    debugFreezeVisible: false, // keep splash pinned on screen for tuning
+    dotsLineHeight: 1.0, // line-height used by the loading dots row only
+    // Legacy global interval + step fallback (used if hslStopOffsets entries are missing)
+    hslHueInterval: 0, // per-step hue delta
+    hslSaturationInterval: 0, // per-step saturation delta
+    hslLightnessInterval: 10, // per-step lightness delta
+    gradientStepLinearBottom: 0, // base + interval * step
+    gradientStepLinearMid: 1,
+    gradientStepLinearTop: 2,
+    gradientStepRadialEnd: 2,
+    gradientStepRadialMid: 4,
+    gradientStepRadialStart: 6,
+    gradientLinearBottomAlpha: 0.995,
+    gradientLinearMidAlpha: 0.985,
+    gradientLinearTopAlpha: 0.97,
+    gradientRadialEndAlpha: 0,
+    gradientRadialMidAlpha: 0.16,
+    gradientRadialStartAlpha: 0.36,
+    // Legacy explicit colors (used only when colorModel === 'explicit')
+    gradientRadialStart: 'rgba(248, 251, 255, 0.36)',
+    gradientRadialMid: 'rgba(238, 243, 248, 0.16)',
+    gradientRadialEnd: 'rgba(255, 255, 255, 0)',
+    gradientLinearTop: 'rgba(28, 38, 52, 0.97)',
+    gradientLinearMid: 'rgba(18, 26, 38, 0.985)',
+    gradientLinearBottom: 'rgba(12, 18, 27, 0.995)',
+    washEnabled: true,
+    washDurationMs: 720,
+    fadeOutDurationMs: 240,
+    washCenterColor: 'rgba(255, 255, 255, 0.99)',
+    washMidColor: 'rgba(255, 255, 255, 0.84)',
+    washEdgeColor: 'rgba(255, 255, 255, 0)',
+    washScaleStart: 0.05, // starting bloom scale
+    washScaleEnd: 2.4, // ending bloom scale (increase to fill the whole screen)
+    washOpacityStart: 0,
+    washOpacityPeak: 0.82,
+    washOpacityEnd: 1,
+    washCenterStopPercent: 0, // radial gradient stop locations for bloom
+    washMidStopPercent: 25,
+    washEdgeStopPercent: 58,
+  },
+
   centerOverlayImage: {
     enabled: true,
     spritePath: './test_page2.png',
@@ -297,6 +360,10 @@
     mobileOnly: true,
     mobileCap: 2.0,
     desktopCap: null, // ignored when mobileOnly=true; null disables desktop cap
+  },
+
+  viewportLayout: {
+    iosSafariRelative166TargetValue: 155, // 100 = no overdraw, 155 = +55px overdraw
   },
 
   safariTopTintShim: {
