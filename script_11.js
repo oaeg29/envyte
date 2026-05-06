@@ -97,6 +97,7 @@ const VIEWPORT_LAYOUT_MODE_QUERY_PARAM = 'viewportMode';
 const VIEWPORT_LAYOUT_DEBUG_QUERY_PARAM = 'viewportDebug';
 const VIEWPORT_LAYOUT_SCROLL_NUDGE_QUERY_PARAM = 'viewportScrollNudge';
 const VIEWPORT_LAYOUT_TOP_TINT_SHIM_QUERY_PARAM = 'viewportTopTintShim';
+const VIEWPORT_LAYOUT_TOP_TINT_EXPERIMENT_QUERY_PARAM = 'viewportTopTintExperiment';
 const VIEWPORT_LAYOUT_MODE_DEBUG_BUTTON_ID = 'viewportModeDebugToggle';
 const VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_CONTROLS_ID = 'viewportRelativeAdjustableControls';
 const VIEWPORT_LAYOUT_SCROLL_STAGE_ID = 'ios-scroll-stage';
@@ -487,6 +488,19 @@ function readViewportTopTintShimOverrideFromSearchParams() {
   }
 }
 
+function shouldEnableViewportTopTintExperiment() {
+  if (!window || !window.location || typeof window.location.search !== 'string') {
+    return false;
+  }
+  try {
+    const searchParams = new URLSearchParams(window.location.search);
+    const rawFlag = String(searchParams.get(VIEWPORT_LAYOUT_TOP_TINT_EXPERIMENT_QUERY_PARAM) || '').trim().toLowerCase();
+    return rawFlag === '1' || rawFlag === 'true' || rawFlag === 'yes' || rawFlag === 'on';
+  } catch (_error) {
+    return false;
+  }
+}
+
 function resolveInitialViewportLayoutMode() {
   const modeFromSearchParams = readViewportLayoutModeFromSearchParams();
   if (modeFromSearchParams) {
@@ -757,6 +771,7 @@ function syncSafariTopTintShim() {
   }
   ensureSafariTopTintShimElement();
   const enabled = shouldEnableSafariTopTintShim();
+  const experimentEnabled = shouldEnableViewportTopTintExperiment();
   const config = resolveSafariTopTintShimConfig();
   const shouldSyncThemeColor = shouldSyncDynamicThemeColor();
   let topTint = null;
@@ -768,6 +783,8 @@ function syncSafariTopTintShim() {
     String(clamp(config.opacity, 0.01, 1)),
   );
   document.body.classList.toggle('ios-safari-top-tint-shim', enabled);
+  document.body.classList.toggle('ios-safari-top-tint-shim-experiment', enabled && experimentEnabled);
+  document.documentElement.classList.toggle('ios-safari-top-tint-fallback', enabled && experimentEnabled);
   if (shouldSyncThemeColor && typeof topTint === 'string' && topTint.trim().length > 0) {
     setDynamicThemeColor(topTint);
   }
