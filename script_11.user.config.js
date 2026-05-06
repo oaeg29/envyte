@@ -241,7 +241,7 @@
     textColor: '#f2f6fa',
     colorModel: 'hslOffsets', // hslOffsets | explicit
     hslBaseHue: 222, // base (darkest) hue
-    hslBaseSaturation: 15, // base (darkest) saturation %
+    hslBaseSaturation: 2, // base (darkest) saturation %
     hslBaseLightness: 17, // base (darkest) lightness %
     // Per-stop H/S/L offsets from base, as [h, s, l]
     hslStopOffsets: {
@@ -252,7 +252,7 @@
       radialMid: [0, 0, 40],
       radialStart: [0, 0, 60],
     },
-    debugFreezeVisible: false, // keep splash pinned on screen for tuning
+    debugFreezeVisible: true, // keep splash pinned on screen for tuning
     dotsLineHeight: 4.0, // line-height used by the loading dots row only
     // Legacy global interval + step fallback (used if hslStopOffsets entries are missing)
     // hslHueInterval: 0, // per-step hue delta
@@ -281,9 +281,9 @@
     gradientStepRadialEnd: 2,
     gradientStepRadialMid: 4,
     gradientStepRadialStart: 6,
-    gradientLinearBottomAlpha: 0,
-    gradientLinearMidAlpha: 0,
-    gradientLinearTopAlpha: 0,
+    gradientLinearBottomAlpha: 1,
+    gradientLinearMidAlpha: 1,
+    gradientLinearTopAlpha: 0.5,
     gradientRadialEndAlpha: 1,
     gradientRadialMidAlpha: 1,
     gradientRadialStartAlpha: 1,

@@ -241,7 +241,14 @@ body[data-viewport-layout-mode="relativeAdjustable"] #myCanvasFlowersBack,
 body[data-viewport-layout-mode="relativeAdjustable"] #myCanvasFlowersFront,
 body[data-viewport-layout-mode="relativeAdjustable"] video,
 body[data-viewport-layout-mode="relativeAdjustable"] #centerOverlayImage,
-body[data-viewport-layout-mode="relativeAdjustable"] #loadingScreen {
+body[data-viewport-layout-mode="relativeAdjustable"] #loadingScreen,
+body[data-viewport-layout-mode="relative166"] #myCanvas,
+body[data-viewport-layout-mode="relative166"] #myCanvasFront,
+body[data-viewport-layout-mode="relative166"] #myCanvasFlowersBack,
+body[data-viewport-layout-mode="relative166"] #myCanvasFlowersFront,
+body[data-viewport-layout-mode="relative166"] video,
+body[data-viewport-layout-mode="relative166"] #centerOverlayImage,
+body[data-viewport-layout-mode="relative166"] #loadingScreen {
   position: absolute;
 }
 
