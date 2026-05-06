@@ -10261,6 +10261,21 @@ function resolveViewportSizeForRendering() {
     ? Math.max(0, Number(vv.height))
     : 0;
 
+  // Legacy is the baseline path used outside iOS Safari.
+  // Resolve it from the dynamic viewport (dvh-like) so browser UI changes are respected.
+  if (layoutMode === VIEWPORT_LAYOUT_MODE_LEGACY) {
+    const dynamicWidth = safeVisualViewportWidth > 0
+      ? safeVisualViewportWidth
+      : Math.max(safeInnerWidth, safeClientWidth);
+    const dynamicHeight = safeVisualViewportHeight > 0
+      ? safeVisualViewportHeight
+      : Math.max(safeInnerHeight, safeClientHeight);
+    return {
+      width: dynamicWidth > 0 ? dynamicWidth : safeInnerWidth,
+      height: dynamicHeight > 0 ? dynamicHeight : safeInnerHeight,
+    };
+  }
+
   // Dynamic mode follows the visual viewport (dvh-like behavior).
   // Cover mode intentionally does not; it fills the large viewport and can render under browser UI.
   if (
