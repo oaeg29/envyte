@@ -13,6 +13,19 @@
   const DEFAULT_LILY_CLOSED_SPRITE_SCALE = 4.1590909091;
   const DEFAULT_BLUE_SPRITE_PATH = './blue_sprite_2_upscaled.png';
 
+  function shouldDeferViewportHeavyResize() {
+    return (
+      typeof globalScope.__zeinaShouldDeferViewportHeavyResize === 'function'
+      && globalScope.__zeinaShouldDeferViewportHeavyResize() === true
+    );
+  }
+
+  function viewportDebugLog(...parts) {
+    if (typeof globalScope.__zeinaViewportDebugLog === 'function') {
+      globalScope.__zeinaViewportDebugLog(...parts);
+    }
+  }
+
   function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
   }
@@ -1821,6 +1834,11 @@
       staticLayerDirty: true,
       staticLayerScaleX: 1,
       staticLayerScaleY: 1,
+      pendingStaticLayerResize: false,
+      pendingStaticLayerWidth: 0,
+      pendingStaticLayerHeight: 0,
+      pendingStaticLayerScaleX: 1,
+      pendingStaticLayerScaleY: 1,
       imageCache: new Map(),
       imageLoadPromises: new Map(),
       baked: {
@@ -1881,6 +1899,8 @@
         frontPoolCursor: 0,
         lastSizeKeyBack: '',
         lastSizeKeyFront: '',
+        pendingResizeBack: false,
+        pendingResizeFront: false,
         layerMetrics: {
           back: {
             scaleX: 1,
@@ -1914,8 +1934,11 @@
       state.pixi.surfaces.frontCanvas = safe.frontCanvas || null;
       state.pixi.lastSizeKeyBack = '';
       state.pixi.lastSizeKeyFront = '';
+      state.pixi.pendingResizeBack = false;
+      state.pixi.pendingResizeFront = false;
       state.pixi.layerMetrics.back.key = '';
       state.pixi.layerMetrics.front.key = '';
+      viewportDebugLog('flowers.setPixiSurfaces', `back=${Boolean(state.pixi.surfaces.backCanvas)}`, `front=${Boolean(state.pixi.surfaces.frontCanvas)}`);
       if (state.pixi.backApp) {
         state.pixi.backInitReady = Boolean(
           state.pixi.backApp.renderer && typeof state.pixi.backApp.renderer.render === 'function',
@@ -2111,16 +2134,36 @@
 
       state.pixi[initReadyKey] = true;
       const sizeKeyState = layerName === 'front' ? 'lastSizeKeyFront' : 'lastSizeKeyBack';
+      const pendingResizeState = layerName === 'front' ? 'pendingResizeFront' : 'pendingResizeBack';
       const sizeKey = `${targetWidth}x${targetHeight}`;
-      if (state.pixi[sizeKeyState] !== sizeKey) {
+      const sizeChanged = state.pixi[sizeKeyState] !== sizeKey;
+      const shouldDeferResize = shouldDeferViewportHeavyResize();
+      if (sizeChanged && shouldDeferResize) {
+        state.pixi[pendingResizeState] = true;
+        viewportDebugLog(
+          'flowers.pixi.resize.defer',
+          `layer=${layerName}`,
+          `target=${sizeKey}`,
+        );
+        return app;
+      }
+      if (sizeChanged || state.pixi[pendingResizeState] === true) {
+        const resizeStartMs = performance.now();
         if (app.renderer && typeof app.renderer.resize === 'function') {
           app.renderer.resize(targetWidth, targetHeight);
         }
         state.pixi[sizeKeyState] = sizeKey;
+        state.pixi[pendingResizeState] = false;
         const layerMetrics = layerName === 'front'
           ? state.pixi.layerMetrics.front
           : state.pixi.layerMetrics.back;
         layerMetrics.key = '';
+        viewportDebugLog(
+          'flowers.pixi.resize.apply',
+          `layer=${layerName}`,
+          `target=${sizeKey}`,
+          `duration=${(performance.now() - resizeStartMs).toFixed(2)}ms`,
+        );
       }
 
       return app;
@@ -2242,12 +2285,15 @@
     }
 
     function invalidateAllFlowerRenderCaches() {
+      let invalidatedCount = 0;
       for (let i = 0; i < state.flowers.length; i += 1) {
         const flower = state.flowers[i];
         if (flower && flower.renderCache) {
           flower.renderCache.valid = false;
+          invalidatedCount += 1;
         }
       }
+      viewportDebugLog('flowers.invalidateAllFlowerRenderCaches', `count=${invalidatedCount}`);
     }
 
     function resetStaticLayerActiveSnapshot() {
@@ -2268,17 +2314,61 @@
         state.staticLayerCanvas.width !== safeWidth
         || state.staticLayerCanvas.height !== safeHeight
       ) {
+        if (shouldDeferViewportHeavyResize()) {
+          state.pendingStaticLayerResize = true;
+          state.pendingStaticLayerWidth = safeWidth;
+          state.pendingStaticLayerHeight = safeHeight;
+          state.pendingStaticLayerScaleX = safeScaleX;
+          state.pendingStaticLayerScaleY = safeScaleY;
+          viewportDebugLog(
+            'flowers.staticLayer.resize.defer',
+            `size=${safeWidth}x${safeHeight}`,
+          );
+          return state.staticLayerCtx;
+        }
         state.staticLayerCanvas.width = safeWidth;
         state.staticLayerCanvas.height = safeHeight;
         markStaticLayerDirty();
+        viewportDebugLog(
+          'flowers.staticLayer.resize.apply',
+          `size=${safeWidth}x${safeHeight}`,
+        );
       }
       if (
         Math.abs(state.staticLayerScaleX - safeScaleX) > 1e-8
         || Math.abs(state.staticLayerScaleY - safeScaleY) > 1e-8
       ) {
+        if (shouldDeferViewportHeavyResize()) {
+          state.pendingStaticLayerResize = true;
+          state.pendingStaticLayerWidth = safeWidth;
+          state.pendingStaticLayerHeight = safeHeight;
+          state.pendingStaticLayerScaleX = safeScaleX;
+          state.pendingStaticLayerScaleY = safeScaleY;
+          viewportDebugLog(
+            'flowers.staticLayer.scale.defer',
+            `scale=${safeScaleX.toFixed(4)}x${safeScaleY.toFixed(4)}`,
+          );
+          return state.staticLayerCtx;
+        }
         state.staticLayerScaleX = safeScaleX;
         state.staticLayerScaleY = safeScaleY;
         markStaticLayerDirty();
+      }
+      if (
+        state.pendingStaticLayerResize
+        && !shouldDeferViewportHeavyResize()
+      ) {
+        state.staticLayerCanvas.width = Math.max(1, Math.floor(state.pendingStaticLayerWidth || safeWidth));
+        state.staticLayerCanvas.height = Math.max(1, Math.floor(state.pendingStaticLayerHeight || safeHeight));
+        state.staticLayerScaleX = Number.isFinite(state.pendingStaticLayerScaleX) ? Math.max(1e-8, Math.abs(state.pendingStaticLayerScaleX)) : safeScaleX;
+        state.staticLayerScaleY = Number.isFinite(state.pendingStaticLayerScaleY) ? Math.max(1e-8, Math.abs(state.pendingStaticLayerScaleY)) : safeScaleY;
+        state.pendingStaticLayerResize = false;
+        markStaticLayerDirty();
+        viewportDebugLog(
+          'flowers.staticLayer.resize.flush',
+          `size=${state.staticLayerCanvas.width}x${state.staticLayerCanvas.height}`,
+          `scale=${state.staticLayerScaleX.toFixed(4)}x${state.staticLayerScaleY.toFixed(4)}`,
+        );
       }
       if (state.staticLayerCtx) {
         state.staticLayerCtx.setTransform(state.staticLayerScaleX, 0, 0, state.staticLayerScaleY, 0, 0);
@@ -2798,6 +2888,7 @@
     }
 
     function setEndpoints(endpoints, flowersConfig) {
+      const setEndpointsStartMs = performance.now();
       const source = Array.isArray(endpoints) ? endpoints : [];
       const safeFlowersConfig = isPlainObject(flowersConfig) ? flowersConfig : {};
       const commonConfig = resolveCommonFlowerConfig(safeFlowersConfig);
@@ -2960,6 +3051,12 @@
       resetStaticLayerActiveSnapshot();
       markStaticLayerDirty();
       state.lastUpdateMs = 0;
+      viewportDebugLog(
+        'flowers.setEndpoints',
+        `endpointCount=${source.length}`,
+        `flowerCount=${state.flowers.length}`,
+        `duration=${(performance.now() - setEndpointsStartMs).toFixed(2)}ms`,
+      );
     }
 
     function setMousePosition(x, y) {
@@ -3949,6 +4046,12 @@
       state.performance.staticLayerRebuildCount += 1;
       state.performance.staticLayerRebuildTotalMs += rebuildElapsedMs;
       state.performance.staticLayerRebuildLastMs = rebuildElapsedMs;
+      viewportDebugLog(
+        'flowers.cache.rebuild',
+        `flowerType=${flower.type || 'unknown'}`,
+        `size=${cache.widthPx}x${cache.heightPx}`,
+        `duration=${rebuildElapsedMs.toFixed(2)}ms`,
+      );
       return cache;
     }
 
