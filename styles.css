@@ -6,9 +6,15 @@
   --app-viewport-offset-top: 0px;
 }
 
-@supports (height: 100dvh) {
+@supports (height: 100lvh) {
   :root {
-    --app-viewport-height: 100dvh;
+    --app-viewport-height: 100lvh;
+  }
+}
+
+@supports (width: 100lvw) {
+  :root {
+    --app-viewport-width: 100lvw;
   }
 }
 
@@ -32,8 +38,8 @@ body {
   position: fixed;
   top: var(--app-viewport-offset-top);
   left: var(--app-viewport-offset-left);
-  width: 100vw;
-  height: 100vh;
+  width: var(--app-viewport-width);
+  height: var(--app-viewport-height);
   z-index: -1;
   pointer-events: none;
 }
@@ -42,8 +48,8 @@ body {
   position: fixed;
   top: var(--app-viewport-offset-top);
   left: var(--app-viewport-offset-left);
-  width: 100vw;
-  height: 100vh;
+  width: var(--app-viewport-width);
+  height: var(--app-viewport-height);
   z-index: 10000;
   pointer-events: none;
 }
@@ -52,8 +58,8 @@ body {
   position: fixed;
   top: var(--app-viewport-offset-top);
   left: var(--app-viewport-offset-left);
-  width: 100vw;
-  height: 100vh;
+  width: var(--app-viewport-width);
+  height: var(--app-viewport-height);
   z-index: 0;
   pointer-events: none;
 }
@@ -62,20 +68,10 @@ body {
   position: fixed;
   top: var(--app-viewport-offset-top);
   left: var(--app-viewport-offset-left);
-  width: 100vw;
-  height: 100vh;
+  width: var(--app-viewport-width);
+  height: var(--app-viewport-height);
   z-index: 10001;
   pointer-events: none;
-}
-
-@supports (height: 100dvh) {
-  #myCanvas,
-  #myCanvasFront,
-  #myCanvasFlowersBack,
-  #myCanvasFlowersFront {
-    width: 100dvw;
-    height: 100dvh;
-  }
 }
 
 main, header, footer {
@@ -93,19 +89,12 @@ video {
   left: calc(50% + var(--app-viewport-offset-left));
   transform: translate(-50%, -50%) rotate(var(--hero-video-rotate, 0deg));
   width: auto;          /* Preserve aspect ratio */
-  height: 100vh; /* Fallback */
-  min-height: 100vh;
+  height: var(--app-viewport-height);
+  min-height: var(--app-viewport-height);
   display: block;
   z-index: 1;          /* On top of everything */
   margin: 0;
   padding: 0;
-}
-
-@supports (height: 100dvh) {
-  video {
-    height: 100dvh;
-    min-height: 100dvh;
-  }
 }
 
 #centerOverlayImage {
@@ -192,6 +181,27 @@ body.ios26-fixed-workaround #loadingScreen {
 
 .loading-dots span:nth-child(3) {
   animation-delay: 0.28s;
+}
+
+#viewportModeDebugToggle {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  z-index: 30000;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: rgba(8, 12, 18, 0.78);
+  color: #f2f6fa;
+  font: 600 12px/1.2 "Avenir Next", "Avenir", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  pointer-events: auto;
+  user-select: none;
+}
+
+body.ios26-fixed-workaround #viewportModeDebugToggle {
+  position: absolute;
 }
 
 @keyframes loadingPulse {
