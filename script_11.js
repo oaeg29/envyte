@@ -798,7 +798,6 @@ function isLikelySafariOnIOS() {
     return false;
   }
   const userAgent = typeof navigator.userAgent === 'string' ? navigator.userAgent : '';
-  const vendor = typeof navigator.vendor === 'string' ? navigator.vendor : '';
   const uaData = navigator.userAgentData && typeof navigator.userAgentData === 'object'
     ? navigator.userAgentData
     : null;
@@ -806,20 +805,16 @@ function isLikelySafariOnIOS() {
   const hasSafariToken = /Safari\//i.test(userAgent);
   const hasVersionToken = /Version\//i.test(userAgent);
   const hasAppleWebKitToken = /AppleWebKit\//i.test(userAgent);
-  const hasAppleVendor = /Apple/i.test(vendor);
-  const hasOtherBrowserToken = /(?:CriOS|FxiOS|EdgiOS|OPiOS|YaBrowser|DuckDuckGo|Brave|GSA|Instagram|FBAN|FBAV|Twitter|Line|Snapchat)/i.test(userAgent);
+  const hasOtherBrowserToken = /(?:CriOS|FxiOS|EdgiOS|OPiOS|YaBrowser|DuckDuckGo|Brave|GSA|Instagram|FBAN|FBAV|Twitter|Line|Snapchat|SamsungBrowser|Vivaldi|UCBrowser|Puffin|QQBrowser|Baidu|Naver|Whale|Focus|Yandex|Firefox|Chrome|EdgA|Edg|OPR)/i.test(userAgent);
   const hasOtherBrandToken = brands.some((entry) => (
     entry
     && typeof entry.brand === 'string'
-    && /Chrom(e|ium)|Edge|Opera|Firefox|Samsung/i.test(entry.brand)
+    && /Chrom(e|ium)|Edge|Opera|Firefox|Samsung|Brave|DuckDuckGo|Vivaldi|Yandex/i.test(entry.brand)
   ));
   if (hasOtherBrowserToken || hasOtherBrandToken) {
     return false;
   }
-  if (hasSafariToken && hasVersionToken) {
-    return true;
-  }
-  return hasAppleWebKitToken && hasAppleVendor && hasSafariToken;
+  return hasAppleWebKitToken && hasSafariToken && hasVersionToken;
 }
 
 function resolveInitialViewportRelativeAdjustableValue() {
@@ -951,9 +946,9 @@ function configureHeroVideoElement() {
   video.preload = 'auto';
   video.defaultMuted = true;
   video.muted = true;
-  video.autoplay = true;
+  video.autoplay = false;
   video.playsInline = true;
-  video.setAttribute('autoplay', '');
+  video.removeAttribute('autoplay');
   video.setAttribute('muted', '');
   video.setAttribute('playsinline', '');
   video.setAttribute('webkit-playsinline', '');
@@ -10553,7 +10548,21 @@ function adjustViewportRelativeAdjustableValue(delta) {
   applyViewportLayoutMode(STATE.viewportLayoutMode, { forceRerender: true });
 }
 
+function shouldEnableViewportRelativeAdjustableControls() {
+  return shouldEnableViewportLayoutDebugToggle();
+}
+
 function ensureViewportRelativeAdjustableControls() {
+  if (!shouldEnableViewportRelativeAdjustableControls()) {
+    const existing = document && typeof document.getElementById === 'function'
+      ? document.getElementById(VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_CONTROLS_ID)
+      : null;
+    if (existing && existing.parentNode) {
+      existing.parentNode.removeChild(existing);
+    }
+    viewportRelativeAdjustableControls = null;
+    return;
+  }
   if (!document || !document.body) {
     return;
   }
