@@ -58,14 +58,23 @@ const VIEWPORT_LAYOUT_MODE_LEGACY = 'legacy';
 const VIEWPORT_LAYOUT_MODE_RELATIVE_116 = 'relative116';
 const VIEWPORT_LAYOUT_MODE_RELATIVE_120 = 'relative120';
 const VIEWPORT_LAYOUT_MODE_RELATIVE_124 = 'relative124';
+const VIEWPORT_LAYOUT_MODE_RELATIVE_140 = 'relative140';
+const VIEWPORT_LAYOUT_MODE_RELATIVE_160 = 'relative160';
+const VIEWPORT_LAYOUT_MODE_BODY_FIXED = 'bodyfixed';
+const VIEWPORT_LAYOUT_MODE_SCROLL_STAGE = 'scrollstage';
 const VIEWPORT_LAYOUT_MODE_ROOT_BG = 'rootbg';
 const VIEWPORT_LAYOUT_RELATIVE_116_OVERDRAW_PX = 8;
 const VIEWPORT_LAYOUT_RELATIVE_120_OVERDRAW_PX = 10;
 const VIEWPORT_LAYOUT_RELATIVE_124_OVERDRAW_PX = 12;
+const VIEWPORT_LAYOUT_RELATIVE_140_OVERDRAW_PX = 20;
+const VIEWPORT_LAYOUT_RELATIVE_160_OVERDRAW_PX = 30;
+const VIEWPORT_LAYOUT_SCROLL_STAGE_OVERDRAW_PX = 300;
 const VIEWPORT_LAYOUT_ROOT_BG_OVERDRAW_PX = 160;
 const VIEWPORT_LAYOUT_MODE_QUERY_PARAM = 'viewportMode';
 const VIEWPORT_LAYOUT_DEBUG_QUERY_PARAM = 'viewportDebug';
+const VIEWPORT_LAYOUT_SCROLL_NUDGE_QUERY_PARAM = 'viewportScrollNudge';
 const VIEWPORT_LAYOUT_MODE_DEBUG_BUTTON_ID = 'viewportModeDebugToggle';
+const VIEWPORT_LAYOUT_SCROLL_STAGE_ID = 'ios-scroll-stage';
 
 function normalizeHostedAssetPath(path) {
   if (typeof path !== 'string') {
@@ -99,6 +108,9 @@ let loadingScreenHideTimerId = null;
 const loadingScreenGoneCallbacks = [];
 let visualViewportHandlersInstalled = false;
 let viewportLayoutDebugToggleButton = null;
+let viewportScrollNudgeApplied = false;
+let viewportBodyFixedOriginalInlineStyles = null;
+let viewportBodyFixedStylesApplied = false;
 
 function flushLoadingScreenGoneCallbacks() {
   if (loadingScreenGoneCallbacks.length <= 0) {
@@ -220,6 +232,18 @@ function sanitizeViewportLayoutMode(value, fallback = '') {
   if (value === VIEWPORT_LAYOUT_MODE_RELATIVE_124) {
     return VIEWPORT_LAYOUT_MODE_RELATIVE_124;
   }
+  if (value === VIEWPORT_LAYOUT_MODE_RELATIVE_140) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_140;
+  }
+  if (value === VIEWPORT_LAYOUT_MODE_RELATIVE_160) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_160;
+  }
+  if (value === VIEWPORT_LAYOUT_MODE_BODY_FIXED) {
+    return VIEWPORT_LAYOUT_MODE_BODY_FIXED;
+  }
+  if (value === VIEWPORT_LAYOUT_MODE_SCROLL_STAGE) {
+    return VIEWPORT_LAYOUT_MODE_SCROLL_STAGE;
+  }
   if (value === VIEWPORT_LAYOUT_MODE_ROOT_BG) {
     return VIEWPORT_LAYOUT_MODE_ROOT_BG;
   }
@@ -235,6 +259,26 @@ function resolveRelativeViewportOverdrawPx(mode) {
   }
   if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_124) {
     return VIEWPORT_LAYOUT_RELATIVE_124_OVERDRAW_PX;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_140) {
+    return VIEWPORT_LAYOUT_RELATIVE_140_OVERDRAW_PX;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_160) {
+    return VIEWPORT_LAYOUT_RELATIVE_160_OVERDRAW_PX;
+  }
+  return 0;
+}
+
+function resolveViewportLayoutOverdrawPx(mode) {
+  const relativeOverdrawPx = resolveRelativeViewportOverdrawPx(mode);
+  if (relativeOverdrawPx > 0) {
+    return relativeOverdrawPx;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_ROOT_BG) {
+    return VIEWPORT_LAYOUT_ROOT_BG_OVERDRAW_PX;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_SCROLL_STAGE) {
+    return VIEWPORT_LAYOUT_SCROLL_STAGE_OVERDRAW_PX;
   }
   return 0;
 }
@@ -258,6 +302,19 @@ function shouldEnableViewportLayoutDebugToggle() {
   try {
     const searchParams = new URLSearchParams(window.location.search);
     const rawFlag = String(searchParams.get(VIEWPORT_LAYOUT_DEBUG_QUERY_PARAM) || '').trim().toLowerCase();
+    return rawFlag === '1' || rawFlag === 'true' || rawFlag === 'yes';
+  } catch (_error) {
+    return false;
+  }
+}
+
+function shouldEnableViewportScrollNudge() {
+  if (!window || !window.location || typeof window.location.search !== 'string') {
+    return false;
+  }
+  try {
+    const searchParams = new URLSearchParams(window.location.search);
+    const rawFlag = String(searchParams.get(VIEWPORT_LAYOUT_SCROLL_NUDGE_QUERY_PARAM) || '').trim().toLowerCase();
     return rawFlag === '1' || rawFlag === 'true' || rawFlag === 'yes';
   } catch (_error) {
     return false;
@@ -9595,20 +9652,11 @@ function resolveViewportSizeForRendering() {
   const height = Math.max(safeInnerHeight, safeClientHeight, probeHeight);
   const resolvedWidth = width > 0 ? width : safeInnerWidth;
   const resolvedHeight = height > 0 ? height : safeInnerHeight;
-  const relativeOverdrawPx = resolveRelativeViewportOverdrawPx(layoutMode);
-  if (relativeOverdrawPx > 0) {
+  const layoutOverdrawPx = resolveViewportLayoutOverdrawPx(layoutMode);
+  if (layoutOverdrawPx > 0) {
     return {
       width: resolvedWidth,
-      height: Math.max(resolvedHeight, resolvedHeight + relativeOverdrawPx * 2),
-    };
-  }
-  if (layoutMode === VIEWPORT_LAYOUT_MODE_ROOT_BG) {
-    return {
-      width: resolvedWidth,
-      height: Math.max(
-        resolvedHeight,
-        resolvedHeight + VIEWPORT_LAYOUT_ROOT_BG_OVERDRAW_PX * 2,
-      ),
+      height: Math.max(resolvedHeight, resolvedHeight + layoutOverdrawPx * 2),
     };
   }
   return {
@@ -9620,8 +9668,7 @@ function resolveViewportSizeForRendering() {
 function syncIOSFixedViewportWorkaroundFlag() {
   const mode = sanitizeViewportLayoutMode(STATE.viewportLayoutMode, VIEWPORT_LAYOUT_MODE_LEGACY);
   const useWorkaround = (
-    resolveRelativeViewportOverdrawPx(mode) > 0
-    || mode === VIEWPORT_LAYOUT_MODE_ROOT_BG
+    resolveViewportLayoutOverdrawPx(mode) > 0
     || (isLikelyIOS26OrLater() && mode !== VIEWPORT_LAYOUT_MODE_LEGACY)
   );
   STATE.useIOSFixedViewportWorkaround = useWorkaround;
@@ -9656,12 +9703,9 @@ function syncVisualViewportOffsets() {
       offsetTop = vvTop;
     }
   }
-  if (STATE.viewportLayoutMode === VIEWPORT_LAYOUT_MODE_ROOT_BG) {
-    offsetTop = -VIEWPORT_LAYOUT_ROOT_BG_OVERDRAW_PX;
-  }
-  const relativeOverdrawPx = resolveRelativeViewportOverdrawPx(STATE.viewportLayoutMode);
-  if (relativeOverdrawPx > 0) {
-    offsetTop = -relativeOverdrawPx;
+  const layoutOverdrawPx = resolveViewportLayoutOverdrawPx(STATE.viewportLayoutMode);
+  if (layoutOverdrawPx > 0) {
+    offsetTop = -layoutOverdrawPx;
   }
 
   STATE.viewportOffsetLeftPx = offsetLeft;
@@ -9669,6 +9713,60 @@ function syncVisualViewportOffsets() {
   if (document && document.documentElement && document.documentElement.style) {
     document.documentElement.style.setProperty('--app-viewport-offset-left', `${offsetLeft}px`);
     document.documentElement.style.setProperty('--app-viewport-offset-top', `${offsetTop}px`);
+  }
+}
+
+function ensureScrollStageLayoutStructure() {
+  if (!document || !document.body) {
+    return;
+  }
+  const body = document.body;
+  let stage = document.getElementById(VIEWPORT_LAYOUT_SCROLL_STAGE_ID);
+
+  if (STATE.viewportLayoutMode !== VIEWPORT_LAYOUT_MODE_SCROLL_STAGE) {
+    if (stage && stage.parentNode === body) {
+      while (stage.firstChild) {
+        body.insertBefore(stage.firstChild, stage);
+      }
+      stage.remove();
+    }
+    return;
+  }
+
+  if (!stage) {
+    stage = document.createElement('div');
+    stage.id = VIEWPORT_LAYOUT_SCROLL_STAGE_ID;
+  }
+
+  const loadingScreenElement = document.getElementById('loadingScreen');
+  if (stage.parentNode !== body) {
+    if (loadingScreenElement && loadingScreenElement.parentNode === body) {
+      body.insertBefore(stage, loadingScreenElement.nextSibling);
+    } else {
+      body.insertBefore(stage, body.firstChild);
+    }
+  }
+
+  const mainElement = document.querySelector('main');
+  if (mainElement && !mainElement.id) {
+    mainElement.id = 'app';
+  }
+
+  const orderedStageChildren = [
+    video,
+    canvas,
+    flowersBackCanvas,
+    centerOverlayImageLayer,
+    frontCanvas,
+    flowersFrontCanvas,
+    mainElement,
+  ];
+  for (let i = 0; i < orderedStageChildren.length; i += 1) {
+    const node = orderedStageChildren[i];
+    if (!node || typeof node.nodeType !== 'number') {
+      continue;
+    }
+    stage.appendChild(node);
   }
 }
 
@@ -9707,6 +9805,77 @@ function ensureRootBackgroundLayoutStructure() {
   }
 }
 
+function applyViewportScrollNudgeIfNeeded() {
+  if (STATE.viewportLayoutMode !== VIEWPORT_LAYOUT_MODE_SCROLL_STAGE) {
+    return;
+  }
+  if (!shouldEnableViewportScrollNudge()) {
+    return;
+  }
+  if (viewportScrollNudgeApplied) {
+    return;
+  }
+  viewportScrollNudgeApplied = true;
+  requestAnimationFrame(() => {
+    if (!window || typeof window.scrollTo !== 'function') {
+      return;
+    }
+    window.scrollTo(0, 1);
+    requestAnimationFrame(() => {
+      window.scrollTo(0, 1);
+    });
+  });
+}
+
+function applyBodyFixedLayoutModeIfNeeded() {
+  if (!document || !document.body) {
+    return;
+  }
+  const body = document.body;
+
+  if (STATE.viewportLayoutMode !== VIEWPORT_LAYOUT_MODE_BODY_FIXED) {
+    if (viewportBodyFixedStylesApplied && viewportBodyFixedOriginalInlineStyles) {
+      body.style.position = viewportBodyFixedOriginalInlineStyles.position;
+      body.style.inset = viewportBodyFixedOriginalInlineStyles.inset;
+      body.style.width = viewportBodyFixedOriginalInlineStyles.width;
+      body.style.height = viewportBodyFixedOriginalInlineStyles.height;
+      body.style.overflow = viewportBodyFixedOriginalInlineStyles.overflow;
+    }
+    viewportBodyFixedOriginalInlineStyles = null;
+    viewportBodyFixedStylesApplied = false;
+    return;
+  }
+
+  if (!viewportBodyFixedStylesApplied) {
+    viewportBodyFixedOriginalInlineStyles = {
+      position: body.style.position,
+      inset: body.style.inset,
+      width: body.style.width,
+      height: body.style.height,
+      overflow: body.style.overflow,
+    };
+    viewportBodyFixedStylesApplied = true;
+  }
+
+  if (isLikelyIOSDevice()) {
+    body.style.position = 'fixed';
+    body.style.inset = '0';
+    body.style.width = '100%';
+    body.style.height = '100vh';
+    if (typeof CSS !== 'undefined' && CSS && typeof CSS.supports === 'function' && CSS.supports('height', '100lvh')) {
+      body.style.height = '100lvh';
+    }
+    body.style.overflow = 'hidden';
+    return;
+  }
+
+  body.style.position = '';
+  body.style.inset = '';
+  body.style.width = '';
+  body.style.height = '';
+  body.style.overflow = 'hidden';
+}
+
 function getNextViewportLayoutMode(currentMode) {
   const mode = sanitizeViewportLayoutMode(currentMode, VIEWPORT_LAYOUT_MODE_COVER);
   if (mode === VIEWPORT_LAYOUT_MODE_COVER) {
@@ -9725,7 +9894,19 @@ function getNextViewportLayoutMode(currentMode) {
     return VIEWPORT_LAYOUT_MODE_RELATIVE_124;
   }
   if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_124) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_140;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_140) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_160;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_160) {
     return VIEWPORT_LAYOUT_MODE_ROOT_BG;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_ROOT_BG) {
+    return VIEWPORT_LAYOUT_MODE_SCROLL_STAGE;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_SCROLL_STAGE) {
+    return VIEWPORT_LAYOUT_MODE_BODY_FIXED;
   }
   return VIEWPORT_LAYOUT_MODE_COVER;
 }
@@ -9746,19 +9927,25 @@ function applyViewportLayoutMode(mode, options = {}) {
   );
   const changed = nextMode !== STATE.viewportLayoutMode;
   STATE.viewportLayoutMode = nextMode;
+  if (changed) {
+    viewportScrollNudgeApplied = false;
+  }
   updateViewportLayoutDebugToggleButtonLabel();
 
   if (!changed && safeOptions.forceRerender !== true) {
     return false;
   }
 
+  ensureScrollStageLayoutStructure();
   ensureRootBackgroundLayoutStructure();
+  applyBodyFixedLayoutModeIfNeeded();
   resizeCanvasToViewport();
   refreshHeroVideoReferenceRect({ force: true });
   applyHeroVideoWiggleAnchor(resolveHeroPlaybackGateConfig());
   invalidateCompletedBranchLayer();
   resetOverlayWrapPromotionState();
   renderScene({ skipAutoStart: true });
+  applyViewportScrollNudgeIfNeeded();
   return true;
 }
 
@@ -9774,7 +9961,7 @@ function ensureViewportLayoutDebugToggleButton() {
     button = document.createElement('button');
     button.type = 'button';
     button.id = VIEWPORT_LAYOUT_MODE_DEBUG_BUTTON_ID;
-    button.title = 'Switch viewport layout mode (cover/dynamic/legacy/relative116/relative120/relative124/rootbg)';
+    button.title = 'Switch viewport layout mode (cover/dynamic/legacy/relative116/relative120/relative124/relative140/relative160/rootbg/scrollstage/bodyfixed)';
     button.addEventListener('click', () => {
       const nextMode = getNextViewportLayoutMode(STATE.viewportLayoutMode);
       applyViewportLayoutMode(nextMode, { forceRerender: true });
@@ -12039,9 +12226,12 @@ async function bootstrap() {
   setLoadingScreenMessage('please wait, something special is loading');
 
   STATE.viewportLayoutMode = resolveInitialViewportLayoutMode();
+  viewportScrollNudgeApplied = false;
   ensureViewportLayoutDebugToggleButton();
   updateViewportLayoutDebugToggleButtonLabel();
+  ensureScrollStageLayoutStructure();
   ensureRootBackgroundLayoutStructure();
+  applyBodyFixedLayoutModeIfNeeded();
   syncIOSFixedViewportWorkaroundFlag();
   syncVisualViewportOffsets();
   setupVisualViewportHandlers();
@@ -12100,6 +12290,7 @@ async function bootstrap() {
   }
   startHeroPlaybackGateFlow();
   renderScene();
+  applyViewportScrollNudgeIfNeeded();
   setupEventHandlers();
   exposeDevToolsApi();
   setLoadingScreenMessage('please wait, something special is loading');
