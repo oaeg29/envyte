@@ -223,11 +223,39 @@ video {
   animation: wash1Pulse var(--wash1-duration, 620ms) ease-out forwards;
 }
 
+#wash2Layer {
+  position: fixed;
+  top: var(--app-viewport-offset-top);
+  left: var(--app-viewport-offset-left);
+  width: var(--app-viewport-width);
+  height: var(--app-viewport-height);
+  z-index: 1; /* above back canvases, still below video due DOM order */
+  pointer-events: none;
+  display: none;
+  opacity: 0;
+  transform: scale(var(--wash2-scale-start, 0.05));
+  transform-origin: var(--wash2-center-x, 50%) var(--wash2-center-y, 50%);
+  background:
+    radial-gradient(
+      circle at var(--wash2-center-x, 50%) var(--wash2-center-y, 50%),
+      var(--wash2-center-color, rgba(255, 255, 255, 0.98)) var(--wash2-center-stop, 0%),
+      var(--wash2-mid-color, rgba(255, 255, 255, 0.80)) var(--wash2-mid-stop, 25%),
+      var(--wash2-mid2-color, rgba(255, 255, 255, 0.45)) var(--wash2-mid2-stop, 48%),
+      var(--wash2-edge-color, rgba(255, 255, 255, 0.12)) var(--wash2-edge-stop, 72%),
+      var(--wash2-outer-color, rgba(255, 255, 255, 0)) var(--wash2-outer-stop, 100%)
+    );
+}
+
+#wash2Layer.is-active {
+  animation: wash2Pulse var(--wash2-duration, 620ms) ease-out forwards;
+}
+
 body.ios26-fixed-workaround #myCanvas,
 body.ios26-fixed-workaround #myCanvasFront,
 body.ios26-fixed-workaround #myCanvasFlowersBack,
 body.ios26-fixed-workaround #myCanvasFlowersFront,
 body.ios26-fixed-workaround #wash1Layer,
+body.ios26-fixed-workaround #wash2Layer,
 body.ios26-fixed-workaround video,
 body.ios26-fixed-workaround #centerOverlayImage,
 body.ios26-fixed-workaround #loadingScreen {
@@ -268,6 +296,7 @@ body[data-viewport-layout-mode="relativeAdjustable"] #myCanvasFront,
 body[data-viewport-layout-mode="relativeAdjustable"] #myCanvasFlowersBack,
 body[data-viewport-layout-mode="relativeAdjustable"] #myCanvasFlowersFront,
 body[data-viewport-layout-mode="relativeAdjustable"] #wash1Layer,
+body[data-viewport-layout-mode="relativeAdjustable"] #wash2Layer,
 body[data-viewport-layout-mode="relativeAdjustable"] video,
 body[data-viewport-layout-mode="relativeAdjustable"] #centerOverlayImage,
 body[data-viewport-layout-mode="relativeAdjustable"] #loadingScreen,
@@ -276,6 +305,7 @@ body[data-viewport-layout-mode="relative166"] #myCanvasFront,
 body[data-viewport-layout-mode="relative166"] #myCanvasFlowersBack,
 body[data-viewport-layout-mode="relative166"] #myCanvasFlowersFront,
 body[data-viewport-layout-mode="relative166"] #wash1Layer,
+body[data-viewport-layout-mode="relative166"] #wash2Layer,
 body[data-viewport-layout-mode="relative166"] video,
 body[data-viewport-layout-mode="relative166"] #centerOverlayImage,
 body[data-viewport-layout-mode="relative166"] #loadingScreen {
@@ -478,6 +508,20 @@ body[data-viewport-layout-mode="relative166"] #loadingScreen {
   100% {
     opacity: var(--wash1-opacity-end, 1);
     transform: scale(var(--wash1-scale-end, 2.4));
+  }
+}
+
+@keyframes wash2Pulse {
+  0% {
+    opacity: var(--wash2-opacity-start, 0);
+    transform: scale(var(--wash2-scale-start, 0.05));
+  }
+  12% {
+    opacity: var(--wash2-opacity-peak, 0.82);
+  }
+  100% {
+    opacity: var(--wash2-opacity-end, 1);
+    transform: scale(var(--wash2-scale-end, 2.4));
   }
 }
 

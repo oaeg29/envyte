@@ -35,6 +35,7 @@ if (!flowersFrontCanvas) {
 const video = document.createElement('video');
 const centerOverlayImageLayer = document.createElement('img');
 const wash1Layer = document.createElement('div');
+const wash2Layer = document.createElement('div');
 
 // =========================
 // 2) Config
@@ -628,6 +629,166 @@ function syncWash1Layer(currentFrame = null) {
   STATE.wash1LastFrame = frameNow;
 }
 
+function resolveWash2Config(configCandidate = CONFIG.wash2) {
+  const safeConfig = isPlainObjectLiteral(configCandidate) ? configCandidate : {};
+  const loadingConfig = resolveLoadingScreenConfig(CONFIG.loadingScreen);
+  const sanitizeNumber = (value, fallback) => {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : fallback;
+  };
+  const sanitizeColor = (value, fallback) => (
+    typeof value === 'string' && value.trim().length > 0 ? value.trim() : fallback
+  );
+  const positionBasis = (
+    safeConfig.positionBasis === 'video' || safeConfig.positionBasis === 'viewport'
+  )
+    ? safeConfig.positionBasis
+    : 'video';
+  const centerStopPercentRaw = clamp(sanitizeNumber(safeConfig.centerStopPercent, loadingConfig.washCenterStopPercent), 0, 100);
+  const midStopPercentRaw = clamp(sanitizeNumber(safeConfig.midStopPercent, loadingConfig.washMidStopPercent), 0, 100);
+  const mid2StopPercentRaw = clamp(
+    sanitizeNumber(safeConfig.mid2StopPercent, loadingConfig.washMid2StopPercent),
+    0,
+    100,
+  );
+  const edgeStopPercentRaw = clamp(sanitizeNumber(safeConfig.edgeStopPercent, loadingConfig.washEdgeStopPercent), 0, 100);
+  const outerStopPercentRaw = clamp(
+    sanitizeNumber(safeConfig.outerStopPercent, loadingConfig.washOuterStopPercent),
+    0,
+    100,
+  );
+  const centerStopPercent = centerStopPercentRaw;
+  const midStopPercent = Math.max(centerStopPercent, midStopPercentRaw);
+  const mid2StopPercent = Math.max(midStopPercent, mid2StopPercentRaw);
+  const edgeStopPercent = Math.max(mid2StopPercent, edgeStopPercentRaw);
+  const outerStopPercent = Math.max(edgeStopPercent, outerStopPercentRaw);
+  return {
+    enabled: safeConfig.enabled === true,
+    triggerFrame: Math.max(0, Math.floor(sanitizeNumber(safeConfig.triggerFrame, 0))),
+    retriggerOnLoop: safeConfig.retriggerOnLoop !== false,
+    positionBasis,
+    centerXRatio: clamp(sanitizeNumber(safeConfig.centerXRatio, 0.5), 0, 1),
+    centerYRatio: clamp(sanitizeNumber(safeConfig.centerYRatio, 0.5), 0, 1),
+    offsetXPx: sanitizeNumber(safeConfig.offsetXPx, 0),
+    offsetYPx: sanitizeNumber(safeConfig.offsetYPx, 0),
+    durationMs: Math.max(40, sanitizeNumber(safeConfig.durationMs, loadingConfig.washDurationMs)),
+    centerColor: sanitizeColor(safeConfig.centerColor, loadingConfig.washCenterColor),
+    midColor: sanitizeColor(safeConfig.midColor, loadingConfig.washMidColor),
+    mid2Color: sanitizeColor(safeConfig.mid2Color, loadingConfig.washMid2Color),
+    edgeColor: sanitizeColor(safeConfig.edgeColor, loadingConfig.washEdgeColor),
+    outerColor: sanitizeColor(safeConfig.outerColor, loadingConfig.washOuterColor),
+    scaleStart: Math.max(0, sanitizeNumber(safeConfig.scaleStart, loadingConfig.washScaleStart)),
+    scaleEnd: Math.max(0.01, sanitizeNumber(safeConfig.scaleEnd, loadingConfig.washScaleEnd)),
+    opacityStart: clamp(sanitizeNumber(safeConfig.opacityStart, loadingConfig.washOpacityStart), 0, 1),
+    opacityPeak: clamp(sanitizeNumber(safeConfig.opacityPeak, loadingConfig.washOpacityPeak), 0, 1),
+    opacityEnd: clamp(sanitizeNumber(safeConfig.opacityEnd, loadingConfig.washOpacityEnd), 0, 1),
+    centerStopPercent,
+    midStopPercent,
+    mid2StopPercent,
+    edgeStopPercent,
+    outerStopPercent,
+  };
+}
+
+function triggerWash2Pulse() {
+  if (!wash2Layer) {
+    return;
+  }
+  wash2Layer.classList.remove('is-active');
+  void wash2Layer.offsetWidth;
+  wash2Layer.classList.add('is-active');
+}
+
+function syncWash2Layer(currentFrame = null) {
+  if (!wash2Layer || !wash2Layer.style) {
+    return;
+  }
+  const config = resolveWash2Config();
+  if (config.enabled !== true) {
+    wash2Layer.classList.remove('is-active');
+    wash2Layer.style.display = 'none';
+    STATE.wash2LastFrame = Number.NaN;
+    STATE.wash2LoopCounter = 0;
+    STATE.wash2LastTriggeredLoopCounter = -1;
+    STATE.wash2TriggeredOnce = false;
+    return;
+  }
+
+  const videoRect = getHeroVideoRenderedRect();
+  let centerX = (Number.isFinite(STATE.viewportWidth) ? STATE.viewportWidth : window.innerWidth) * 0.5;
+  let centerY = (Number.isFinite(STATE.viewportHeight) ? STATE.viewportHeight : window.innerHeight) * 0.5;
+  if (
+    config.positionBasis === 'video'
+    && videoRect
+    && Number.isFinite(videoRect.left)
+    && Number.isFinite(videoRect.top)
+    && Number.isFinite(videoRect.width)
+    && Number.isFinite(videoRect.height)
+    && videoRect.width > 0
+    && videoRect.height > 0
+  ) {
+    centerX = videoRect.left + videoRect.width * config.centerXRatio;
+    centerY = videoRect.top + videoRect.height * config.centerYRatio;
+  } else {
+    const vw = Number.isFinite(STATE.viewportWidth) ? STATE.viewportWidth : window.innerWidth;
+    const vh = Number.isFinite(STATE.viewportHeight) ? STATE.viewportHeight : window.innerHeight;
+    centerX = vw * config.centerXRatio;
+    centerY = vh * config.centerYRatio;
+  }
+  centerX += config.offsetXPx;
+  centerY += config.offsetYPx;
+
+  wash2Layer.style.display = 'block';
+  wash2Layer.style.setProperty('--wash2-duration', `${config.durationMs}ms`);
+  wash2Layer.style.setProperty('--wash2-center-color', config.centerColor);
+  wash2Layer.style.setProperty('--wash2-mid-color', config.midColor);
+  wash2Layer.style.setProperty('--wash2-mid2-color', config.mid2Color);
+  wash2Layer.style.setProperty('--wash2-edge-color', config.edgeColor);
+  wash2Layer.style.setProperty('--wash2-outer-color', config.outerColor);
+  wash2Layer.style.setProperty('--wash2-scale-start', String(config.scaleStart));
+  wash2Layer.style.setProperty('--wash2-scale-end', String(config.scaleEnd));
+  wash2Layer.style.setProperty('--wash2-opacity-start', String(config.opacityStart));
+  wash2Layer.style.setProperty('--wash2-opacity-peak', String(config.opacityPeak));
+  wash2Layer.style.setProperty('--wash2-opacity-end', String(config.opacityEnd));
+  wash2Layer.style.setProperty('--wash2-center-stop', `${config.centerStopPercent}%`);
+  wash2Layer.style.setProperty('--wash2-mid-stop', `${config.midStopPercent}%`);
+  wash2Layer.style.setProperty('--wash2-mid2-stop', `${config.mid2StopPercent}%`);
+  wash2Layer.style.setProperty('--wash2-edge-stop', `${config.edgeStopPercent}%`);
+  wash2Layer.style.setProperty('--wash2-outer-stop', `${config.outerStopPercent}%`);
+  wash2Layer.style.setProperty('--wash2-center-x', `${centerX}px`);
+  wash2Layer.style.setProperty('--wash2-center-y', `${centerY}px`);
+  wash2Layer.style.transformOrigin = `${centerX}px ${centerY}px`;
+
+  const frameNow = Number.isFinite(currentFrame)
+    ? currentFrame
+    : getCurrentHeroVideoFrame(resolveHeroPlaybackGateConfig());
+  if (!Number.isFinite(frameNow)) {
+    return;
+  }
+  const previousFrame = STATE.wash2LastFrame;
+  const hasPrevious = Number.isFinite(previousFrame);
+  const looped = hasPrevious && frameNow + 0.5 < previousFrame;
+  if (looped) {
+    STATE.wash2LoopCounter += 1;
+  }
+  const crossed = (
+    frameNow >= config.triggerFrame
+    && (!hasPrevious || previousFrame < config.triggerFrame || looped)
+  );
+  const loopId = STATE.wash2LoopCounter;
+  if (crossed) {
+    const allowTrigger = config.retriggerOnLoop
+      ? STATE.wash2LastTriggeredLoopCounter !== loopId
+      : STATE.wash2TriggeredOnce !== true;
+    if (allowTrigger) {
+      triggerWash2Pulse();
+      STATE.wash2LastTriggeredLoopCounter = loopId;
+      STATE.wash2TriggeredOnce = true;
+    }
+  }
+  STATE.wash2LastFrame = frameNow;
+}
+
 let loadingScreenHideTimerId = null;
 const loadingScreenGoneCallbacks = [];
 let visualViewportHandlersInstalled = false;
@@ -646,6 +807,8 @@ let iosRelative166StabilizationRafId = null;
 let iosRelative166StabilizationNestedRafId = null;
 const iosRelative166StabilizationTimeoutIds = [];
 let iosRelative166VisualViewportRerenderQueued = false;
+let wasPinchZoomingViewport = false;
+let viewportResyncTimerId = null;
 
 function flushLoadingScreenGoneCallbacks() {
   if (loadingScreenGoneCallbacks.length <= 0) {
@@ -2043,10 +2206,12 @@ centerOverlayImageLayer.id = 'centerOverlayImage';
 centerOverlayImageLayer.alt = '';
 centerOverlayImageLayer.draggable = false;
 wash1Layer.id = 'wash1Layer';
+wash2Layer.id = 'wash2Layer';
 // video.height = window.innerHeight;   // Set height in pixels
 
 document.body.appendChild(flowersBackCanvas);
 document.body.appendChild(wash1Layer);
+document.body.appendChild(wash2Layer);
 document.body.appendChild(video);  // Adds it to the page
 document.body.appendChild(centerOverlayImageLayer);
 // Keep front overlay canvas in root stacking context so it can render above the video.
@@ -2055,6 +2220,11 @@ document.body.appendChild(flowersFrontCanvas);
 wash1Layer.addEventListener('animationend', (event) => {
   if (event && event.animationName === 'wash1Pulse') {
     wash1Layer.classList.remove('is-active');
+  }
+});
+wash2Layer.addEventListener('animationend', (event) => {
+  if (event && event.animationName === 'wash2Pulse') {
+    wash2Layer.classList.remove('is-active');
   }
 });
 const frontCtx = frontCanvas.getContext('2d');
@@ -2261,6 +2431,10 @@ const STATE = {
   wash1LoopCounter: 0,
   wash1LastTriggeredLoopCounter: -1,
   wash1TriggeredOnce: false,
+  wash2LastFrame: Number.NaN,
+  wash2LoopCounter: 0,
+  wash2LastTriggeredLoopCounter: -1,
+  wash2TriggeredOnce: false,
   flowerSystem: null,
   flowerInteractionRafId: null,
   flowerPerfLastLogMs: 0,
@@ -11286,6 +11460,24 @@ function ensureLargeViewportProbeElement() {
   return largeViewportProbeElement;
 }
 
+function isPinchZoomingViewport() {
+  const scale = Number(window && window.visualViewport ? window.visualViewport.scale : NaN);
+  return Number.isFinite(scale) && Math.abs(scale - 1) > 0.01;
+}
+
+function getStableViewportHeightForLayout(visualViewportHeight, fallbackHeight) {
+  const safeFallbackHeight = Number.isFinite(fallbackHeight)
+    ? Math.max(0, fallbackHeight)
+    : 0;
+  const safeVisualViewportHeight = Number.isFinite(visualViewportHeight)
+    ? Math.max(0, visualViewportHeight)
+    : 0;
+  if (safeVisualViewportHeight > 0 && !isPinchZoomingViewport()) {
+    return safeVisualViewportHeight;
+  }
+  return safeFallbackHeight;
+}
+
 function resolveViewportSizeForRendering() {
   const layoutMode = sanitizeViewportLayoutMode(STATE.viewportLayoutMode, VIEWPORT_LAYOUT_MODE_LEGACY);
   const safeInnerWidth = Number.isFinite(window.innerWidth) ? Math.max(0, window.innerWidth) : 0;
@@ -11297,9 +11489,13 @@ function resolveViewportSizeForRendering() {
   const safeVisualViewportWidth = vv && Number.isFinite(Number(vv.width))
     ? Math.max(0, Number(vv.width))
     : 0;
-  const safeVisualViewportHeight = vv && Number.isFinite(Number(vv.height))
+  const safeVisualViewportHeightRaw = vv && Number.isFinite(Number(vv.height))
     ? Math.max(0, Number(vv.height))
     : 0;
+  const safeVisualViewportHeight = getStableViewportHeightForLayout(
+    safeVisualViewportHeightRaw,
+    Math.max(safeInnerHeight, safeClientHeight),
+  );
 
   // Legacy is the baseline path used outside iOS Safari.
   // Resolve it from the dynamic viewport (dvh-like) so browser UI changes are respected.
@@ -11384,6 +11580,9 @@ function syncIOSFixedViewportWorkaroundFlag() {
 }
 
 function syncVisualViewportOffsets() {
+  if (isLikelySafariOnIOS() && isPinchZoomingViewport()) {
+    return;
+  }
   let offsetLeft = 0;
   let offsetTop = 0;
   if (
@@ -11455,6 +11654,7 @@ function ensureScrollStageLayoutStructure() {
     canvas,
     flowersBackCanvas,
     wash1Layer,
+    wash2Layer,
     video,
     centerOverlayImageLayer,
     frontCanvas,
@@ -11487,6 +11687,7 @@ function ensureRootBackgroundLayoutStructure() {
     canvas,
     flowersBackCanvas,
     wash1Layer,
+    wash2Layer,
     video,
     centerOverlayImageLayer,
     frontCanvas,
@@ -11822,8 +12023,40 @@ function clearIOSRelative166ViewportStabilizationSchedule() {
   }
 }
 
+function clearViewportResyncTimer() {
+  if (viewportResyncTimerId !== null) {
+    clearTimeout(viewportResyncTimerId);
+    viewportResyncTimerId = null;
+  }
+}
+
+function scheduleViewportResyncAfterPinchZoom() {
+  clearViewportResyncTimer();
+  viewportResyncTimerId = window.setTimeout(() => {
+    viewportResyncTimerId = null;
+    if (isLikelySafariOnIOS() && isPinchZoomingViewport()) {
+      wasPinchZoomingViewport = true;
+      return;
+    }
+    if (isIOSRelative166ViewportModeActive()) {
+      rerunIOSRelative166ViewportLayout();
+      scheduleIOSRelative166ViewportStabilization();
+      return;
+    }
+    syncVisualViewportOffsets();
+    resizeCanvasToViewport();
+    refreshHeroVideoReferenceRect({ force: true });
+    renderScene({ skipAutoStart: true });
+  }, 120);
+}
+
 function rerunIOSRelative166ViewportLayout() {
   if (!isIOSRelative166ViewportModeActive()) {
+    return false;
+  }
+  if (isLikelySafariOnIOS() && isPinchZoomingViewport()) {
+    wasPinchZoomingViewport = true;
+    scheduleViewportResyncAfterPinchZoom();
     return false;
   }
   applyViewportLayoutMode(VIEWPORT_LAYOUT_MODE_RELATIVE_166, { forceRerender: true });
@@ -11837,6 +12070,11 @@ function scheduleIOSRelative166ViewportStabilization() {
   }
   clearIOSRelative166ViewportStabilizationSchedule();
   const rerun = () => {
+    if (isLikelySafariOnIOS() && isPinchZoomingViewport()) {
+      wasPinchZoomingViewport = true;
+      scheduleViewportResyncAfterPinchZoom();
+      return;
+    }
     rerunIOSRelative166ViewportLayout();
   };
   iosRelative166StabilizationRafId = requestAnimationFrame(() => {
@@ -11847,7 +12085,8 @@ function scheduleIOSRelative166ViewportStabilization() {
     });
   });
   iosRelative166StabilizationTimeoutIds.push(window.setTimeout(rerun, 120));
-  iosRelative166StabilizationTimeoutIds.push(window.setTimeout(rerun, 450));
+  iosRelative166StabilizationTimeoutIds.push(window.setTimeout(rerun, 350));
+  iosRelative166StabilizationTimeoutIds.push(window.setTimeout(rerun, 700));
 }
 
 function ensureViewportLayoutDebugToggleButton() {
@@ -11882,6 +12121,21 @@ function setupVisualViewportHandlers() {
     return;
   }
   const onVisualViewportChanged = () => {
+    if (isLikelySafariOnIOS()) {
+      const isZooming = isPinchZoomingViewport();
+      if (isZooming) {
+        wasPinchZoomingViewport = true;
+        return;
+      }
+      if (wasPinchZoomingViewport) {
+        wasPinchZoomingViewport = false;
+        scheduleViewportResyncAfterPinchZoom();
+        return;
+      }
+      if (viewportResyncTimerId !== null) {
+        return;
+      }
+    }
     if (isIOSRelative166ViewportModeActive()) {
       if (iosRelative166VisualViewportRerenderQueued) {
         return;
@@ -12138,6 +12392,7 @@ function renderScene(options = {}) {
   const overlayNowMs = performance.now();
   syncCenterOverlayImageLayer(overlayNowMs, heroPlaybackFrame);
   syncWash1Layer(heroPlaybackFrame);
+  syncWash2Layer(heroPlaybackFrame);
   if (enforceHeroPlaybackGatePauseFrames(heroPlaybackFrame, heroPlaybackGateConfig, { rerenderOnPause: false })) {
     return;
   }
@@ -12643,6 +12898,14 @@ function onHeroVideoLoadedDataOrCanPlay() {
   scheduleIOSRelative166ViewportStabilization();
 }
 
+function onWindowLoadViewportLayoutStabilization() {
+  scheduleIOSRelative166ViewportStabilization();
+}
+
+function onWindowPageShowViewportLayoutStabilization() {
+  scheduleIOSRelative166ViewportStabilization();
+}
+
 function tryHandleFrameJumpHotkey(event) {
   if (!event) {
     return false;
@@ -12862,6 +13125,8 @@ function onMouseClick(event) {
 
 function setupEventHandlers() {
   window.addEventListener('resize', onResize);
+  window.addEventListener('load', onWindowLoadViewportLayoutStabilization);
+  window.addEventListener('pageshow', onWindowPageShowViewportLayoutStabilization);
   window.addEventListener('keydown', onKeydown);
   window.addEventListener('mousemove', onMouseMove);
   window.addEventListener('mouseout', onMouseOut);

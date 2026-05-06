@@ -392,6 +392,34 @@
     outerStopPercent: 100,
   },
 
+  wash2: {
+    enabled: true,
+    triggerFrame: 175, // fires when hero video playback frame crosses this value
+    retriggerOnLoop: true,
+    positionBasis: 'video', // video | viewport
+    centerXRatio: 0.5,
+    centerYRatio: 0.67,
+    offsetXPx: 0,
+    offsetYPx: 0,
+    // Uses loadingScreen wash values as fallbacks, but you can override here:
+    durationMs: 2000,
+    centerColor: 'rgb(161, 214, 228)',
+    midColor: 'rgba(242, 234, 182, 0.63)',
+    mid2Color: 'rgba(255, 246, 209, 0.75)',
+    edgeColor: 'rgba(136, 178, 215, 0)',
+    outerColor: 'rgba(136, 178, 215, 0)',
+    scaleStart: 0.1,
+    scaleEnd: 5,
+    opacityStart: 1,
+    opacityPeak: 1,
+    opacityEnd: 1,
+    centerStopPercent: 12,
+    midStopPercent: 24,
+    mid2StopPercent: 34,
+    edgeStopPercent: 74,
+    outerStopPercent: 100,
+  },
+
 
   centerOverlayImage: {
     enabled: true,
@@ -458,7 +486,7 @@
   renderDpr: {
     enabled: true,
     mobileOnly: true,
-    mobileCap: 1.2,
+    mobileCap: 2,
     desktopCap: null, // ignored when mobileOnly=true; null disables desktop cap
   },
 
