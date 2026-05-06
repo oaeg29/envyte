@@ -83,11 +83,13 @@
 
   seeds: {
     countPerSide: defaultCountPerSide,
-    sidePad: -0.85 * window.innerWidth,
+    sidePad: -0.15, // interpreted by sidePadBasis
+    sidePadBasis: 'videoWidthRatio', // px | videoWidthRatio | viewportWidthRatio
+    sideAnchorXMode: 'videoCenter', // viewportEdges | videoCenter
     sideMargin: 2,
     mode: 'explicitYRatios', // autoSpacing | explicitYRatios
     explicitYRatioBasis: 'video', // video | viewport
-    explicitYRatios: [0.05, 0.1, 0.3, 0.5, 0.4 , 0.45, 0.89, 0.85, 0.9], // shared ratios for both sides (0..1 or 0..100)
+    explicitYRatios: [0.05, 0.1, 0.3, 0.5, 0.4 , 0.45, 0.89, 0.85, 0.9, 0.81, 0.75], // shared ratios for both sides (0..1 or 0..100)
     explicitYRatiosBySide: null, // optional { left: [...], right: [...] }
     explicitYRatiosLeft: null, // optional side override list
     explicitYRatiosRight: null, // optional side override list
@@ -184,13 +186,28 @@
     },
     openButton: {
       centerXRatio: 0.498, // 49.8% of rendered video width
-      centerYRatio: 0.7897135, // 78.97135% of rendered video height
-      diameterRatio: 0.062, // 6.2% of rendered video size (min(width,height))
-      hitMarginPercentOfButtonSize: 150, // 0..100 extra size percentage
+      centerYRatio: 0.7497135, // 78.97135% of rendered video height
+      diameterRatio: 0.092, // 6.2% of rendered video size (min(width,height))
+      hitMarginPercentOfButtonSize: 200, // 0..100 extra size percentage
       enableBeforeIntroPauseFrames: 10, // enable interaction this many frames before introPauseFrame
     },
-    openButtonDebug: {
+    wiggleButton: {
       enabled: true,
+      centerXRatio: 0.5, // ratio of rendered video width
+      centerYRatio: 0.70, // ratio of rendered video height
+      sizeXRatio: 0.43, // ratio of rendered video size (min(width,height))
+      sizeYRatio: 0.27, // ratio of rendered video size (min(width,height))
+      enableBeforeIntroPauseFrames: 10, // enable interaction this many frames before introPauseFrame
+    },
+    wiggleButtonDebug: {
+      enabled: false,
+      drawOnFrontLayer: true,
+      strokeStyle: 'rgba(95, 175, 255, 0.98)',
+      fillStyle: 'rgba(95, 175, 255, 0.16)',
+      lineWidthPx: 2,
+    },
+    openButtonDebug: {
+      enabled: false,
       drawOnFrontLayer: true,
       showBaseButtonCircle: true,
       showPaddedHitCircle: true,
@@ -216,9 +233,11 @@
   centerOverlayImage: {
     enabled: true,
     spritePath: './test_page2.png',
-    scale: 0.25,
+    scale: 0.4, // interpreted by scaleMode
+    scaleMode: 'videoSizeRatio', // multiplier | videoSizeRatio
     offsetXPx: 0,
-    offsetYPx: -80,
+    offsetYPx: -0.0520833333, // interpreted by offsetYMode
+    offsetYMode: 'videoSizeRatio', // px | videoSizeRatio
     displayAfterFrame: 255,
     maxOpacity: 1,
     fadeInEnabled: true,

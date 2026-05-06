@@ -83,7 +83,9 @@
 
   seeds: {
     countPerSide: defaultCountPerSide,
-    sidePad: -0.85 * window.innerWidth,
+    sidePad: -0.85, // interpreted by sidePadBasis
+    sidePadBasis: 'videoWidthRatio', // px | videoWidthRatio | viewportWidthRatio
+    sideAnchorXMode: 'videoCenter', // viewportEdges | videoCenter
     sideMargin: 2,
     mode: 'explicitYRatios', // autoSpacing | explicitYRatios
     explicitYRatioBasis: 'video', // video | viewport
@@ -184,10 +186,25 @@
     },
     openButton: {
       centerXRatio: 0.498, // 49.8% of rendered video width
-      centerYRatio: 0.7897135, // 78.97135% of rendered video height
+      centerYRatio: 0.7597135, // 78.97135% of rendered video height
       diameterRatio: 0.062, // 6.2% of rendered video size (min(width,height))
       hitMarginPercentOfButtonSize: 150, // 0..100 extra size percentage
       enableBeforeIntroPauseFrames: 10, // enable interaction this many frames before introPauseFrame
+    },
+    wiggleButton: {
+      enabled: true,
+      centerXRatio: 0.498, // ratio of rendered video width
+      centerYRatio: 0.7597135, // ratio of rendered video height
+      sizeXRatio: 0.24, // ratio of rendered video size (min(width,height))
+      sizeYRatio: 0.14, // ratio of rendered video size (min(width,height))
+      enableBeforeIntroPauseFrames: 10, // enable interaction this many frames before introPauseFrame
+    },
+    wiggleButtonDebug: {
+      enabled: false,
+      drawOnFrontLayer: true,
+      strokeStyle: 'rgba(95, 175, 255, 0.98)',
+      fillStyle: 'rgba(95, 175, 255, 0.16)',
+      lineWidthPx: 2,
     },
     openButtonDebug: {
       enabled: true,
@@ -216,9 +233,11 @@
   centerOverlayImage: {
     enabled: true,
     spritePath: './test_page2.png',
-    scale: 0.25,
+    scale: 0.25, // interpreted by scaleMode
+    scaleMode: 'videoSizeRatio', // multiplier | videoSizeRatio
     offsetXPx: 0,
-    offsetYPx: -80,
+    offsetYPx: -0.0520833333, // interpreted by offsetYMode
+    offsetYMode: 'videoSizeRatio', // px | videoSizeRatio
     displayAfterFrame: 255,
     maxOpacity: 1,
     fadeInEnabled: true,

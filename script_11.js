@@ -898,15 +898,13 @@ function isLikelySafariOnIOS() {
   }
   const userAgent = typeof navigator.userAgent === 'string' ? navigator.userAgent : '';
   const vendor = typeof navigator.vendor === 'string' ? navigator.vendor : '';
-  const hasWebKitObject = typeof window !== 'undefined' && typeof window.webkit !== 'undefined';
   const uaData = navigator.userAgentData && typeof navigator.userAgentData === 'object'
     ? navigator.userAgentData
     : null;
   const brands = uaData && Array.isArray(uaData.brands) ? uaData.brands : [];
   const hasSafariToken = /Safari\//i.test(userAgent);
-  const hasVersionToken = /Version\//i.test(userAgent);
   const hasAppleWebKitToken = /AppleWebKit\//i.test(userAgent);
-  const hasAppleVendor = /Apple/i.test(vendor);
+  const hasAppleVendor = vendor.length <= 0 || /Apple/i.test(vendor);
   const hasOtherBrowserToken = /(?:CriOS|FxiOS|EdgiOS|OPiOS|OPT\/|YaBrowser|DuckDuckGo|Brave|GSA|Instagram|FBAN|FBAV|Twitter|Line|Snapchat|SamsungBrowser|Vivaldi|UCBrowser|Puffin|QQBrowser|Baidu|Naver|Whale|Focus|Yandex|Firefox|Chrome|EdgA|Edg|OPR)/i.test(userAgent);
   const hasOtherBrandToken = brands.some((entry) => (
     entry
@@ -916,11 +914,7 @@ function isLikelySafariOnIOS() {
   if (hasOtherBrowserToken || hasOtherBrandToken) {
     return false;
   }
-  return hasAppleWebKitToken
-    && hasWebKitObject
-    && hasSafariToken
-    && hasVersionToken
-    && hasAppleVendor;
+  return hasAppleWebKitToken && hasSafariToken && hasAppleVendor;
 }
 
 function resolveInitialViewportRelativeAdjustableValue() {
@@ -2436,6 +2430,12 @@ function resolveHeroPlaybackGateConfig(configCandidate = CONFIG.heroPlaybackGate
   const safeOpenButtonArrowConfig = isPlainObjectLiteral(safeConfig.openButtonArrow)
     ? safeConfig.openButtonArrow
     : {};
+  const safeWiggleButtonConfig = isPlainObjectLiteral(safeConfig.wiggleButton)
+    ? safeConfig.wiggleButton
+    : {};
+  const safeWiggleButtonDebugConfig = isPlainObjectLiteral(safeConfig.wiggleButtonDebug)
+    ? safeConfig.wiggleButtonDebug
+    : {};
   const safeVideoWiggleConfig = isPlainObjectLiteral(safeConfig.videoWiggle)
     ? safeConfig.videoWiggle
     : {};
@@ -2559,6 +2559,57 @@ function resolveHeroPlaybackGateConfig(configCandidate = CONFIG.heroPlaybackGate
       ? Math.max(0, Number(safeOpenButtonArrowConfig.fadeOutDurationSec))
       : 0.45,
   };
+  const wiggleButton = {
+    enabled: safeWiggleButtonConfig.enabled !== false,
+    centerXRatio: clamp(
+      Number.isFinite(Number(safeWiggleButtonConfig.centerXRatio))
+        ? Number(safeWiggleButtonConfig.centerXRatio)
+        : openButton.centerXRatio,
+      0,
+      1,
+    ),
+    centerYRatio: clamp(
+      Number.isFinite(Number(safeWiggleButtonConfig.centerYRatio))
+        ? Number(safeWiggleButtonConfig.centerYRatio)
+        : openButton.centerYRatio,
+      0,
+      1,
+    ),
+    sizeXRatio: Math.max(
+      0,
+      Number.isFinite(Number(safeWiggleButtonConfig.sizeXRatio))
+        ? Number(safeWiggleButtonConfig.sizeXRatio)
+        : 0.24,
+    ),
+    sizeYRatio: Math.max(
+      0,
+      Number.isFinite(Number(safeWiggleButtonConfig.sizeYRatio))
+        ? Number(safeWiggleButtonConfig.sizeYRatio)
+        : 0.14,
+    ),
+    enableBeforeIntroPauseFrames: Number.isFinite(Number(safeWiggleButtonConfig.enableBeforeIntroPauseFrames))
+      ? Math.max(0, Math.floor(Number(safeWiggleButtonConfig.enableBeforeIntroPauseFrames)))
+      : 10,
+  };
+  const wiggleButtonDebug = {
+    enabled: safeWiggleButtonDebugConfig.enabled === true,
+    drawOnFrontLayer: safeWiggleButtonDebugConfig.drawOnFrontLayer !== false,
+    strokeStyle: (
+      typeof safeWiggleButtonDebugConfig.strokeStyle === 'string'
+      && safeWiggleButtonDebugConfig.strokeStyle.length > 0
+    )
+      ? safeWiggleButtonDebugConfig.strokeStyle
+      : 'rgba(95, 175, 255, 0.98)',
+    fillStyle: (
+      typeof safeWiggleButtonDebugConfig.fillStyle === 'string'
+      && safeWiggleButtonDebugConfig.fillStyle.length > 0
+    )
+      ? safeWiggleButtonDebugConfig.fillStyle
+      : 'rgba(95, 175, 255, 0.16)',
+    lineWidthPx: Number.isFinite(Number(safeWiggleButtonDebugConfig.lineWidthPx))
+      ? Math.max(0.25, Number(safeWiggleButtonDebugConfig.lineWidthPx))
+      : 2,
+  };
   const videoWiggle = {
     enabled: safeVideoWiggleConfig.enabled !== false,
     maxAngleDeg: Number.isFinite(Number(safeVideoWiggleConfig.maxAngleDeg))
@@ -2598,6 +2649,8 @@ function resolveHeroPlaybackGateConfig(configCandidate = CONFIG.heroPlaybackGate
     // Backward-compatible alias for any external callers still using gateConfig.button.
     button: openButton,
     openButtonArrow,
+    wiggleButton,
+    wiggleButtonDebug,
   };
 }
 
@@ -2775,6 +2828,35 @@ function isHeroPlaybackOpenButtonEnabledAtFrame(
   return currentFrame >= getHeroPlaybackOpenButtonEnableFrame(gateConfig);
 }
 
+function getHeroPlaybackWiggleButtonEnableFrame(gateConfig = resolveHeroPlaybackGateConfig()) {
+  if (!gateConfig || !gateConfig.wiggleButton) {
+    return 0;
+  }
+  const introPauseFrame = Number.isFinite(Number(gateConfig.introPauseFrame))
+    ? Math.max(0, Number(gateConfig.introPauseFrame))
+    : 0;
+  const preBufferFrames = Number.isFinite(Number(gateConfig.wiggleButton.enableBeforeIntroPauseFrames))
+    ? Math.max(0, Number(gateConfig.wiggleButton.enableBeforeIntroPauseFrames))
+    : 0;
+  return Math.max(0, introPauseFrame - preBufferFrames);
+}
+
+function isHeroPlaybackWiggleButtonEnabledAtFrame(
+  currentFrame = getCurrentHeroVideoFrame(resolveHeroPlaybackGateConfig()),
+  gateConfig = resolveHeroPlaybackGateConfig(),
+) {
+  if (!gateConfig || gateConfig.enabled !== true || !gateConfig.wiggleButton) {
+    return false;
+  }
+  if (gateConfig.wiggleButton.enabled !== true) {
+    return false;
+  }
+  if (!Number.isFinite(currentFrame)) {
+    return false;
+  }
+  return currentFrame >= getHeroPlaybackWiggleButtonEnableFrame(gateConfig);
+}
+
 function getHeroGatePauseTargetFrame(stage, gateConfig = resolveHeroPlaybackGateConfig()) {
   if (!gateConfig) {
     return null;
@@ -2875,6 +2957,18 @@ function requestOpenButtonArrowImageLoad(options = {}) {
 
 function resolveCenterOverlayImageConfig(configCandidate = CONFIG.centerOverlayImage) {
   const safeConfig = isPlainObjectLiteral(configCandidate) ? configCandidate : {};
+  const scaleMode = (
+    safeConfig.scaleMode === 'videoSizeRatio'
+    || safeConfig.scaleMode === 'multiplier'
+  )
+    ? safeConfig.scaleMode
+    : 'multiplier';
+  const offsetYMode = (
+    safeConfig.offsetYMode === 'videoSizeRatio'
+    || safeConfig.offsetYMode === 'px'
+  )
+    ? safeConfig.offsetYMode
+    : 'px';
   return {
     enabled: safeConfig.enabled !== false,
     spritePath: (
@@ -2886,12 +2980,14 @@ function resolveCenterOverlayImageConfig(configCandidate = CONFIG.centerOverlayI
     scale: Number.isFinite(Number(safeConfig.scale))
       ? Math.max(0, Number(safeConfig.scale))
       : 1,
+    scaleMode,
     offsetXPx: Number.isFinite(Number(safeConfig.offsetXPx))
       ? Number(safeConfig.offsetXPx)
       : 0,
     offsetYPx: Number.isFinite(Number(safeConfig.offsetYPx))
       ? Number(safeConfig.offsetYPx)
       : 0,
+    offsetYMode,
     displayAfterFrame: Number.isFinite(Number(safeConfig.displayAfterFrame))
       ? Math.max(0, Math.floor(Number(safeConfig.displayAfterFrame)))
       : 0,
@@ -2980,9 +3076,37 @@ function requestCenterOverlayImageLoad(options = {}) {
 
 function syncCenterOverlayImageLayer(nowMs = performance.now(), currentFrame = null) {
   const overlayConfig = resolveCenterOverlayImageConfig();
+  const videoRect = getHeroVideoRenderedRect();
+  const videoSizePx = (
+    videoRect
+    && Number.isFinite(videoRect.width)
+    && Number.isFinite(videoRect.height)
+    && videoRect.width > 0
+    && videoRect.height > 0
+  )
+    ? Math.min(videoRect.width, videoRect.height)
+    : (
+      Number.isFinite(STATE.viewportHeight) && STATE.viewportHeight > 0
+        ? STATE.viewportHeight
+        : (Number.isFinite(window.innerHeight) ? Math.max(0, window.innerHeight) : 0)
+    );
+
+  const resolvedOffsetYPx = overlayConfig.offsetYMode === 'videoSizeRatio'
+    ? (overlayConfig.offsetYPx * videoSizePx)
+    : overlayConfig.offsetYPx;
+
   centerOverlayImageLayer.style.left = `calc(50% + ${overlayConfig.offsetXPx}px)`;
-  centerOverlayImageLayer.style.top = `calc(50% + ${overlayConfig.offsetYPx}px)`;
-  centerOverlayImageLayer.style.transform = `translate(-50%, -50%) scale(${overlayConfig.scale})`;
+  centerOverlayImageLayer.style.top = `calc(50% + ${resolvedOffsetYPx}px)`;
+  if (overlayConfig.scaleMode === 'videoSizeRatio') {
+    const resolvedWidthPx = Math.max(0, overlayConfig.scale * videoSizePx);
+    centerOverlayImageLayer.style.width = resolvedWidthPx > 0 ? `${resolvedWidthPx}px` : '0px';
+    centerOverlayImageLayer.style.height = 'auto';
+    centerOverlayImageLayer.style.transform = 'translate(-50%, -50%)';
+  } else {
+    centerOverlayImageLayer.style.width = '';
+    centerOverlayImageLayer.style.height = '';
+    centerOverlayImageLayer.style.transform = `translate(-50%, -50%) scale(${overlayConfig.scale})`;
+  }
 
   if (overlayConfig.enabled !== true) {
     centerOverlayImageLayer.style.display = 'none';
@@ -3165,6 +3289,53 @@ function isPointInsideHeroPlaybackOpenButton(clientX, clientY, gateConfig = reso
   return (dx * dx + dy * dy) <= (hitCircle.radiusPx * hitCircle.radiusPx);
 }
 
+function resolveHeroPlaybackWiggleButtonHitRect(gateConfig = resolveHeroPlaybackGateConfig()) {
+  const rect = getHeroVideoRenderedRect();
+  if (!rect || !gateConfig || !gateConfig.wiggleButton || gateConfig.wiggleButton.enabled !== true) {
+    return null;
+  }
+  const buttonConfig = gateConfig.wiggleButton;
+  const videoSizePx = Math.min(rect.width, rect.height);
+  if (!Number.isFinite(videoSizePx) || videoSizePx <= 0) {
+    return null;
+  }
+  const widthPx = Math.max(0, videoSizePx * buttonConfig.sizeXRatio);
+  const heightPx = Math.max(0, videoSizePx * buttonConfig.sizeYRatio);
+  if (widthPx <= 1e-6 || heightPx <= 1e-6) {
+    return null;
+  }
+  const centerX = rect.left + (rect.width * buttonConfig.centerXRatio);
+  const centerY = rect.top + (rect.height * buttonConfig.centerYRatio);
+  const left = centerX - widthPx * 0.5;
+  const top = centerY - heightPx * 0.5;
+  return {
+    centerX,
+    centerY,
+    widthPx,
+    heightPx,
+    left,
+    top,
+    right: left + widthPx,
+    bottom: top + heightPx,
+  };
+}
+
+function isPointInsideHeroPlaybackWiggleButton(clientX, clientY, gateConfig = resolveHeroPlaybackGateConfig()) {
+  if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) {
+    return false;
+  }
+  const hitRect = resolveHeroPlaybackWiggleButtonHitRect(gateConfig);
+  if (!hitRect) {
+    return false;
+  }
+  return (
+    clientX >= hitRect.left
+    && clientX <= hitRect.right
+    && clientY >= hitRect.top
+    && clientY <= hitRect.bottom
+  );
+}
+
 function setHeroVideoWiggleRotationDeg(angleDeg = 0) {
   if (!video || !video.style) {
     return;
@@ -3223,17 +3394,23 @@ function stopHeroVideoWiggle(options = null) {
   }
 }
 
-function startHeroVideoWiggleAfterIntroPause(gateConfig = resolveHeroPlaybackGateConfig()) {
+function runHeroVideoWiggleFromConfig(
+  gateConfig = resolveHeroPlaybackGateConfig(),
+  options = null,
+) {
   const gateState = STATE.heroPlaybackGate;
   if (!gateState || !gateConfig || gateConfig.enabled !== true) {
     return;
   }
+  const safeOptions = isPlainObjectLiteral(options) ? options : {};
   const wiggleConfig = gateConfig.videoWiggle;
-  stopHeroVideoWiggle({ resetRotation: true });
-  applyHeroVideoWiggleAnchor(gateConfig);
   if (!wiggleConfig || wiggleConfig.enabled !== true) {
     return;
   }
+  const requireWaitingStage = safeOptions.requireWaitingStage === true;
+  const useConfiguredDelay = safeOptions.useConfiguredDelay === true;
+  stopHeroVideoWiggle({ resetRotation: true });
+  applyHeroVideoWiggleAnchor(gateConfig);
   const maxAngleDeg = Number.isFinite(Number(wiggleConfig.maxAngleDeg))
     ? Math.max(0, Number(wiggleConfig.maxAngleDeg))
     : 0;
@@ -3246,8 +3423,12 @@ function startHeroVideoWiggleAfterIntroPause(gateConfig = resolveHeroPlaybackGat
   const dampingStrength = Number.isFinite(Number(wiggleConfig.dampingStrength))
     ? Math.max(0, Number(wiggleConfig.dampingStrength))
     : 0;
-  const delayMsRaw = Number.isFinite(Number(wiggleConfig.delayAfterIntroPauseMs))
-    ? Number(wiggleConfig.delayAfterIntroPauseMs)
+  const delayMsRaw = useConfiguredDelay
+    ? (
+      Number.isFinite(Number(wiggleConfig.delayAfterIntroPauseMs))
+        ? Number(wiggleConfig.delayAfterIntroPauseMs)
+        : 0
+    )
     : 0;
   const delayMs = Math.max(0, delayMsRaw);
   const initialElapsedMs = delayMsRaw < 0 ? Math.abs(delayMsRaw) : 0;
@@ -3258,7 +3439,7 @@ function startHeroVideoWiggleAfterIntroPause(gateConfig = resolveHeroPlaybackGat
   const durationSec = Math.max(1e-6, durationMs / 1000);
   const beginWiggle = () => {
     gateState.videoWiggleDelayTimerId = null;
-    if (gateState.stage !== 'waitingForOpenButton') {
+    if (requireWaitingStage && gateState.stage !== 'waitingForOpenButton') {
       // User may have clicked the open button before delayed wiggle start.
       stopHeroVideoWiggle({ resetRotation: true });
       return;
@@ -3271,7 +3452,7 @@ function startHeroVideoWiggleAfterIntroPause(gateConfig = resolveHeroPlaybackGat
       if (!gateState.videoWiggleActive) {
         return;
       }
-      if (gateState.stage !== 'waitingForOpenButton') {
+      if (requireWaitingStage && gateState.stage !== 'waitingForOpenButton') {
         stopHeroVideoWiggle({ resetRotation: true });
         return;
       }
@@ -3303,6 +3484,20 @@ function startHeroVideoWiggleAfterIntroPause(gateConfig = resolveHeroPlaybackGat
   gateState.videoWiggleDelayTimerId = window.setTimeout(beginWiggle, delayMs);
 }
 
+function startHeroVideoWiggleAfterIntroPause(gateConfig = resolveHeroPlaybackGateConfig()) {
+  runHeroVideoWiggleFromConfig(gateConfig, {
+    requireWaitingStage: true,
+    useConfiguredDelay: true,
+  });
+}
+
+function triggerHeroVideoWiggleFromButton(gateConfig = resolveHeroPlaybackGateConfig()) {
+  runHeroVideoWiggleFromConfig(gateConfig, {
+    requireWaitingStage: false,
+    useConfiguredDelay: false,
+  });
+}
+
 // Backward-compat wrappers for any existing internal/external references.
 function resolveHeroPlaybackButtonHitCircle(gateConfig = resolveHeroPlaybackGateConfig()) {
   return resolveHeroPlaybackOpenButtonHitCircle(gateConfig);
@@ -3310,6 +3505,10 @@ function resolveHeroPlaybackButtonHitCircle(gateConfig = resolveHeroPlaybackGate
 
 function isPointInsideHeroPlaybackButton(clientX, clientY, gateConfig = resolveHeroPlaybackGateConfig()) {
   return isPointInsideHeroPlaybackOpenButton(clientX, clientY, gateConfig);
+}
+
+function resolveHeroPlaybackWiggleButtonHitBounds(gateConfig = resolveHeroPlaybackGateConfig()) {
+  return resolveHeroPlaybackWiggleButtonHitRect(gateConfig);
 }
 
 function cancelHeroPlaybackGateMonitor() {
@@ -3576,6 +3775,42 @@ function tryHandleHeroPlaybackOpenButtonClick(event) {
     playbackPromise.catch(() => {});
   }
   ensureHeroPlaybackGateMonitorRunning();
+  renderScene({ skipAutoStart: true });
+  if (event && typeof event.preventDefault === 'function') {
+    event.preventDefault();
+  }
+  return true;
+}
+
+function tryHandleHeroPlaybackWiggleButtonClick(event) {
+  const gateConfig = resolveHeroPlaybackGateConfig();
+  if (gateConfig.enabled !== true || !gateConfig.wiggleButton || gateConfig.wiggleButton.enabled !== true) {
+    return false;
+  }
+  const gateState = STATE.heroPlaybackGate;
+  if (gateState && gateState.awaitingUserPlaybackStart === true) {
+    return false;
+  }
+  const stageAllowsWiggle = gateState && (
+    gateState.stage === 'waitingForOpenButton'
+    || gateState.stage === 'introPlaying'
+  );
+  if (!stageAllowsWiggle) {
+    return false;
+  }
+  const currentFrame = getCurrentHeroVideoFrame(gateConfig);
+  if (!isHeroPlaybackWiggleButtonEnabledAtFrame(currentFrame, gateConfig)) {
+    return false;
+  }
+  const clientPoint = extractPrimaryClientPoint(event);
+  if (!clientPoint) {
+    return false;
+  }
+  if (!isPointInsideHeroPlaybackWiggleButton(clientPoint.x, clientPoint.y, gateConfig)) {
+    return false;
+  }
+
+  triggerHeroVideoWiggleFromButton(gateConfig);
   renderScene({ skipAutoStart: true });
   if (event && typeof event.preventDefault === 'function') {
     event.preventDefault();
@@ -6588,6 +6823,69 @@ function resolveSeedYValuesFromRatios(ratios, reference) {
   return out;
 }
 
+function sanitizeSeedSidePadBasis(value, fallback = 'px') {
+  if (value === 'px' || value === 'videoWidthRatio' || value === 'viewportWidthRatio') {
+    return value;
+  }
+  if (fallback === 'px' || fallback === 'videoWidthRatio' || fallback === 'viewportWidthRatio') {
+    return fallback;
+  }
+  return 'px';
+}
+
+function resolveSeedSidePadPixels(seedsConfig = CONFIG.seeds || {}) {
+  const sidePadValue = Number.isFinite(Number(seedsConfig.sidePad)) ? Number(seedsConfig.sidePad) : 0;
+  const basis = sanitizeSeedSidePadBasis(seedsConfig.sidePadBasis, 'px');
+  if (basis === 'px') {
+    return sidePadValue;
+  }
+  if (basis === 'viewportWidthRatio') {
+    const viewportWidth = Number.isFinite(STATE.viewportWidth) && STATE.viewportWidth > 0
+      ? STATE.viewportWidth
+      : (Number.isFinite(window.innerWidth) ? Math.max(0, window.innerWidth) : 0);
+    return sidePadValue * viewportWidth;
+  }
+  const videoRect = getHeroVideoRenderedRect();
+  const videoWidth = (
+    videoRect
+    && Number.isFinite(videoRect.width)
+    && videoRect.width > 0
+  )
+    ? videoRect.width
+    : (
+      Number.isFinite(STATE.viewportWidth) && STATE.viewportWidth > 0
+        ? STATE.viewportWidth
+        : (Number.isFinite(window.innerWidth) ? Math.max(0, window.innerWidth) : 0)
+    );
+  return sidePadValue * videoWidth;
+}
+
+function sanitizeSeedSideAnchorXMode(value, fallback = 'viewportEdges') {
+  if (value === 'viewportEdges' || value === 'videoCenter') {
+    return value;
+  }
+  if (fallback === 'viewportEdges' || fallback === 'videoCenter') {
+    return fallback;
+  }
+  return 'viewportEdges';
+}
+
+function resolveSeedVideoCenterX() {
+  const videoRect = getHeroVideoRenderedRect();
+  if (
+    videoRect
+    && Number.isFinite(videoRect.left)
+    && Number.isFinite(videoRect.width)
+    && videoRect.width > 0
+  ) {
+    return videoRect.left + videoRect.width * 0.5;
+  }
+  if (Number.isFinite(STATE.viewportWidth) && STATE.viewportWidth > 0) {
+    return STATE.viewportWidth * 0.5;
+  }
+  return Number.isFinite(window.innerWidth) ? Math.max(0, window.innerWidth * 0.5) : 0;
+}
+
 function normalizeSeedSpacingConfig(seedsConfig = CONFIG.seeds || {}) {
   const rawMinSpacing = Number(seedsConfig.minSpacing);
   const rawMaxSpacing = Number(seedsConfig.maxSpacing);
@@ -6649,7 +6947,12 @@ function setSeeds() {
     seedsConfig.mode !== undefined ? seedsConfig.mode : seedsConfig.generationMode,
     'autoSpacing',
   );
-  const sidePad = Number.isFinite(Number(seedsConfig.sidePad)) ? Number(seedsConfig.sidePad) : 0;
+  const sidePad = resolveSeedSidePadPixels(seedsConfig);
+  const sidePadDistance = Math.abs(sidePad);
+  const sideAnchorXMode = sanitizeSeedSideAnchorXMode(
+    seedsConfig.sideAnchorXMode,
+    'videoCenter',
+  );
   const sideMargin = Number.isFinite(Number(seedsConfig.sideMargin)) ? Number(seedsConfig.sideMargin) : 0;
   const seedsLeft = [];
   const seedsRight = [];
@@ -6659,6 +6962,13 @@ function setSeeds() {
   const { minSpacing, maxSpacing, randomizeSpacing } = normalizeSeedSpacingConfig(seedsConfig);
   let leftYValues = [];
   let rightYValues = [];
+  const videoCenterX = resolveSeedVideoCenterX();
+  const leftSeedBaseX = sideAnchorXMode === 'videoCenter'
+    ? (videoCenterX + sidePadDistance)
+    : (0 - sidePad);
+  const rightSeedBaseX = sideAnchorXMode === 'videoCenter'
+    ? (videoCenterX - sidePadDistance)
+    : (STATE.viewportWidth + sidePad);
 
   if (seedGenerationMode === 'explicitYRatios') {
     const ratioReference = resolveSeedYRatioReference(seedsConfig);
@@ -6729,7 +7039,7 @@ function setSeeds() {
   for (let i = 0; i < leftYValues.length; i += 1) {
     // Left side branches grow rightward (direction +1).
     seedsLeft.push({
-      x: 0 - sidePad - Math.random() * sideMargin,
+      x: leftSeedBaseX + Math.random() * sideMargin,
       y: leftYValues[i],
       direction: 1,
     });
@@ -6738,7 +7048,7 @@ function setSeeds() {
   for (let i = 0; i < rightYValues.length; i += 1) {
     // Right side branches grow leftward (direction -1).
     seedsRight.push({
-      x: STATE.viewportWidth + sidePad + Math.random() * sideMargin,
+      x: rightSeedBaseX - Math.random() * sideMargin,
       y: rightYValues[i],
       direction: -1,
     });
@@ -7469,6 +7779,45 @@ function drawHeroPlaybackOpenButtonDebugOverlay(
     targetCtx.fill();
     targetCtx.stroke();
   }
+  targetCtx.restore();
+}
+
+function drawHeroPlaybackWiggleButtonDebugOverlay(
+  gateConfig = resolveHeroPlaybackGateConfig(),
+  targetCtx = ctx,
+) {
+  if (!gateConfig || gateConfig.enabled !== true || !targetCtx) {
+    return;
+  }
+  const debugConfig = gateConfig.wiggleButtonDebug;
+  if (!debugConfig || debugConfig.enabled !== true) {
+    return;
+  }
+  const currentFrame = getCurrentHeroVideoFrame(gateConfig);
+  if (!isHeroPlaybackWiggleButtonEnabledAtFrame(currentFrame, gateConfig)) {
+    return;
+  }
+  const hitRect = resolveHeroPlaybackWiggleButtonHitRect(gateConfig);
+  if (
+    !hitRect
+    || !Number.isFinite(hitRect.left)
+    || !Number.isFinite(hitRect.top)
+    || !Number.isFinite(hitRect.widthPx)
+    || !Number.isFinite(hitRect.heightPx)
+    || hitRect.widthPx <= 0
+    || hitRect.heightPx <= 0
+  ) {
+    return;
+  }
+  const lineWidth = Number.isFinite(debugConfig.lineWidthPx) ? Math.max(0.25, debugConfig.lineWidthPx) : 2;
+  targetCtx.save();
+  targetCtx.lineWidth = lineWidth;
+  targetCtx.strokeStyle = debugConfig.strokeStyle;
+  targetCtx.fillStyle = debugConfig.fillStyle;
+  targetCtx.beginPath();
+  targetCtx.rect(hitRect.left, hitRect.top, hitRect.widthPx, hitRect.heightPx);
+  targetCtx.fill();
+  targetCtx.stroke();
   targetCtx.restore();
 }
 
@@ -11502,6 +11851,19 @@ function renderScene(options = {}) {
       : ctx;
     drawHeroPlaybackOpenButtonDebugOverlay(heroPlaybackGateConfig, debugTargetCtx);
   }
+  if (
+    heroPlaybackGateConfig
+    && heroPlaybackGateConfig.wiggleButtonDebug
+    && heroPlaybackGateConfig.wiggleButtonDebug.enabled === true
+  ) {
+    const debugTargetCtx = (
+      heroPlaybackGateConfig.wiggleButtonDebug.drawOnFrontLayer === true
+      && frontCtx
+    )
+      ? frontCtx
+      : ctx;
+    drawHeroPlaybackWiggleButtonDebugOverlay(heroPlaybackGateConfig, debugTargetCtx);
+  }
 
   if (overlayWrapActive && hiddenBand && overlayWrapConfig.showCenterBandOverlay === true) {
     const overlayTargetCtx = frontCtx || ctx;
@@ -11746,6 +12108,9 @@ function onMouseClick(event) {
   if (tryHandleHeroPlaybackOpenButtonClick(event)) {
     return;
   }
+  if (tryHandleHeroPlaybackWiggleButtonClick(event)) {
+    return;
+  }
   if (!CONFIG.flowers || CONFIG.flowers.enabled !== true) {
     return;
   }
@@ -11918,6 +12283,12 @@ function applyHeroPlaybackGateOptions(nextOptions) {
   const nextOpenButtonDebugPatch = isPlainObjectLiteral(nextOptions.openButtonDebug)
     ? nextOptions.openButtonDebug
     : {};
+  const nextWiggleButtonPatch = isPlainObjectLiteral(nextOptions.wiggleButton)
+    ? nextOptions.wiggleButton
+    : {};
+  const nextWiggleButtonDebugPatch = isPlainObjectLiteral(nextOptions.wiggleButtonDebug)
+    ? nextOptions.wiggleButtonDebug
+    : {};
   const nextVideoWigglePatch = isPlainObjectLiteral(nextOptions.videoWiggle)
     ? nextOptions.videoWiggle
     : {};
@@ -11935,6 +12306,14 @@ function applyHeroPlaybackGateOptions(nextOptions) {
     openButtonDebug: {
       ...currentConfig.openButtonDebug,
       ...nextOpenButtonDebugPatch,
+    },
+    wiggleButton: {
+      ...currentConfig.wiggleButton,
+      ...nextWiggleButtonPatch,
+    },
+    wiggleButtonDebug: {
+      ...currentConfig.wiggleButtonDebug,
+      ...nextWiggleButtonDebugPatch,
     },
     videoWiggle: {
       ...currentConfig.videoWiggle,
