@@ -56,6 +56,7 @@ const VIEWPORT_LAYOUT_MODE_COVER = 'cover';
 const VIEWPORT_LAYOUT_MODE_DYNAMIC = 'dynamic';
 const VIEWPORT_LAYOUT_MODE_LEGACY = 'legacy';
 const VIEWPORT_LAYOUT_MODE_RELATIVE_112 = 'relative112';
+const VIEWPORT_LAYOUT_MODE_RELATIVE_166 = 'relative166';
 const VIEWPORT_LAYOUT_MODE_RELATIVE_ADJUSTABLE = 'relativeAdjustable';
 const VIEWPORT_LAYOUT_MODE_RELATIVE_116 = 'relative116';
 const VIEWPORT_LAYOUT_MODE_RELATIVE_120 = 'relative120';
@@ -81,6 +82,8 @@ const VIEWPORT_LAYOUT_RELATIVE_180_OVERDRAW_PX = 40;
 const VIEWPORT_LAYOUT_RELATIVE_190_OVERDRAW_PX = 45;
 const VIEWPORT_LAYOUT_RELATIVE_112_TOP_OVERDRAW_PX = 0;
 const VIEWPORT_LAYOUT_RELATIVE_112_EXTRA_HEIGHT_PX = 12;
+const VIEWPORT_LAYOUT_RELATIVE_166_TOP_OVERDRAW_PX = 0;
+const VIEWPORT_LAYOUT_RELATIVE_166_EXTRA_HEIGHT_PX = 66;
 const VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_20_TOP_OVERDRAW_PX = 20;
 const VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_20_EXTRA_HEIGHT_PX = 40;
 const VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_40_TOP_OVERDRAW_PX = 40;
@@ -272,6 +275,9 @@ function sanitizeViewportLayoutMode(value, fallback = '') {
   if (value === VIEWPORT_LAYOUT_MODE_RELATIVE_112) {
     return VIEWPORT_LAYOUT_MODE_RELATIVE_112;
   }
+  if (value === VIEWPORT_LAYOUT_MODE_RELATIVE_166) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_166;
+  }
   if (value === VIEWPORT_LAYOUT_MODE_RELATIVE_ADJUSTABLE) {
     return VIEWPORT_LAYOUT_MODE_RELATIVE_ADJUSTABLE;
   }
@@ -358,23 +364,9 @@ function resolveViewportLayoutRelativeAdjustableOverdrawConfig() {
   if (STATE) {
     STATE.viewportRelativeAdjustableValue = normalizedValue;
   }
-  const vv = window && window.visualViewport ? window.visualViewport : null;
-  const visualViewportHeight = vv && Number.isFinite(Number(vv.height))
-    ? Math.max(0, Number(vv.height))
-    : 0;
-  const innerHeight = Number.isFinite(window.innerHeight) ? Math.max(0, window.innerHeight) : 0;
-  const root = document && document.documentElement ? document.documentElement : null;
-  const clientHeight = root && Number.isFinite(root.clientHeight) ? Math.max(0, root.clientHeight) : 0;
-  const dynamicViewportHeightPx = visualViewportHeight > 0
-    ? visualViewportHeight
-    : Math.max(innerHeight, clientHeight);
-  const extraDvh = Math.max(0, normalizedValue - 100);
-  const extraHeightPx = dynamicViewportHeightPx > 0
-    ? (dynamicViewportHeightPx * extraDvh) / 100
-    : extraDvh;
   return {
     topPx: 0,
-    extraHeightPx,
+    extraHeightPx: Math.max(0, normalizedValue - 100),
   };
 }
 
@@ -383,6 +375,12 @@ function resolveViewportLayoutBiasOverdrawConfig(mode) {
     return {
       topPx: VIEWPORT_LAYOUT_RELATIVE_112_TOP_OVERDRAW_PX,
       extraHeightPx: VIEWPORT_LAYOUT_RELATIVE_112_EXTRA_HEIGHT_PX,
+    };
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_166) {
+    return {
+      topPx: VIEWPORT_LAYOUT_RELATIVE_166_TOP_OVERDRAW_PX,
+      extraHeightPx: VIEWPORT_LAYOUT_RELATIVE_166_EXTRA_HEIGHT_PX,
     };
   }
   if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_ADJUSTABLE) {
@@ -457,10 +455,21 @@ function readViewportLayoutModeFromSearchParams() {
   }
   try {
     const searchParams = new URLSearchParams(window.location.search);
-    const rawMode = String(searchParams.get(VIEWPORT_LAYOUT_MODE_QUERY_PARAM) || '').trim();
-    // Keep only the root background experiment mode externally addressable.
-    if (rawMode === VIEWPORT_LAYOUT_MODE_ROOT_BG) {
-      return VIEWPORT_LAYOUT_MODE_ROOT_BG;
+    const rawModeInput = String(searchParams.get(VIEWPORT_LAYOUT_MODE_QUERY_PARAM) || '').trim();
+    const rawModeLower = rawModeInput.toLowerCase();
+    let requestedMode = rawModeInput;
+    if (rawModeLower === 'relativeadjustable') {
+      requestedMode = VIEWPORT_LAYOUT_MODE_RELATIVE_ADJUSTABLE;
+    } else if (rawModeLower === 'rootbg') {
+      requestedMode = VIEWPORT_LAYOUT_MODE_ROOT_BG;
+    }
+    const rawMode = sanitizeViewportLayoutMode(
+      requestedMode,
+      '',
+    );
+    // Keep only explicit testing modes externally addressable.
+    if (rawMode === VIEWPORT_LAYOUT_MODE_ROOT_BG || rawMode === VIEWPORT_LAYOUT_MODE_RELATIVE_ADJUSTABLE) {
+      return rawMode;
     }
     return '';
   } catch (_error) {
@@ -514,7 +523,7 @@ function resolveInitialViewportLayoutMode() {
     return modeFromSearchParams;
   }
   if (isLikelySafariOnIOS()) {
-    return VIEWPORT_LAYOUT_MODE_RELATIVE_ADJUSTABLE;
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_166;
   }
   // Use normal baseline layout outside iOS Safari.
   return VIEWPORT_LAYOUT_MODE_LEGACY;
@@ -10627,7 +10636,7 @@ function updateViewportRelativeAdjustableControlsLabel() {
     VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_DEFAULT_VALUE,
   );
   STATE.viewportRelativeAdjustableValue = normalizedValue;
-  valueLabel.textContent = `relative: ${normalizedValue}dvh`;
+  valueLabel.textContent = `relative: ${normalizedValue}`;
 }
 
 function updateViewportRelativeAdjustableControlsVisibility() {
@@ -10691,20 +10700,20 @@ function ensureViewportRelativeAdjustableControls() {
     minusButton.type = 'button';
     minusButton.setAttribute('data-role', 'minus');
     minusButton.textContent = '−';
-    minusButton.title = 'Decrease relative mode value by 1dvh';
+    minusButton.title = 'Decrease relative mode value by 1px';
     minusButton.addEventListener('click', () => {
       adjustViewportRelativeAdjustableValue(-VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_STEP);
     });
 
     const valueLabel = document.createElement('span');
     valueLabel.setAttribute('data-role', 'value');
-    valueLabel.textContent = `relative: ${VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_DEFAULT_VALUE}dvh`;
+    valueLabel.textContent = `relative: ${VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_DEFAULT_VALUE}`;
 
     const plusButton = document.createElement('button');
     plusButton.type = 'button';
     plusButton.setAttribute('data-role', 'plus');
     plusButton.textContent = '+';
-    plusButton.title = 'Increase relative mode value by 1dvh';
+    plusButton.title = 'Increase relative mode value by 1px';
     plusButton.addEventListener('click', () => {
       adjustViewportRelativeAdjustableValue(VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_STEP);
     });

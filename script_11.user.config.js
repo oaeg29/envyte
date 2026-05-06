@@ -140,9 +140,9 @@
     enabled: true,
     mode: 'linearBySeedY', // simultaneous | linearBySeedY
     linearSweepDirection: 'up', // down (top->bottom) | up (bottom->top)
-    linearSweepDurationSec: 3.25, // sweep time across root seed Y range
+    linearSweepDurationSec: 20.25, // sweep time across root seed Y range
     speedMode: 'rate', // duration | rate
-    totalDurationSec: 20.5,
+    totalDurationSec: 1.5,
     pixelsPerSecond: 160,
     growthEase: 'easeOut', // linear | easeIn | easeOut | easeInOut
     growthEasePower: 1,
