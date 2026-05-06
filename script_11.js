@@ -358,9 +358,23 @@ function resolveViewportLayoutRelativeAdjustableOverdrawConfig() {
   if (STATE) {
     STATE.viewportRelativeAdjustableValue = normalizedValue;
   }
+  const vv = window && window.visualViewport ? window.visualViewport : null;
+  const visualViewportHeight = vv && Number.isFinite(Number(vv.height))
+    ? Math.max(0, Number(vv.height))
+    : 0;
+  const innerHeight = Number.isFinite(window.innerHeight) ? Math.max(0, window.innerHeight) : 0;
+  const root = document && document.documentElement ? document.documentElement : null;
+  const clientHeight = root && Number.isFinite(root.clientHeight) ? Math.max(0, root.clientHeight) : 0;
+  const dynamicViewportHeightPx = visualViewportHeight > 0
+    ? visualViewportHeight
+    : Math.max(innerHeight, clientHeight);
+  const extraDvh = Math.max(0, normalizedValue - 100);
+  const extraHeightPx = dynamicViewportHeightPx > 0
+    ? (dynamicViewportHeightPx * extraDvh) / 100
+    : extraDvh;
   return {
     topPx: 0,
-    extraHeightPx: Math.max(0, normalizedValue - 100),
+    extraHeightPx,
   };
 }
 
@@ -10618,7 +10632,7 @@ function updateViewportRelativeAdjustableControlsLabel() {
     VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_DEFAULT_VALUE,
   );
   STATE.viewportRelativeAdjustableValue = normalizedValue;
-  valueLabel.textContent = `relative: ${normalizedValue}`;
+  valueLabel.textContent = `relative: ${normalizedValue}dvh`;
 }
 
 function updateViewportRelativeAdjustableControlsVisibility() {
@@ -10654,7 +10668,8 @@ function adjustViewportRelativeAdjustableValue(delta) {
 }
 
 function shouldEnableViewportRelativeAdjustableControls() {
-  return shouldEnableViewportLayoutDebugToggle();
+  const mode = sanitizeViewportLayoutMode(STATE.viewportLayoutMode, VIEWPORT_LAYOUT_MODE_COVER);
+  return mode === VIEWPORT_LAYOUT_MODE_RELATIVE_ADJUSTABLE;
 }
 
 function ensureViewportRelativeAdjustableControls() {
@@ -10681,20 +10696,20 @@ function ensureViewportRelativeAdjustableControls() {
     minusButton.type = 'button';
     minusButton.setAttribute('data-role', 'minus');
     minusButton.textContent = '−';
-    minusButton.title = 'Decrease relative mode value';
+    minusButton.title = 'Decrease relative mode value by 1dvh';
     minusButton.addEventListener('click', () => {
       adjustViewportRelativeAdjustableValue(-VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_STEP);
     });
 
     const valueLabel = document.createElement('span');
     valueLabel.setAttribute('data-role', 'value');
-    valueLabel.textContent = `relative: ${VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_DEFAULT_VALUE}`;
+    valueLabel.textContent = `relative: ${VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_DEFAULT_VALUE}dvh`;
 
     const plusButton = document.createElement('button');
     plusButton.type = 'button';
     plusButton.setAttribute('data-role', 'plus');
     plusButton.textContent = '+';
-    plusButton.title = 'Increase relative mode value';
+    plusButton.title = 'Increase relative mode value by 1dvh';
     plusButton.addEventListener('click', () => {
       adjustViewportRelativeAdjustableValue(VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_STEP);
     });
