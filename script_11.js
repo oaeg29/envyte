@@ -103,6 +103,7 @@ const VIEWPORT_LAYOUT_SCROLL_STAGE_ID = 'ios-scroll-stage';
 const SAFARI_TOP_TINT_SHIM_ID = 'safari-top-tint-shim';
 const SAFARI_TOP_TINT_CSS_VAR = '--safari-top-tint';
 const SAFARI_TOP_TINT_SHIM_OPACITY_CSS_VAR = '--safari-top-tint-shim-opacity';
+const THEME_COLOR_META_NAME = 'theme-color';
 const VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_DEFAULT_VALUE = 100;
 const VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_DEFAULT_IOS_SAFARI_VALUE = 166;
 const VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_MIN_VALUE = 100;
@@ -144,6 +145,8 @@ let viewportLayoutDebugToggleButton = null;
 let viewportRelativeAdjustableControls = null;
 let safariTopTintShimElement = null;
 let lastSafariTopTint = '';
+let themeColorMetaElement = null;
+let lastThemeColor = '';
 let viewportScrollNudgeApplied = false;
 let viewportBodyFixedOriginalInlineStyles = null;
 let viewportBodyFixedStylesApplied = false;
@@ -489,6 +492,9 @@ function resolveInitialViewportLayoutMode() {
   if (modeFromSearchParams) {
     return modeFromSearchParams;
   }
+  if (isLikelySafariOnIOS()) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_ADJUSTABLE;
+  }
   if (isLikelyIOS26OrLater()) {
     return VIEWPORT_LAYOUT_MODE_COVER;
   }
@@ -673,10 +679,51 @@ function updateSafariTopTintFromGradient() {
   const gradientStops = resolvePageBackgroundGradientStopsFromCssVariables();
   const nextTint = getGradientColorAt(gradientStops, 0);
   if (nextTint === lastSafariTopTint) {
-    return;
+    return nextTint;
   }
   setSafariTopTint(nextTint);
   lastSafariTopTint = nextTint;
+  return nextTint;
+}
+
+function ensureThemeColorMetaElement() {
+  if (!document || !document.head || typeof document.querySelector !== 'function') {
+    return null;
+  }
+  if (themeColorMetaElement && themeColorMetaElement.parentNode === document.head) {
+    return themeColorMetaElement;
+  }
+  let meta = document.querySelector(`meta[name="${THEME_COLOR_META_NAME}"]`);
+  if (!meta) {
+    meta = document.createElement('meta');
+    meta.setAttribute('name', THEME_COLOR_META_NAME);
+    document.head.appendChild(meta);
+  }
+  themeColorMetaElement = meta;
+  return themeColorMetaElement;
+}
+
+function setDynamicThemeColor(color) {
+  if (typeof color !== 'string') {
+    return;
+  }
+  const trimmed = color.trim();
+  if (trimmed.length <= 0 || trimmed === lastThemeColor) {
+    return;
+  }
+  const meta = ensureThemeColorMetaElement();
+  if (!meta) {
+    return;
+  }
+  meta.setAttribute('content', trimmed);
+  lastThemeColor = trimmed;
+}
+
+function shouldSyncDynamicThemeColor() {
+  if (typeof navigator === 'undefined') {
+    return false;
+  }
+  return isLikelyIOSDevice();
 }
 
 function shouldEnableSafariTopTintShim() {
@@ -711,13 +758,18 @@ function syncSafariTopTintShim() {
   ensureSafariTopTintShimElement();
   const enabled = shouldEnableSafariTopTintShim();
   const config = resolveSafariTopTintShimConfig();
+  const shouldSyncThemeColor = shouldSyncDynamicThemeColor();
+  let topTint = null;
+  if (enabled || shouldSyncThemeColor) {
+    topTint = updateSafariTopTintFromGradient();
+  }
   document.documentElement.style.setProperty(
     SAFARI_TOP_TINT_SHIM_OPACITY_CSS_VAR,
     String(clamp(config.opacity, 0.01, 1)),
   );
   document.body.classList.toggle('ios-safari-top-tint-shim', enabled);
-  if (enabled) {
-    updateSafariTopTintFromGradient();
+  if (shouldSyncThemeColor && typeof topTint === 'string' && topTint.trim().length > 0) {
+    setDynamicThemeColor(topTint);
   }
 }
 
@@ -746,10 +798,28 @@ function isLikelySafariOnIOS() {
     return false;
   }
   const userAgent = typeof navigator.userAgent === 'string' ? navigator.userAgent : '';
+  const vendor = typeof navigator.vendor === 'string' ? navigator.vendor : '';
+  const uaData = navigator.userAgentData && typeof navigator.userAgentData === 'object'
+    ? navigator.userAgentData
+    : null;
+  const brands = uaData && Array.isArray(uaData.brands) ? uaData.brands : [];
   const hasSafariToken = /Safari\//i.test(userAgent);
   const hasVersionToken = /Version\//i.test(userAgent);
-  const hasOtherBrowserToken = /(CriOS|FxiOS|EdgiOS|OPiOS|YaBrowser|DuckDuckGo|Brave)/i.test(userAgent);
-  return hasSafariToken && hasVersionToken && !hasOtherBrowserToken;
+  const hasAppleWebKitToken = /AppleWebKit\//i.test(userAgent);
+  const hasAppleVendor = /Apple/i.test(vendor);
+  const hasOtherBrowserToken = /(?:CriOS|FxiOS|EdgiOS|OPiOS|YaBrowser|DuckDuckGo|Brave|GSA|Instagram|FBAN|FBAV|Twitter|Line|Snapchat)/i.test(userAgent);
+  const hasOtherBrandToken = brands.some((entry) => (
+    entry
+    && typeof entry.brand === 'string'
+    && /Chrom(e|ium)|Edge|Opera|Firefox|Samsung/i.test(entry.brand)
+  ));
+  if (hasOtherBrowserToken || hasOtherBrandToken) {
+    return false;
+  }
+  if (hasSafariToken && hasVersionToken) {
+    return true;
+  }
+  return hasAppleWebKitToken && hasAppleVendor && hasSafariToken;
 }
 
 function resolveInitialViewportRelativeAdjustableValue() {
@@ -881,9 +951,9 @@ function configureHeroVideoElement() {
   video.preload = 'auto';
   video.defaultMuted = true;
   video.muted = true;
-  video.autoplay = false;
+  video.autoplay = true;
   video.playsInline = true;
-  video.removeAttribute('autoplay');
+  video.setAttribute('autoplay', '');
   video.setAttribute('muted', '');
   video.setAttribute('playsinline', '');
   video.setAttribute('webkit-playsinline', '');
