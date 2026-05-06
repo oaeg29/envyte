@@ -119,6 +119,30 @@ body.ios26-fixed-workaround #loadingScreen {
   position: absolute;
 }
 
+html[data-viewport-layout-mode="relative120"],
+body[data-viewport-layout-mode="relative120"] {
+  height: 120vh;
+  min-height: 120vh;
+}
+
+@supports (height: 120lvh) {
+  html[data-viewport-layout-mode="relative120"],
+  body[data-viewport-layout-mode="relative120"] {
+    height: 120lvh;
+    min-height: 120lvh;
+  }
+}
+
+body[data-viewport-layout-mode="relative120"] #myCanvas,
+body[data-viewport-layout-mode="relative120"] #myCanvasFront,
+body[data-viewport-layout-mode="relative120"] #myCanvasFlowersBack,
+body[data-viewport-layout-mode="relative120"] #myCanvasFlowersFront,
+body[data-viewport-layout-mode="relative120"] video,
+body[data-viewport-layout-mode="relative120"] #centerOverlayImage,
+body[data-viewport-layout-mode="relative120"] #loadingScreen {
+  position: absolute;
+}
+
 #loadingScreen {
   position: fixed;
   top: var(--app-viewport-offset-top);
@@ -201,6 +225,10 @@ body.ios26-fixed-workaround #loadingScreen {
 }
 
 body.ios26-fixed-workaround #viewportModeDebugToggle {
+  position: absolute;
+}
+
+body[data-viewport-layout-mode="relative120"] #viewportModeDebugToggle {
   position: absolute;
 }
 

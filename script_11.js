@@ -55,6 +55,8 @@ const HERO_VIDEO_DEBUG_LABEL_ID = 'heroVideoDebugLabel';
 const VIEWPORT_LAYOUT_MODE_COVER = 'cover';
 const VIEWPORT_LAYOUT_MODE_DYNAMIC = 'dynamic';
 const VIEWPORT_LAYOUT_MODE_LEGACY = 'legacy';
+const VIEWPORT_LAYOUT_MODE_RELATIVE_120 = 'relative120';
+const VIEWPORT_LAYOUT_RELATIVE_120_HEIGHT_MULTIPLIER = 1.2;
 const VIEWPORT_LAYOUT_MODE_QUERY_PARAM = 'viewportMode';
 const VIEWPORT_LAYOUT_DEBUG_QUERY_PARAM = 'viewportDebug';
 const VIEWPORT_LAYOUT_MODE_DEBUG_BUTTON_ID = 'viewportModeDebugToggle';
@@ -202,6 +204,9 @@ function sanitizeViewportLayoutMode(value, fallback = '') {
   }
   if (value === VIEWPORT_LAYOUT_MODE_LEGACY) {
     return VIEWPORT_LAYOUT_MODE_LEGACY;
+  }
+  if (value === VIEWPORT_LAYOUT_MODE_RELATIVE_120) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_120;
   }
   return fallback;
 }
@@ -9515,6 +9520,7 @@ function ensureLargeViewportProbeElement() {
 }
 
 function resolveViewportSizeForRendering() {
+  const layoutMode = sanitizeViewportLayoutMode(STATE.viewportLayoutMode, VIEWPORT_LAYOUT_MODE_LEGACY);
   const safeInnerWidth = Number.isFinite(window.innerWidth) ? Math.max(0, window.innerWidth) : 0;
   const safeInnerHeight = Number.isFinite(window.innerHeight) ? Math.max(0, window.innerHeight) : 0;
   const root = document && document.documentElement ? document.documentElement : null;
@@ -9532,7 +9538,7 @@ function resolveViewportSizeForRendering() {
   // Cover mode intentionally does not; it fills the large viewport and can render under browser UI.
   if (
     STATE.useIOSFixedViewportWorkaround
-    && STATE.viewportLayoutMode === VIEWPORT_LAYOUT_MODE_DYNAMIC
+    && layoutMode === VIEWPORT_LAYOUT_MODE_DYNAMIC
     && safeVisualViewportWidth > 0
     && safeVisualViewportHeight > 0
   ) {
@@ -9559,21 +9565,39 @@ function resolveViewportSizeForRendering() {
 
   const width = Math.max(safeInnerWidth, safeClientWidth, probeWidth);
   const height = Math.max(safeInnerHeight, safeClientHeight, probeHeight);
+  const resolvedWidth = width > 0 ? width : safeInnerWidth;
+  const resolvedHeight = height > 0 ? height : safeInnerHeight;
+  if (layoutMode === VIEWPORT_LAYOUT_MODE_RELATIVE_120) {
+    return {
+      width: resolvedWidth,
+      height: Math.max(
+        resolvedHeight,
+        resolvedHeight * VIEWPORT_LAYOUT_RELATIVE_120_HEIGHT_MULTIPLIER,
+      ),
+    };
+  }
   return {
-    width: width > 0 ? width : safeInnerWidth,
-    height: height > 0 ? height : safeInnerHeight,
+    width: resolvedWidth,
+    height: resolvedHeight,
   };
 }
 
 function syncIOSFixedViewportWorkaroundFlag() {
   const mode = sanitizeViewportLayoutMode(STATE.viewportLayoutMode, VIEWPORT_LAYOUT_MODE_LEGACY);
-  const useWorkaround = isLikelyIOS26OrLater() && mode !== VIEWPORT_LAYOUT_MODE_LEGACY;
+  const useWorkaround = (
+    mode === VIEWPORT_LAYOUT_MODE_RELATIVE_120
+    || (isLikelyIOS26OrLater() && mode !== VIEWPORT_LAYOUT_MODE_LEGACY)
+  );
   STATE.useIOSFixedViewportWorkaround = useWorkaround;
+  const root = document && document.documentElement ? document.documentElement : null;
   if (document && document.body) {
     if (document.body.classList) {
       document.body.classList.toggle('ios26-fixed-workaround', useWorkaround);
     }
     document.body.setAttribute('data-viewport-layout-mode', mode);
+  }
+  if (root && typeof root.setAttribute === 'function') {
+    root.setAttribute('data-viewport-layout-mode', mode);
   }
 }
 
@@ -9612,6 +9636,9 @@ function getNextViewportLayoutMode(currentMode) {
   }
   if (mode === VIEWPORT_LAYOUT_MODE_DYNAMIC) {
     return VIEWPORT_LAYOUT_MODE_LEGACY;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_LEGACY) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_120;
   }
   return VIEWPORT_LAYOUT_MODE_COVER;
 }
@@ -9659,7 +9686,7 @@ function ensureViewportLayoutDebugToggleButton() {
     button = document.createElement('button');
     button.type = 'button';
     button.id = VIEWPORT_LAYOUT_MODE_DEBUG_BUTTON_ID;
-    button.title = 'Switch viewport layout mode (cover/dynamic/legacy)';
+    button.title = 'Switch viewport layout mode (cover/dynamic/legacy/relative120)';
     button.addEventListener('click', () => {
       const nextMode = getNextViewportLayoutMode(STATE.viewportLayoutMode);
       applyViewportLayoutMode(nextMode, { forceRerender: true });
