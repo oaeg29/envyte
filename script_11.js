@@ -11395,6 +11395,12 @@ function onBranchStructureChanged() {
 // 14) Scene Render
 // =========================
 function resizeCanvasToViewport() {
+  if (isLikelySafariOnIOS() && isViewportScaleUnstable()) {
+    wasPinchZoomingViewport = true;
+    clearViewportResyncTimer();
+    scheduleViewportResyncAfterScaleStabilizes();
+    return;
+  }
   syncIOSFixedViewportWorkaroundFlag();
   syncVisualViewportOffsets();
   syncSafariTopTintShim();
@@ -11460,9 +11466,9 @@ function ensureLargeViewportProbeElement() {
   return largeViewportProbeElement;
 }
 
-function isPinchZoomingViewport() {
+function isViewportScaleUnstable() {
   const scale = Number(window && window.visualViewport ? window.visualViewport.scale : NaN);
-  return Number.isFinite(scale) && Math.abs(scale - 1) > 0.01;
+  return Number.isFinite(scale) && Math.abs(scale - 1) > 0.005;
 }
 
 function getStableViewportHeightForLayout(visualViewportHeight, fallbackHeight) {
@@ -11472,7 +11478,7 @@ function getStableViewportHeightForLayout(visualViewportHeight, fallbackHeight) 
   const safeVisualViewportHeight = Number.isFinite(visualViewportHeight)
     ? Math.max(0, visualViewportHeight)
     : 0;
-  if (safeVisualViewportHeight > 0 && !isPinchZoomingViewport()) {
+  if (safeVisualViewportHeight > 0 && !isViewportScaleUnstable()) {
     return safeVisualViewportHeight;
   }
   return safeFallbackHeight;
@@ -11580,7 +11586,7 @@ function syncIOSFixedViewportWorkaroundFlag() {
 }
 
 function syncVisualViewportOffsets() {
-  if (isLikelySafariOnIOS() && isPinchZoomingViewport()) {
+  if (isLikelySafariOnIOS() && isViewportScaleUnstable()) {
     return;
   }
   let offsetLeft = 0;
@@ -12030,11 +12036,11 @@ function clearViewportResyncTimer() {
   }
 }
 
-function scheduleViewportResyncAfterPinchZoom() {
+function scheduleViewportResyncAfterScaleStabilizes() {
   clearViewportResyncTimer();
   viewportResyncTimerId = window.setTimeout(() => {
     viewportResyncTimerId = null;
-    if (isLikelySafariOnIOS() && isPinchZoomingViewport()) {
+    if (isLikelySafariOnIOS() && isViewportScaleUnstable()) {
       wasPinchZoomingViewport = true;
       return;
     }
@@ -12047,16 +12053,17 @@ function scheduleViewportResyncAfterPinchZoom() {
     resizeCanvasToViewport();
     refreshHeroVideoReferenceRect({ force: true });
     renderScene({ skipAutoStart: true });
-  }, 120);
+  }, 500);
 }
 
 function rerunIOSRelative166ViewportLayout() {
   if (!isIOSRelative166ViewportModeActive()) {
     return false;
   }
-  if (isLikelySafariOnIOS() && isPinchZoomingViewport()) {
+  if (isLikelySafariOnIOS() && isViewportScaleUnstable()) {
     wasPinchZoomingViewport = true;
-    scheduleViewportResyncAfterPinchZoom();
+    clearViewportResyncTimer();
+    scheduleViewportResyncAfterScaleStabilizes();
     return false;
   }
   applyViewportLayoutMode(VIEWPORT_LAYOUT_MODE_RELATIVE_166, { forceRerender: true });
@@ -12070,9 +12077,10 @@ function scheduleIOSRelative166ViewportStabilization() {
   }
   clearIOSRelative166ViewportStabilizationSchedule();
   const rerun = () => {
-    if (isLikelySafariOnIOS() && isPinchZoomingViewport()) {
+    if (isLikelySafariOnIOS() && isViewportScaleUnstable()) {
       wasPinchZoomingViewport = true;
-      scheduleViewportResyncAfterPinchZoom();
+      clearViewportResyncTimer();
+      scheduleViewportResyncAfterScaleStabilizes();
       return;
     }
     rerunIOSRelative166ViewportLayout();
@@ -12122,14 +12130,17 @@ function setupVisualViewportHandlers() {
   }
   const onVisualViewportChanged = () => {
     if (isLikelySafariOnIOS()) {
-      const isZooming = isPinchZoomingViewport();
-      if (isZooming) {
+      const scaleUnstable = isViewportScaleUnstable();
+      if (scaleUnstable) {
         wasPinchZoomingViewport = true;
+        clearViewportResyncTimer();
+        scheduleViewportResyncAfterScaleStabilizes();
         return;
       }
       if (wasPinchZoomingViewport) {
         wasPinchZoomingViewport = false;
-        scheduleViewportResyncAfterPinchZoom();
+        clearViewportResyncTimer();
+        scheduleViewportResyncAfterScaleStabilizes();
         return;
       }
       if (viewportResyncTimerId !== null) {
@@ -12861,6 +12872,12 @@ function renderScene(options = {}) {
 // 15) Events
 // =========================
 function onResize() {
+  if (isLikelySafariOnIOS() && isViewportScaleUnstable()) {
+    wasPinchZoomingViewport = true;
+    clearViewportResyncTimer();
+    scheduleViewportResyncAfterScaleStabilizes();
+    return;
+  }
   // Keep existing branches; do not regenerate on zoom/resize.
   const previousFloralScale = Number.isFinite(STATE.lastFloralResponsiveScaleFactor)
     ? STATE.lastFloralResponsiveScaleFactor
