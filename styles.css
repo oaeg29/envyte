@@ -88,10 +88,9 @@ body[data-viewport-layout-mode="scrollstage"] {
   top: 0;
   left: 0;
   width: 100vw;
-  min-width: 80vw;
-  height: 3px;
+  height: 6px;
   background-color: var(--safari-top-tint, #000);
-  opacity: var(--safari-top-tint-shim-opacity, 0.01);
+  opacity: 1;
   pointer-events: none;
   z-index: 2147483647;
 }
