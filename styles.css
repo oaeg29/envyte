@@ -4,6 +4,13 @@
   --app-viewport-width: 100vw;
   --app-viewport-offset-left: 0px;
   --app-viewport-offset-top: 0px;
+  --app-page-bg-solid: hsl(208, 20%, 82%);
+  --app-page-bg-gradient: linear-gradient(
+    180deg,
+    hsl(205, 15%, 100%) 0%,
+    hsl(208, 15%, 89%) 50%,
+    hsl(208, 20%, 82%) 100%
+  );
 }
 
 @supports (height: 100lvh) {
@@ -26,19 +33,22 @@ html, body {
   padding: 0;
   overflow: hidden;
   overscroll-behavior: none;
-  background: #f6efdf;
+  background-color: var(--app-page-bg-solid);
+  background-image: var(--app-page-bg-gradient);
 }
 
 body {
   position: relative;
-  background: #f6efdf;
+  background-color: var(--app-page-bg-solid);
+  background-image: var(--app-page-bg-gradient);
 }
 
 html[data-viewport-layout-mode="scrollstage"],
 body[data-viewport-layout-mode="scrollstage"] {
   height: auto;
   min-height: 100vh;
-  background: #7a6f63;
+  background-color: var(--app-page-bg-solid);
+  background-image: var(--app-page-bg-gradient);
   overflow-x: hidden;
   overflow-y: auto;
 }
@@ -51,9 +61,8 @@ body[data-viewport-layout-mode="scrollstage"] {
 }
 
 body[data-viewport-layout-mode="scrollstage"] {
-  background:
-    radial-gradient(120% 95% at 50% 18%, rgba(122, 111, 99, 0.45) 0%, rgba(92, 82, 72, 0.2) 42%, rgba(64, 56, 49, 0.12) 74%),
-    linear-gradient(180deg, #7a6f63 0%, #6c6156 48%, #60574d 100%);
+  background-color: var(--app-page-bg-solid);
+  background-image: var(--app-page-bg-gradient);
 }
 
 #ios-scroll-stage {
@@ -154,12 +163,14 @@ body.ios26-fixed-workaround #loadingScreen {
 }
 
 html[data-viewport-layout-mode="rootbg"] {
-  background: #000;
+  background-color: var(--app-page-bg-solid);
+  background-image: var(--app-page-bg-gradient);
 }
 
 body[data-viewport-layout-mode="rootbg"] {
   position: relative;
-  background: transparent;
+  background-color: var(--app-page-bg-solid);
+  background-image: var(--app-page-bg-gradient);
 }
 
 body[data-viewport-layout-mode="rootbg"] video {
@@ -208,6 +219,7 @@ body[data-viewport-layout-mode="scrollstage"] #app {
   }
 }
 
+body[data-viewport-layout-mode="relative112"] #myCanvas,
 body[data-viewport-layout-mode="relative116"] #myCanvas,
 body[data-viewport-layout-mode="relative120"] #myCanvas,
 body[data-viewport-layout-mode="relative124"] #myCanvas,
@@ -221,6 +233,7 @@ body[data-viewport-layout-mode="relativeBiasUp60"] #myCanvas,
 body[data-viewport-layout-mode="relativeBiasUp80"] #myCanvas,
 body[data-viewport-layout-mode="relativeBiasUp120"] #myCanvas,
 body[data-viewport-layout-mode="scrollstage"] #myCanvas,
+body[data-viewport-layout-mode="relative112"] #myCanvasFront,
 body[data-viewport-layout-mode="relative116"] #myCanvasFront,
 body[data-viewport-layout-mode="relative120"] #myCanvasFront,
 body[data-viewport-layout-mode="relative124"] #myCanvasFront,
@@ -234,6 +247,7 @@ body[data-viewport-layout-mode="relativeBiasUp60"] #myCanvasFront,
 body[data-viewport-layout-mode="relativeBiasUp80"] #myCanvasFront,
 body[data-viewport-layout-mode="relativeBiasUp120"] #myCanvasFront,
 body[data-viewport-layout-mode="scrollstage"] #myCanvasFront,
+body[data-viewport-layout-mode="relative112"] #myCanvasFlowersBack,
 body[data-viewport-layout-mode="relative116"] #myCanvasFlowersBack,
 body[data-viewport-layout-mode="relative120"] #myCanvasFlowersBack,
 body[data-viewport-layout-mode="relative124"] #myCanvasFlowersBack,
@@ -247,6 +261,7 @@ body[data-viewport-layout-mode="relativeBiasUp60"] #myCanvasFlowersBack,
 body[data-viewport-layout-mode="relativeBiasUp80"] #myCanvasFlowersBack,
 body[data-viewport-layout-mode="relativeBiasUp120"] #myCanvasFlowersBack,
 body[data-viewport-layout-mode="scrollstage"] #myCanvasFlowersBack,
+body[data-viewport-layout-mode="relative112"] #myCanvasFlowersFront,
 body[data-viewport-layout-mode="relative116"] #myCanvasFlowersFront,
 body[data-viewport-layout-mode="relative120"] #myCanvasFlowersFront,
 body[data-viewport-layout-mode="relative124"] #myCanvasFlowersFront,
@@ -260,6 +275,7 @@ body[data-viewport-layout-mode="relativeBiasUp60"] #myCanvasFlowersFront,
 body[data-viewport-layout-mode="relativeBiasUp80"] #myCanvasFlowersFront,
 body[data-viewport-layout-mode="relativeBiasUp120"] #myCanvasFlowersFront,
 body[data-viewport-layout-mode="scrollstage"] #myCanvasFlowersFront,
+body[data-viewport-layout-mode="relative112"] video,
 body[data-viewport-layout-mode="relative116"] video,
 body[data-viewport-layout-mode="relative120"] video,
 body[data-viewport-layout-mode="relative124"] video,
@@ -273,6 +289,7 @@ body[data-viewport-layout-mode="relativeBiasUp60"] video,
 body[data-viewport-layout-mode="relativeBiasUp80"] video,
 body[data-viewport-layout-mode="relativeBiasUp120"] video,
 body[data-viewport-layout-mode="scrollstage"] video,
+body[data-viewport-layout-mode="relative112"] #centerOverlayImage,
 body[data-viewport-layout-mode="relative116"] #centerOverlayImage,
 body[data-viewport-layout-mode="relative120"] #centerOverlayImage,
 body[data-viewport-layout-mode="relative124"] #centerOverlayImage,
@@ -286,6 +303,7 @@ body[data-viewport-layout-mode="relativeBiasUp60"] #centerOverlayImage,
 body[data-viewport-layout-mode="relativeBiasUp80"] #centerOverlayImage,
 body[data-viewport-layout-mode="relativeBiasUp120"] #centerOverlayImage,
 body[data-viewport-layout-mode="scrollstage"] #centerOverlayImage,
+body[data-viewport-layout-mode="relative112"] #loadingScreen,
 body[data-viewport-layout-mode="relative116"] #loadingScreen,
 body[data-viewport-layout-mode="relative120"] #loadingScreen,
 body[data-viewport-layout-mode="relative124"] #loadingScreen,
@@ -387,6 +405,7 @@ body.ios26-fixed-workaround #viewportModeDebugToggle {
   position: absolute;
 }
 
+body[data-viewport-layout-mode="relative112"] #viewportModeDebugToggle,
 body[data-viewport-layout-mode="relative116"] #viewportModeDebugToggle,
 body[data-viewport-layout-mode="relative120"] #viewportModeDebugToggle,
 body[data-viewport-layout-mode="relative124"] #viewportModeDebugToggle,

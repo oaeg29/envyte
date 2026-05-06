@@ -55,6 +55,7 @@ const HERO_VIDEO_DEBUG_LABEL_ID = 'heroVideoDebugLabel';
 const VIEWPORT_LAYOUT_MODE_COVER = 'cover';
 const VIEWPORT_LAYOUT_MODE_DYNAMIC = 'dynamic';
 const VIEWPORT_LAYOUT_MODE_LEGACY = 'legacy';
+const VIEWPORT_LAYOUT_MODE_RELATIVE_112 = 'relative112';
 const VIEWPORT_LAYOUT_MODE_RELATIVE_116 = 'relative116';
 const VIEWPORT_LAYOUT_MODE_RELATIVE_120 = 'relative120';
 const VIEWPORT_LAYOUT_MODE_RELATIVE_124 = 'relative124';
@@ -77,6 +78,8 @@ const VIEWPORT_LAYOUT_RELATIVE_140_OVERDRAW_PX = 20;
 const VIEWPORT_LAYOUT_RELATIVE_160_OVERDRAW_PX = 30;
 const VIEWPORT_LAYOUT_RELATIVE_180_OVERDRAW_PX = 40;
 const VIEWPORT_LAYOUT_RELATIVE_190_OVERDRAW_PX = 45;
+const VIEWPORT_LAYOUT_RELATIVE_112_TOP_OVERDRAW_PX = 0;
+const VIEWPORT_LAYOUT_RELATIVE_112_EXTRA_HEIGHT_PX = 12;
 const VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_20_TOP_OVERDRAW_PX = 20;
 const VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_20_EXTRA_HEIGHT_PX = 40;
 const VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_40_TOP_OVERDRAW_PX = 40;
@@ -242,6 +245,9 @@ function sanitizeViewportLayoutMode(value, fallback = '') {
   if (value === VIEWPORT_LAYOUT_MODE_LEGACY) {
     return VIEWPORT_LAYOUT_MODE_LEGACY;
   }
+  if (value === VIEWPORT_LAYOUT_MODE_RELATIVE_112) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_112;
+  }
   if (value === VIEWPORT_LAYOUT_MODE_RELATIVE_116) {
     return VIEWPORT_LAYOUT_MODE_RELATIVE_116;
   }
@@ -316,6 +322,12 @@ function resolveRelativeViewportOverdrawPx(mode) {
 }
 
 function resolveViewportLayoutBiasOverdrawConfig(mode) {
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_112) {
+    return {
+      topPx: VIEWPORT_LAYOUT_RELATIVE_112_TOP_OVERDRAW_PX,
+      extraHeightPx: VIEWPORT_LAYOUT_RELATIVE_112_EXTRA_HEIGHT_PX,
+    };
+  }
   if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_20) {
     return {
       topPx: VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_20_TOP_OVERDRAW_PX,
@@ -6754,7 +6766,19 @@ function stepFlowerInteractionFrame(timestampMs) {
 // 12) Draw Helpers
 // =========================
 function drawBackground() {
-  ctx.fillStyle = CONFIG.backgroundColor;
+  // Always clear first so the base canvas stays transparent when no fill is set.
+  ctx.clearRect(0, 0, STATE.viewportWidth, STATE.viewportHeight);
+  const fill = CONFIG.backgroundColor;
+  if (fill === null || fill === undefined) {
+    return;
+  }
+  if (typeof fill === 'string') {
+    const normalizedFill = fill.trim().toLowerCase();
+    if (normalizedFill.length === 0 || normalizedFill === 'transparent') {
+      return;
+    }
+  }
+  ctx.fillStyle = fill;
   ctx.fillRect(0, 0, STATE.viewportWidth, STATE.viewportHeight);
 }
 
@@ -9983,6 +10007,9 @@ function getNextViewportLayoutMode(currentMode) {
     return VIEWPORT_LAYOUT_MODE_LEGACY;
   }
   if (mode === VIEWPORT_LAYOUT_MODE_LEGACY) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_112;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_112) {
     return VIEWPORT_LAYOUT_MODE_RELATIVE_116;
   }
   if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_116) {
@@ -10080,7 +10107,7 @@ function ensureViewportLayoutDebugToggleButton() {
     button = document.createElement('button');
     button.type = 'button';
     button.id = VIEWPORT_LAYOUT_MODE_DEBUG_BUTTON_ID;
-    button.title = 'Switch viewport layout mode (cover/dynamic/legacy/relative116/relative120/relative124/relative140/relative160/relative180/relative190/relativeBiasUp20/relativeBiasUp40/relativeBiasUp60/relativeBiasUp80/relativeBiasUp120/rootbg/scrollstage/bodyfixed)';
+    button.title = 'Switch viewport layout mode (cover/dynamic/legacy/relative112/relative116/relative120/relative124/relative140/relative160/relative180/relative190/relativeBiasUp20/relativeBiasUp40/relativeBiasUp60/relativeBiasUp80/relativeBiasUp120/rootbg/scrollstage/bodyfixed)';
     button.addEventListener('click', () => {
       const nextMode = getNextViewportLayoutMode(STATE.viewportLayoutMode);
       applyViewportLayoutMode(nextMode, { forceRerender: true });

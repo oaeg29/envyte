@@ -8,7 +8,7 @@
       : 9;
 
     return {
-  backgroundColor: gradient,
+  backgroundColor: 'transparent',
   globalFoliageScale: 0.85, // global foliage multiplier (branches + stems + leaves + flowers)
 
   noise: {
