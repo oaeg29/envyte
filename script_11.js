@@ -437,36 +437,23 @@ function readViewportLayoutModeFromSearchParams() {
   }
   try {
     const searchParams = new URLSearchParams(window.location.search);
-    return sanitizeViewportLayoutMode(searchParams.get(VIEWPORT_LAYOUT_MODE_QUERY_PARAM), '');
+    const rawMode = String(searchParams.get(VIEWPORT_LAYOUT_MODE_QUERY_PARAM) || '').trim();
+    // Keep only the root background experiment mode externally addressable.
+    if (rawMode === VIEWPORT_LAYOUT_MODE_ROOT_BG) {
+      return VIEWPORT_LAYOUT_MODE_ROOT_BG;
+    }
+    return '';
   } catch (_error) {
     return '';
   }
 }
 
 function shouldEnableViewportLayoutDebugToggle() {
-  if (!window || !window.location || typeof window.location.search !== 'string') {
-    return false;
-  }
-  try {
-    const searchParams = new URLSearchParams(window.location.search);
-    const rawFlag = String(searchParams.get(VIEWPORT_LAYOUT_DEBUG_QUERY_PARAM) || '').trim().toLowerCase();
-    return rawFlag === '1' || rawFlag === 'true' || rawFlag === 'yes';
-  } catch (_error) {
-    return false;
-  }
+  return false;
 }
 
 function shouldEnableViewportScrollNudge() {
-  if (!window || !window.location || typeof window.location.search !== 'string') {
-    return false;
-  }
-  try {
-    const searchParams = new URLSearchParams(window.location.search);
-    const rawFlag = String(searchParams.get(VIEWPORT_LAYOUT_SCROLL_NUDGE_QUERY_PARAM) || '').trim().toLowerCase();
-    return rawFlag === '1' || rawFlag === 'true' || rawFlag === 'yes';
-  } catch (_error) {
-    return false;
-  }
+  return false;
 }
 
 function readViewportTopTintShimOverrideFromSearchParams() {
@@ -509,9 +496,7 @@ function resolveInitialViewportLayoutMode() {
   if (isLikelySafariOnIOS()) {
     return VIEWPORT_LAYOUT_MODE_RELATIVE_ADJUSTABLE;
   }
-  if (isLikelyIOS26OrLater()) {
-    return VIEWPORT_LAYOUT_MODE_COVER;
-  }
+  // Use normal baseline layout outside iOS Safari.
   return VIEWPORT_LAYOUT_MODE_LEGACY;
 }
 
@@ -815,14 +800,18 @@ function isLikelySafariOnIOS() {
     return false;
   }
   const userAgent = typeof navigator.userAgent === 'string' ? navigator.userAgent : '';
+  const vendor = typeof navigator.vendor === 'string' ? navigator.vendor : '';
   const uaData = navigator.userAgentData && typeof navigator.userAgentData === 'object'
     ? navigator.userAgentData
     : null;
   const brands = uaData && Array.isArray(uaData.brands) ? uaData.brands : [];
+  // Safari-specific on iOS (non-standard, but currently the cleanest discriminator).
+  const hasStandaloneProperty = typeof navigator.standalone === 'boolean';
   const hasSafariToken = /Safari\//i.test(userAgent);
   const hasVersionToken = /Version\//i.test(userAgent);
   const hasAppleWebKitToken = /AppleWebKit\//i.test(userAgent);
-  const hasOtherBrowserToken = /(?:CriOS|FxiOS|EdgiOS|OPiOS|YaBrowser|DuckDuckGo|Brave|GSA|Instagram|FBAN|FBAV|Twitter|Line|Snapchat|SamsungBrowser|Vivaldi|UCBrowser|Puffin|QQBrowser|Baidu|Naver|Whale|Focus|Yandex|Firefox|Chrome|EdgA|Edg|OPR)/i.test(userAgent);
+  const hasAppleVendor = /Apple/i.test(vendor);
+  const hasOtherBrowserToken = /(?:CriOS|FxiOS|EdgiOS|OPiOS|OPT\/|YaBrowser|DuckDuckGo|Brave|GSA|Instagram|FBAN|FBAV|Twitter|Line|Snapchat|SamsungBrowser|Vivaldi|UCBrowser|Puffin|QQBrowser|Baidu|Naver|Whale|Focus|Yandex|Firefox|Chrome|EdgA|Edg|OPR)/i.test(userAgent);
   const hasOtherBrandToken = brands.some((entry) => (
     entry
     && typeof entry.brand === 'string'
@@ -831,7 +820,10 @@ function isLikelySafariOnIOS() {
   if (hasOtherBrowserToken || hasOtherBrandToken) {
     return false;
   }
-  return hasAppleWebKitToken && hasSafariToken && hasVersionToken;
+  if (!hasStandaloneProperty) {
+    return false;
+  }
+  return hasAppleWebKitToken && hasSafariToken && hasVersionToken && hasAppleVendor;
 }
 
 function resolveInitialViewportRelativeAdjustableValue() {
@@ -959,16 +951,22 @@ function tryAdvanceHeroVideoSourceCandidate(reason = 'unknown') {
 }
 
 function configureHeroVideoElement() {
-  video.controls = false; // Displays play/pause and volume controls
+  video.controls = false;
   video.preload = 'auto';
   video.defaultMuted = true;
   video.muted = true;
-  video.autoplay = false;
+  video.autoplay = true;
   video.playsInline = true;
-  video.removeAttribute('autoplay');
+  video.loop = true;
+  video.disablePictureInPicture = true;
+  video.controlsList = 'nodownload noplaybackrate noremoteplayback nofullscreen';
+  video.setAttribute('autoplay', '');
   video.setAttribute('muted', '');
   video.setAttribute('playsinline', '');
   video.setAttribute('webkit-playsinline', '');
+  video.setAttribute('loop', '');
+  video.setAttribute('disablepictureinpicture', '');
+  video.setAttribute('controlslist', 'nodownload noplaybackrate noremoteplayback nofullscreen');
 
   HERO_VIDEO_SOURCE_RUNTIME.candidates = buildHeroVideoSourceCandidates();
   HERO_VIDEO_SOURCE_RUNTIME.activeIndex = -1;
@@ -3558,10 +3556,37 @@ function startHeroPlaybackGateFlow() {
   }
   const playbackPromise = video.play();
   if (playbackPromise && typeof playbackPromise.catch === 'function') {
-    playbackPromise.catch(() => {
-      gateState.awaitingUserPlaybackStart = true;
+    playbackPromise.catch((error) => {
+      const errorName = error && typeof error.name === 'string' ? error.name : '';
+      if (errorName === 'NotAllowedError') {
+        gateState.awaitingUserPlaybackStart = true;
+        gateState.stage = 'introPlaying';
+        renderScene({ skipAutoStart: true });
+        return;
+      }
+      // AbortError can happen during source/load churn; retry automatically.
+      gateState.awaitingUserPlaybackStart = false;
       gateState.stage = 'introPlaying';
-      renderScene({ skipAutoStart: true });
+      window.setTimeout(() => {
+        if (!STATE.heroPlaybackGate || !STATE.hasBootstrapped) {
+          return;
+        }
+        if (STATE.heroPlaybackGate.awaitingUserPlaybackStart === true) {
+          return;
+        }
+        const retryPromise = video.play();
+        if (retryPromise && typeof retryPromise.catch === 'function') {
+          retryPromise.catch((retryError) => {
+            const retryErrorName = retryError && typeof retryError.name === 'string'
+              ? retryError.name
+              : '';
+            if (retryErrorName === 'NotAllowedError') {
+              STATE.heroPlaybackGate.awaitingUserPlaybackStart = true;
+              renderScene({ skipAutoStart: true });
+            }
+          });
+        }
+      }, 180);
     });
   }
   ensureHeroPlaybackGateMonitorRunning();
