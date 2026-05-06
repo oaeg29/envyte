@@ -187,6 +187,7 @@
       centerYRatio: 0.7897135, // 78.97135% of rendered video height
       diameterRatio: 0.062, // 6.2% of rendered video size (min(width,height))
       hitMarginPercentOfButtonSize: 150, // 0..100 extra size percentage
+      enableBeforeIntroPauseFrames: 10, // enable interaction this many frames before introPauseFrame
     },
     openButtonDebug: {
       enabled: true,

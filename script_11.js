@@ -916,6 +916,9 @@ function mergeConfigOverridesInPlace(target, patch) {
   for (let i = 0; i < keys.length; i += 1) {
     const key = keys[i];
     const patchValue = patch[key];
+    if (patchValue === undefined) {
+      continue;
+    }
     if (isPlainConfigObject(patchValue)) {
       if (!isPlainConfigObject(target[key])) {
         target[key] = {};
@@ -1721,6 +1724,9 @@ function resolveHeroPlaybackGateConfig(configCandidate = CONFIG.heroPlaybackGate
       0,
       100,
     ),
+    enableBeforeIntroPauseFrames: Number.isFinite(Number(safeOpenButtonConfig.enableBeforeIntroPauseFrames))
+      ? Math.max(0, Math.floor(Number(safeOpenButtonConfig.enableBeforeIntroPauseFrames)))
+      : 10,
   };
   const openButtonDebug = {
     enabled: safeOpenButtonDebugConfig.enabled === true,
@@ -1986,6 +1992,32 @@ function getCurrentHeroVideoFrame(gateConfig = resolveHeroPlaybackGateConfig()) 
   return Number.isFinite(video.currentTime)
     ? Math.max(0, video.currentTime * frameRate)
     : 0;
+}
+
+function getHeroPlaybackOpenButtonEnableFrame(gateConfig = resolveHeroPlaybackGateConfig()) {
+  if (!gateConfig || !gateConfig.openButton) {
+    return 0;
+  }
+  const introPauseFrame = Number.isFinite(Number(gateConfig.introPauseFrame))
+    ? Math.max(0, Number(gateConfig.introPauseFrame))
+    : 0;
+  const preBufferFrames = Number.isFinite(Number(gateConfig.openButton.enableBeforeIntroPauseFrames))
+    ? Math.max(0, Number(gateConfig.openButton.enableBeforeIntroPauseFrames))
+    : 0;
+  return Math.max(0, introPauseFrame - preBufferFrames);
+}
+
+function isHeroPlaybackOpenButtonEnabledAtFrame(
+  currentFrame = getCurrentHeroVideoFrame(resolveHeroPlaybackGateConfig()),
+  gateConfig = resolveHeroPlaybackGateConfig(),
+) {
+  if (!gateConfig || gateConfig.enabled !== true) {
+    return false;
+  }
+  if (!Number.isFinite(currentFrame)) {
+    return false;
+  }
+  return currentFrame >= getHeroPlaybackOpenButtonEnableFrame(gateConfig);
 }
 
 function getHeroGatePauseTargetFrame(stage, gateConfig = resolveHeroPlaybackGateConfig()) {
@@ -2766,6 +2798,10 @@ function tryHandleHeroPlaybackOpenButtonClick(event) {
     || gateState.stage === 'introPlaying'
   );
   if (!stageAllowsOpen) {
+    return false;
+  }
+  const currentFrame = getCurrentHeroVideoFrame(gateConfig);
+  if (!isHeroPlaybackOpenButtonEnabledAtFrame(currentFrame, gateConfig)) {
     return false;
   }
   const clientPoint = extractPrimaryClientPoint(event);
@@ -6566,6 +6602,10 @@ function drawHeroPlaybackOpenButtonDebugOverlay(
   if (!debugConfig || debugConfig.enabled !== true) {
     return;
   }
+  const currentFrame = getCurrentHeroVideoFrame(gateConfig);
+  if (!isHeroPlaybackOpenButtonEnabledAtFrame(currentFrame, gateConfig)) {
+    return;
+  }
   const hitCircle = resolveHeroPlaybackOpenButtonHitCircle(gateConfig);
   if (!hitCircle || !Number.isFinite(hitCircle.centerX) || !Number.isFinite(hitCircle.centerY)) {
     return;
@@ -9365,28 +9405,20 @@ function resizeCanvasToViewport() {
     document.documentElement.style.setProperty('--app-viewport-height', `${STATE.viewportHeight}px`);
   }
 
-  canvas.style.width = STATE.viewportWidth + 'px';
-  canvas.style.height = STATE.viewportHeight + 'px';
   canvas.width = Math.floor(STATE.viewportWidth * STATE.dpr);
   canvas.height = Math.floor(STATE.viewportHeight * STATE.dpr);
 
   ctx.setTransform(STATE.dpr, 0, 0, STATE.dpr, 0, 0);
   if (frontCanvas && frontCtx) {
-    frontCanvas.style.width = STATE.viewportWidth + 'px';
-    frontCanvas.style.height = STATE.viewportHeight + 'px';
     frontCanvas.width = Math.floor(STATE.viewportWidth * STATE.dpr);
     frontCanvas.height = Math.floor(STATE.viewportHeight * STATE.dpr);
     frontCtx.setTransform(STATE.dpr, 0, 0, STATE.dpr, 0, 0);
   }
   if (flowersBackCanvas) {
-    flowersBackCanvas.style.width = STATE.viewportWidth + 'px';
-    flowersBackCanvas.style.height = STATE.viewportHeight + 'px';
     flowersBackCanvas.width = Math.floor(STATE.viewportWidth * STATE.dpr);
     flowersBackCanvas.height = Math.floor(STATE.viewportHeight * STATE.dpr);
   }
   if (flowersFrontCanvas) {
-    flowersFrontCanvas.style.width = STATE.viewportWidth + 'px';
-    flowersFrontCanvas.style.height = STATE.viewportHeight + 'px';
     flowersFrontCanvas.width = Math.floor(STATE.viewportWidth * STATE.dpr);
     flowersFrontCanvas.height = Math.floor(STATE.viewportHeight * STATE.dpr);
   }
@@ -9431,6 +9463,26 @@ function resolveViewportSizeForRendering() {
   const root = document && document.documentElement ? document.documentElement : null;
   const safeClientWidth = root && Number.isFinite(root.clientWidth) ? Math.max(0, root.clientWidth) : 0;
   const safeClientHeight = root && Number.isFinite(root.clientHeight) ? Math.max(0, root.clientHeight) : 0;
+  const vv = window && window.visualViewport ? window.visualViewport : null;
+  const safeVisualViewportWidth = vv && Number.isFinite(Number(vv.width))
+    ? Math.max(0, Number(vv.width))
+    : 0;
+  const safeVisualViewportHeight = vv && Number.isFinite(Number(vv.height))
+    ? Math.max(0, Number(vv.height))
+    : 0;
+
+  // On iOS 26+ Safari fixed/absolute layout path, prefer the visual viewport
+  // so canvas and video sizing follows dynamic viewport height (100dvh-like behavior).
+  if (
+    STATE.useIOSFixedViewportWorkaround
+    && safeVisualViewportWidth > 0
+    && safeVisualViewportHeight > 0
+  ) {
+    return {
+      width: safeVisualViewportWidth,
+      height: safeVisualViewportHeight,
+    };
+  }
 
   let probeWidth = 0;
   let probeHeight = 0;

@@ -32,8 +32,8 @@ body {
   position: fixed;
   top: var(--app-viewport-offset-top);
   left: var(--app-viewport-offset-left);
-  /* width: 100vw; */
-  /* height: 100vh; */
+  width: 100vw;
+  height: 100vh;
   z-index: -1;
   pointer-events: none;
 }
@@ -42,6 +42,8 @@ body {
   position: fixed;
   top: var(--app-viewport-offset-top);
   left: var(--app-viewport-offset-left);
+  width: 100vw;
+  height: 100vh;
   z-index: 10000;
   pointer-events: none;
 }
@@ -50,6 +52,8 @@ body {
   position: fixed;
   top: var(--app-viewport-offset-top);
   left: var(--app-viewport-offset-left);
+  width: 100vw;
+  height: 100vh;
   z-index: 0;
   pointer-events: none;
 }
@@ -58,8 +62,20 @@ body {
   position: fixed;
   top: var(--app-viewport-offset-top);
   left: var(--app-viewport-offset-left);
+  width: 100vw;
+  height: 100vh;
   z-index: 10001;
   pointer-events: none;
+}
+
+@supports (height: 100dvh) {
+  #myCanvas,
+  #myCanvasFront,
+  #myCanvasFlowersBack,
+  #myCanvasFlowersFront {
+    width: 100dvw;
+    height: 100dvh;
+  }
 }
 
 main, header, footer {
@@ -77,11 +93,19 @@ video {
   left: calc(50% + var(--app-viewport-offset-left));
   transform: translate(-50%, -50%) rotate(var(--hero-video-rotate, 0deg));
   width: auto;          /* Preserve aspect ratio */
-  height: var(--app-viewport-height); /* Always touch top and bottom */
+  height: 100vh; /* Fallback */
+  min-height: 100vh;
   display: block;
   z-index: 1;          /* On top of everything */
   margin: 0;
   padding: 0;
+}
+
+@supports (height: 100dvh) {
+  video {
+    height: 100dvh;
+    min-height: 100dvh;
+  }
 }
 
 #centerOverlayImage {
