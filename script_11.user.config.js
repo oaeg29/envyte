@@ -252,7 +252,7 @@
       radialMid: [0, 0, 40],
       radialStart: [0, 0, 60],
     },
-    debugFreezeVisible: true, // keep splash pinned on screen for tuning
+    debugFreezeVisible: false, // keep splash pinned on screen for tuning
     dotsLineHeight: 4.0, // line-height used by the loading dots row only
     // Legacy global interval + step fallback (used if hslStopOffsets entries are missing)
     // hslHueInterval: 0, // per-step hue delta
