@@ -4,13 +4,18 @@
   --app-viewport-width: 100vw;
   --app-viewport-offset-left: 0px;
   --app-viewport-offset-top: 0px;
-  --app-page-bg-solid: hsl(208, 20%, 82%);
+  --app-page-bg-top: hsl(205, 15%, 100%);
+  --app-page-bg-mid: hsl(208, 15%, 89%);
+  --app-page-bg-bottom: hsl(208, 20%, 82%);
+  --app-page-bg-solid: var(--app-page-bg-bottom);
   --app-page-bg-gradient: linear-gradient(
     180deg,
-    hsl(205, 15%, 100%) 0%,
-    hsl(208, 15%, 89%) 50%,
-    hsl(208, 20%, 82%) 100%
+    var(--app-page-bg-top) 0%,
+    var(--app-page-bg-mid) 50%,
+    var(--app-page-bg-bottom) 100%
   );
+  --safari-top-tint: var(--app-page-bg-top);
+  --safari-top-tint-shim-opacity: 0.01;
 }
 
 @supports (height: 100lvh) {
@@ -75,6 +80,24 @@ body[data-viewport-layout-mode="scrollstage"] {
   #ios-scroll-stage {
     min-height: calc(100lvh + 1px);
   }
+}
+
+#safari-top-tint-shim {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  min-width: 80vw;
+  height: 3px;
+  background-color: var(--safari-top-tint, #000);
+  opacity: var(--safari-top-tint-shim-opacity, 0.01);
+  pointer-events: none;
+  z-index: 2147483647;
+}
+
+body.ios-safari-top-tint-shim #safari-top-tint-shim {
+  display: block;
 }
 
 #myCanvas {

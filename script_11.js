@@ -96,9 +96,13 @@ const VIEWPORT_LAYOUT_ROOT_BG_OVERDRAW_PX = 160;
 const VIEWPORT_LAYOUT_MODE_QUERY_PARAM = 'viewportMode';
 const VIEWPORT_LAYOUT_DEBUG_QUERY_PARAM = 'viewportDebug';
 const VIEWPORT_LAYOUT_SCROLL_NUDGE_QUERY_PARAM = 'viewportScrollNudge';
+const VIEWPORT_LAYOUT_TOP_TINT_SHIM_QUERY_PARAM = 'viewportTopTintShim';
 const VIEWPORT_LAYOUT_MODE_DEBUG_BUTTON_ID = 'viewportModeDebugToggle';
 const VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_CONTROLS_ID = 'viewportRelativeAdjustableControls';
 const VIEWPORT_LAYOUT_SCROLL_STAGE_ID = 'ios-scroll-stage';
+const SAFARI_TOP_TINT_SHIM_ID = 'safari-top-tint-shim';
+const SAFARI_TOP_TINT_CSS_VAR = '--safari-top-tint';
+const SAFARI_TOP_TINT_SHIM_OPACITY_CSS_VAR = '--safari-top-tint-shim-opacity';
 const VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_DEFAULT_VALUE = 112;
 const VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_MIN_VALUE = 100;
 const VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_MAX_VALUE = 240;
@@ -137,6 +141,8 @@ const loadingScreenGoneCallbacks = [];
 let visualViewportHandlersInstalled = false;
 let viewportLayoutDebugToggleButton = null;
 let viewportRelativeAdjustableControls = null;
+let safariTopTintShimElement = null;
+let lastSafariTopTint = '';
 let viewportScrollNudgeApplied = false;
 let viewportBodyFixedOriginalInlineStyles = null;
 let viewportBodyFixedStylesApplied = false;
@@ -458,6 +464,25 @@ function shouldEnableViewportScrollNudge() {
   }
 }
 
+function readViewportTopTintShimOverrideFromSearchParams() {
+  if (!window || !window.location || typeof window.location.search !== 'string') {
+    return null;
+  }
+  try {
+    const searchParams = new URLSearchParams(window.location.search);
+    const rawFlag = String(searchParams.get(VIEWPORT_LAYOUT_TOP_TINT_SHIM_QUERY_PARAM) || '').trim().toLowerCase();
+    if (rawFlag === '1' || rawFlag === 'true' || rawFlag === 'yes' || rawFlag === 'on') {
+      return true;
+    }
+    if (rawFlag === '0' || rawFlag === 'false' || rawFlag === 'no' || rawFlag === 'off') {
+      return false;
+    }
+    return null;
+  } catch (_error) {
+    return null;
+  }
+}
+
 function resolveInitialViewportLayoutMode() {
   const modeFromSearchParams = readViewportLayoutModeFromSearchParams();
   if (modeFromSearchParams) {
@@ -467,6 +492,232 @@ function resolveInitialViewportLayoutMode() {
     return VIEWPORT_LAYOUT_MODE_COVER;
   }
   return VIEWPORT_LAYOUT_MODE_LEGACY;
+}
+
+function resolveSafariTopTintShimConfig() {
+  const safeConfig = isPlainObjectLiteral(CONFIG.safariTopTintShim) ? CONFIG.safariTopTintShim : {};
+  const opacityInput = Number(safeConfig.opacity);
+  const iosMinMajorInput = Number(safeConfig.iosMinMajor);
+  return {
+    enabled: safeConfig.enabled !== false,
+    iosOnly: safeConfig.iosOnly !== false,
+    iosMinMajor: Number.isFinite(iosMinMajorInput) ? Math.max(0, Math.floor(iosMinMajorInput)) : 26,
+    rootBackgroundOnly: safeConfig.rootBackgroundOnly !== false,
+    opacity: Number.isFinite(opacityInput)
+      ? clamp(opacityInput, 0.01, 1)
+      : 0.01,
+  };
+}
+
+function ensureSafariTopTintShimElement() {
+  if (!document || !document.body) {
+    return null;
+  }
+  if (safariTopTintShimElement && safariTopTintShimElement.parentNode === document.body) {
+    return safariTopTintShimElement;
+  }
+  let element = document.getElementById(SAFARI_TOP_TINT_SHIM_ID);
+  if (!element) {
+    element = document.createElement('div');
+    element.id = SAFARI_TOP_TINT_SHIM_ID;
+    element.setAttribute('aria-hidden', 'true');
+    document.body.insertBefore(element, document.body.firstChild);
+  }
+  safariTopTintShimElement = element;
+  return safariTopTintShimElement;
+}
+
+function setSafariTopTint(color) {
+  if (!document || !document.documentElement || typeof color !== 'string') {
+    return;
+  }
+  const trimmed = color.trim();
+  if (trimmed.length <= 0) {
+    return;
+  }
+  document.documentElement.style.setProperty(SAFARI_TOP_TINT_CSS_VAR, trimmed);
+}
+
+function lerpColorChannel(a, b, t) {
+  const safeA = Number.isFinite(a) ? a : 0;
+  const safeB = Number.isFinite(b) ? b : 0;
+  const safeT = Number.isFinite(t) ? t : 0;
+  return Math.round(safeA + ((safeB - safeA) * safeT));
+}
+
+function interpolateRgbColor(colorA, colorB, t) {
+  return {
+    r: clamp(lerpColorChannel(colorA.r, colorB.r, t), 0, 255),
+    g: clamp(lerpColorChannel(colorA.g, colorB.g, t), 0, 255),
+    b: clamp(lerpColorChannel(colorA.b, colorB.b, t), 0, 255),
+  };
+}
+
+function rgbColorToCss(color) {
+  if (!color) {
+    return 'rgb(0, 0, 0)';
+  }
+  const r = Number.isFinite(color.r) ? clamp(Math.round(color.r), 0, 255) : 0;
+  const g = Number.isFinite(color.g) ? clamp(Math.round(color.g), 0, 255) : 0;
+  const b = Number.isFinite(color.b) ? clamp(Math.round(color.b), 0, 255) : 0;
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+function getGradientColorAt(stops, position) {
+  const safeStops = Array.isArray(stops) ? stops.filter((stop) => (
+    stop
+    && Number.isFinite(stop.pos)
+    && stop.color
+    && Number.isFinite(stop.color.r)
+    && Number.isFinite(stop.color.g)
+    && Number.isFinite(stop.color.b)
+  )) : [];
+  if (safeStops.length <= 0) {
+    return 'rgb(0, 0, 0)';
+  }
+  safeStops.sort((a, b) => a.pos - b.pos);
+  const safePosition = Number.isFinite(position) ? position : 0;
+  if (safePosition <= safeStops[0].pos) {
+    return rgbColorToCss(safeStops[0].color);
+  }
+  for (let i = 0; i < safeStops.length - 1; i += 1) {
+    const left = safeStops[i];
+    const right = safeStops[i + 1];
+    if (safePosition < left.pos || safePosition > right.pos) {
+      continue;
+    }
+    const span = right.pos - left.pos;
+    const t = span > 1e-8 ? clamp((safePosition - left.pos) / span, 0, 1) : 0;
+    return rgbColorToCss(interpolateRgbColor(left.color, right.color, t));
+  }
+  return rgbColorToCss(safeStops[safeStops.length - 1].color);
+}
+
+function parseCssColorToRgb(colorValue) {
+  if (typeof colorValue !== 'string') {
+    return null;
+  }
+  const trimmed = colorValue.trim();
+  if (trimmed.length <= 0) {
+    return null;
+  }
+  if (!document || typeof document.createElement !== 'function') {
+    return null;
+  }
+  const probe = document.createElement('span');
+  probe.style.position = 'absolute';
+  probe.style.opacity = '0';
+  probe.style.pointerEvents = 'none';
+  probe.style.color = '#000000';
+  probe.style.color = trimmed;
+  const parent = document.body || document.documentElement;
+  if (!parent) {
+    return null;
+  }
+  parent.appendChild(probe);
+  let normalized = probe.style.color;
+  if (typeof window.getComputedStyle === 'function') {
+    const computedColor = window.getComputedStyle(probe).color;
+    if (typeof computedColor === 'string' && computedColor.trim().length > 0) {
+      normalized = computedColor.trim();
+    }
+  }
+  probe.remove();
+  if (typeof normalized !== 'string' || normalized.length <= 0) {
+    return null;
+  }
+  const rgbMatch = normalized.match(/^rgba?\(([^)]+)\)$/i);
+  if (!rgbMatch || !rgbMatch[1]) {
+    return null;
+  }
+  const parts = rgbMatch[1].split(',');
+  if (parts.length < 3) {
+    return null;
+  }
+  const r = Number(parts[0]);
+  const g = Number(parts[1]);
+  const b = Number(parts[2]);
+  if (!Number.isFinite(r) || !Number.isFinite(g) || !Number.isFinite(b)) {
+    return null;
+  }
+  return {
+    r: clamp(Math.round(r), 0, 255),
+    g: clamp(Math.round(g), 0, 255),
+    b: clamp(Math.round(b), 0, 255),
+  };
+}
+
+function resolvePageBackgroundGradientStopsFromCssVariables() {
+  if (!document || !document.documentElement || typeof window.getComputedStyle !== 'function') {
+    return [];
+  }
+  const rootStyle = window.getComputedStyle(document.documentElement);
+  const topColor = parseCssColorToRgb(rootStyle.getPropertyValue('--app-page-bg-top'));
+  const midColor = parseCssColorToRgb(rootStyle.getPropertyValue('--app-page-bg-mid'));
+  const bottomColor = parseCssColorToRgb(rootStyle.getPropertyValue('--app-page-bg-bottom'));
+  const stops = [];
+  if (topColor) {
+    stops.push({ pos: 0, color: topColor });
+  }
+  if (midColor) {
+    stops.push({ pos: 0.5, color: midColor });
+  }
+  if (bottomColor) {
+    stops.push({ pos: 1, color: bottomColor });
+  }
+  return stops;
+}
+
+function updateSafariTopTintFromGradient() {
+  const gradientStops = resolvePageBackgroundGradientStopsFromCssVariables();
+  const nextTint = getGradientColorAt(gradientStops, 0);
+  if (nextTint === lastSafariTopTint) {
+    return;
+  }
+  setSafariTopTint(nextTint);
+  lastSafariTopTint = nextTint;
+}
+
+function shouldEnableSafariTopTintShim() {
+  const override = readViewportTopTintShimOverrideFromSearchParams();
+  if (override === false) {
+    return false;
+  }
+
+  const config = resolveSafariTopTintShimConfig();
+  if (config.enabled !== true && override !== true) {
+    return false;
+  }
+  if (config.iosOnly !== false && !isLikelyIOSDevice()) {
+    return false;
+  }
+  if (config.iosMinMajor > 0) {
+    const major = parseIOSMajorVersion();
+    if (!Number.isFinite(major) || major < config.iosMinMajor) {
+      return false;
+    }
+  }
+  if (config.rootBackgroundOnly !== false && STATE.viewportLayoutMode !== VIEWPORT_LAYOUT_MODE_ROOT_BG) {
+    return false;
+  }
+  return override === true || config.enabled === true;
+}
+
+function syncSafariTopTintShim() {
+  if (!document || !document.body || !document.documentElement) {
+    return;
+  }
+  ensureSafariTopTintShimElement();
+  const enabled = shouldEnableSafariTopTintShim();
+  const config = resolveSafariTopTintShimConfig();
+  document.documentElement.style.setProperty(
+    SAFARI_TOP_TINT_SHIM_OPACITY_CSS_VAR,
+    String(clamp(config.opacity, 0.01, 1)),
+  );
+  document.body.classList.toggle('ios-safari-top-tint-shim', enabled);
+  if (enabled) {
+    updateSafariTopTintFromGradient();
+  }
 }
 
 function isLikelySafariOnMacDesktop() {
@@ -9758,6 +10009,7 @@ function onBranchStructureChanged() {
 function resizeCanvasToViewport() {
   syncIOSFixedViewportWorkaroundFlag();
   syncVisualViewportOffsets();
+  syncSafariTopTintShim();
   STATE.dpr = resolveEffectiveRenderDpr();
   const viewportSize = resolveViewportSizeForRendering();
   STATE.viewportWidth = viewportSize.width;
@@ -10267,6 +10519,7 @@ function applyViewportLayoutMode(mode, options = {}) {
   }
   updateViewportLayoutDebugToggleButtonLabel();
   ensureViewportRelativeAdjustableControls();
+  syncSafariTopTintShim();
 
   if (!changed && safeOptions.forceRerender !== true) {
     return false;

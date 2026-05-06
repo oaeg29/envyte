@@ -280,6 +280,14 @@
     desktopCap: null, // ignored when mobileOnly=true; null disables desktop cap
   },
 
+  safariTopTintShim: {
+    enabled: true, // iOS Safari 26 top-bar tint shim experiment
+    iosOnly: true,
+    iosMinMajor: 26,
+    rootBackgroundOnly: true, // keep existing non-rootbg modes untouched
+    opacity: 0.01, // if Safari ignores this, set to 1 while keeping shim height tiny
+  },
+
   flowers: {
     enabled: true,
     renderer: 'pixi', // pixi | canvas
