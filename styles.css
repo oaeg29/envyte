@@ -119,27 +119,54 @@ body.ios26-fixed-workaround #loadingScreen {
   position: absolute;
 }
 
-html[data-viewport-layout-mode="relative120"],
-body[data-viewport-layout-mode="relative120"] {
-  height: 120vh;
-  min-height: 120vh;
+html[data-viewport-layout-mode="rootbg"] {
+  background: #000;
 }
 
-@supports (height: 120lvh) {
-  html[data-viewport-layout-mode="relative120"],
-  body[data-viewport-layout-mode="relative120"] {
-    height: 120lvh;
-    min-height: 120lvh;
-  }
+body[data-viewport-layout-mode="rootbg"] {
+  position: relative;
+  background: transparent;
 }
 
+body[data-viewport-layout-mode="rootbg"] video {
+  top: var(--app-viewport-offset-top);
+  left: 0;
+  width: var(--app-viewport-width);
+  height: var(--app-viewport-height);
+  min-height: var(--app-viewport-height);
+  transform: rotate(var(--hero-video-rotate, 0deg));
+  object-fit: cover;
+  object-position: center center;
+}
+
+body[data-viewport-layout-mode="rootbg"] main,
+body[data-viewport-layout-mode="rootbg"] header,
+body[data-viewport-layout-mode="rootbg"] footer {
+  position: relative;
+  z-index: 2;
+}
+
+body[data-viewport-layout-mode="relative116"] #myCanvas,
 body[data-viewport-layout-mode="relative120"] #myCanvas,
+body[data-viewport-layout-mode="relative124"] #myCanvas,
+body[data-viewport-layout-mode="relative116"] #myCanvasFront,
 body[data-viewport-layout-mode="relative120"] #myCanvasFront,
+body[data-viewport-layout-mode="relative124"] #myCanvasFront,
+body[data-viewport-layout-mode="relative116"] #myCanvasFlowersBack,
 body[data-viewport-layout-mode="relative120"] #myCanvasFlowersBack,
+body[data-viewport-layout-mode="relative124"] #myCanvasFlowersBack,
+body[data-viewport-layout-mode="relative116"] #myCanvasFlowersFront,
 body[data-viewport-layout-mode="relative120"] #myCanvasFlowersFront,
+body[data-viewport-layout-mode="relative124"] #myCanvasFlowersFront,
+body[data-viewport-layout-mode="relative116"] video,
 body[data-viewport-layout-mode="relative120"] video,
+body[data-viewport-layout-mode="relative124"] video,
+body[data-viewport-layout-mode="relative116"] #centerOverlayImage,
 body[data-viewport-layout-mode="relative120"] #centerOverlayImage,
-body[data-viewport-layout-mode="relative120"] #loadingScreen {
+body[data-viewport-layout-mode="relative124"] #centerOverlayImage,
+body[data-viewport-layout-mode="relative116"] #loadingScreen,
+body[data-viewport-layout-mode="relative120"] #loadingScreen,
+body[data-viewport-layout-mode="relative124"] #loadingScreen {
   position: absolute;
 }
 
@@ -228,7 +255,9 @@ body.ios26-fixed-workaround #viewportModeDebugToggle {
   position: absolute;
 }
 
-body[data-viewport-layout-mode="relative120"] #viewportModeDebugToggle {
+body[data-viewport-layout-mode="relative116"] #viewportModeDebugToggle,
+body[data-viewport-layout-mode="relative120"] #viewportModeDebugToggle,
+body[data-viewport-layout-mode="relative124"] #viewportModeDebugToggle {
   position: absolute;
 }
 

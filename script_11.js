@@ -55,8 +55,14 @@ const HERO_VIDEO_DEBUG_LABEL_ID = 'heroVideoDebugLabel';
 const VIEWPORT_LAYOUT_MODE_COVER = 'cover';
 const VIEWPORT_LAYOUT_MODE_DYNAMIC = 'dynamic';
 const VIEWPORT_LAYOUT_MODE_LEGACY = 'legacy';
+const VIEWPORT_LAYOUT_MODE_RELATIVE_116 = 'relative116';
 const VIEWPORT_LAYOUT_MODE_RELATIVE_120 = 'relative120';
-const VIEWPORT_LAYOUT_RELATIVE_120_HEIGHT_MULTIPLIER = 1.2;
+const VIEWPORT_LAYOUT_MODE_RELATIVE_124 = 'relative124';
+const VIEWPORT_LAYOUT_MODE_ROOT_BG = 'rootbg';
+const VIEWPORT_LAYOUT_RELATIVE_116_OVERDRAW_PX = 8;
+const VIEWPORT_LAYOUT_RELATIVE_120_OVERDRAW_PX = 10;
+const VIEWPORT_LAYOUT_RELATIVE_124_OVERDRAW_PX = 12;
+const VIEWPORT_LAYOUT_ROOT_BG_OVERDRAW_PX = 160;
 const VIEWPORT_LAYOUT_MODE_QUERY_PARAM = 'viewportMode';
 const VIEWPORT_LAYOUT_DEBUG_QUERY_PARAM = 'viewportDebug';
 const VIEWPORT_LAYOUT_MODE_DEBUG_BUTTON_ID = 'viewportModeDebugToggle';
@@ -205,10 +211,32 @@ function sanitizeViewportLayoutMode(value, fallback = '') {
   if (value === VIEWPORT_LAYOUT_MODE_LEGACY) {
     return VIEWPORT_LAYOUT_MODE_LEGACY;
   }
+  if (value === VIEWPORT_LAYOUT_MODE_RELATIVE_116) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_116;
+  }
   if (value === VIEWPORT_LAYOUT_MODE_RELATIVE_120) {
     return VIEWPORT_LAYOUT_MODE_RELATIVE_120;
   }
+  if (value === VIEWPORT_LAYOUT_MODE_RELATIVE_124) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_124;
+  }
+  if (value === VIEWPORT_LAYOUT_MODE_ROOT_BG) {
+    return VIEWPORT_LAYOUT_MODE_ROOT_BG;
+  }
   return fallback;
+}
+
+function resolveRelativeViewportOverdrawPx(mode) {
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_116) {
+    return VIEWPORT_LAYOUT_RELATIVE_116_OVERDRAW_PX;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_120) {
+    return VIEWPORT_LAYOUT_RELATIVE_120_OVERDRAW_PX;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_124) {
+    return VIEWPORT_LAYOUT_RELATIVE_124_OVERDRAW_PX;
+  }
+  return 0;
 }
 
 function readViewportLayoutModeFromSearchParams() {
@@ -9567,12 +9595,19 @@ function resolveViewportSizeForRendering() {
   const height = Math.max(safeInnerHeight, safeClientHeight, probeHeight);
   const resolvedWidth = width > 0 ? width : safeInnerWidth;
   const resolvedHeight = height > 0 ? height : safeInnerHeight;
-  if (layoutMode === VIEWPORT_LAYOUT_MODE_RELATIVE_120) {
+  const relativeOverdrawPx = resolveRelativeViewportOverdrawPx(layoutMode);
+  if (relativeOverdrawPx > 0) {
+    return {
+      width: resolvedWidth,
+      height: Math.max(resolvedHeight, resolvedHeight + relativeOverdrawPx * 2),
+    };
+  }
+  if (layoutMode === VIEWPORT_LAYOUT_MODE_ROOT_BG) {
     return {
       width: resolvedWidth,
       height: Math.max(
         resolvedHeight,
-        resolvedHeight * VIEWPORT_LAYOUT_RELATIVE_120_HEIGHT_MULTIPLIER,
+        resolvedHeight + VIEWPORT_LAYOUT_ROOT_BG_OVERDRAW_PX * 2,
       ),
     };
   }
@@ -9585,7 +9620,8 @@ function resolveViewportSizeForRendering() {
 function syncIOSFixedViewportWorkaroundFlag() {
   const mode = sanitizeViewportLayoutMode(STATE.viewportLayoutMode, VIEWPORT_LAYOUT_MODE_LEGACY);
   const useWorkaround = (
-    mode === VIEWPORT_LAYOUT_MODE_RELATIVE_120
+    resolveRelativeViewportOverdrawPx(mode) > 0
+    || mode === VIEWPORT_LAYOUT_MODE_ROOT_BG
     || (isLikelyIOS26OrLater() && mode !== VIEWPORT_LAYOUT_MODE_LEGACY)
   );
   STATE.useIOSFixedViewportWorkaround = useWorkaround;
@@ -9620,12 +9656,54 @@ function syncVisualViewportOffsets() {
       offsetTop = vvTop;
     }
   }
+  if (STATE.viewportLayoutMode === VIEWPORT_LAYOUT_MODE_ROOT_BG) {
+    offsetTop = -VIEWPORT_LAYOUT_ROOT_BG_OVERDRAW_PX;
+  }
+  const relativeOverdrawPx = resolveRelativeViewportOverdrawPx(STATE.viewportLayoutMode);
+  if (relativeOverdrawPx > 0) {
+    offsetTop = -relativeOverdrawPx;
+  }
 
   STATE.viewportOffsetLeftPx = offsetLeft;
   STATE.viewportOffsetTopPx = offsetTop;
   if (document && document.documentElement && document.documentElement.style) {
     document.documentElement.style.setProperty('--app-viewport-offset-left', `${offsetLeft}px`);
     document.documentElement.style.setProperty('--app-viewport-offset-top', `${offsetTop}px`);
+  }
+}
+
+function ensureRootBackgroundLayoutStructure() {
+  if (!document || !document.body) {
+    return;
+  }
+  if (STATE.viewportLayoutMode !== VIEWPORT_LAYOUT_MODE_ROOT_BG) {
+    return;
+  }
+  const body = document.body;
+  const mainElement = document.querySelector('main');
+  if (mainElement && !mainElement.id) {
+    mainElement.id = 'app';
+  }
+
+  const orderedLayers = [
+    canvas,
+    video,
+    flowersBackCanvas,
+    centerOverlayImageLayer,
+    frontCanvas,
+    flowersFrontCanvas,
+  ];
+  let anchor = body.firstChild;
+  for (let i = 0; i < orderedLayers.length; i += 1) {
+    const layer = orderedLayers[i];
+    if (!layer || typeof layer.nodeType !== 'number') {
+      continue;
+    }
+    if (layer.parentNode !== body) {
+      body.appendChild(layer);
+    }
+    body.insertBefore(layer, anchor);
+    anchor = layer.nextSibling;
   }
 }
 
@@ -9638,7 +9716,16 @@ function getNextViewportLayoutMode(currentMode) {
     return VIEWPORT_LAYOUT_MODE_LEGACY;
   }
   if (mode === VIEWPORT_LAYOUT_MODE_LEGACY) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_116;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_116) {
     return VIEWPORT_LAYOUT_MODE_RELATIVE_120;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_120) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_124;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_124) {
+    return VIEWPORT_LAYOUT_MODE_ROOT_BG;
   }
   return VIEWPORT_LAYOUT_MODE_COVER;
 }
@@ -9665,6 +9752,7 @@ function applyViewportLayoutMode(mode, options = {}) {
     return false;
   }
 
+  ensureRootBackgroundLayoutStructure();
   resizeCanvasToViewport();
   refreshHeroVideoReferenceRect({ force: true });
   applyHeroVideoWiggleAnchor(resolveHeroPlaybackGateConfig());
@@ -9686,7 +9774,7 @@ function ensureViewportLayoutDebugToggleButton() {
     button = document.createElement('button');
     button.type = 'button';
     button.id = VIEWPORT_LAYOUT_MODE_DEBUG_BUTTON_ID;
-    button.title = 'Switch viewport layout mode (cover/dynamic/legacy/relative120)';
+    button.title = 'Switch viewport layout mode (cover/dynamic/legacy/relative116/relative120/relative124/rootbg)';
     button.addEventListener('click', () => {
       const nextMode = getNextViewportLayoutMode(STATE.viewportLayoutMode);
       applyViewportLayoutMode(nextMode, { forceRerender: true });
@@ -11953,6 +12041,7 @@ async function bootstrap() {
   STATE.viewportLayoutMode = resolveInitialViewportLayoutMode();
   ensureViewportLayoutDebugToggleButton();
   updateViewportLayoutDebugToggleButtonLabel();
+  ensureRootBackgroundLayoutStructure();
   syncIOSFixedViewportWorkaroundFlag();
   syncVisualViewportOffsets();
   setupVisualViewportHandlers();
