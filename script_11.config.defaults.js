@@ -212,23 +212,6 @@
     },
   },
 
-  heroVideoDebug: {
-    enabled: true,
-    iosOnly: true,
-    frameRate: 30,
-    testFrameCount: 150,
-    candidatePaths: [
-      './hero_vid_for_ios.mov',
-      './hero_vid_for_ios_1.mp4',
-      './hero_vid_for_ios_2.mp4',
-    ],
-    labelEnabled: true,
-    holdAfterEachMs: 250,
-    loadTimeoutMs: 12000,
-    playTimeoutMs: 12000,
-    chooseFirstPlayableAsFinalSource: true,
-  },
-
   centerOverlayImage: {
     enabled: true,
     spritePath: './test_page2.png',

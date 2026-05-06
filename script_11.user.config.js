@@ -73,37 +73,6 @@
       },
     },
 
-    heroVideoDebug: {
-      enabled: true,
-      iosOnly: true,
-      frameRate: 30,
-      testFrameCount: 150,
-      requireCanPlayTypeCheck: true,
-      labelEnabled: true,
-      holdAfterEachMs: 300,
-      loadTimeoutMs: 15000,
-      playTimeoutMs: 15000,
-      chooseFirstPlayableAsFinalSource: true,
-      candidateSources: [
-        {
-          path: './hero_vid_7_for_ios_5.mov',
-          type: 'video/quicktime; codecs="hvc1.1.6.H120.b0"',
-        },
-        {
-          path: './hero_vid_7_for_ios_5.mov',
-          type: 'video/quicktime; codecs="hvc1"',
-        },
-        {
-          path: './hero_vid_7.webm',
-          type: 'video/webm; codecs="vp09.00.41.08"',
-        },
-      ],
-      candidatePaths: [
-        './hero_vid_7_for_ios_5.mov',
-        './hero_vid_7.webm',
-      ],
-    },
-
     overlayWrap: {
       enabled: true,
       centerHalfWidthPxFromVideoEnabled: true,

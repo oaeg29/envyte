@@ -43,7 +43,7 @@ const defaultCountPerSide = 9;
 const FILTER_CACHE_HUE_STEP_DEG = 2;
 const FILTER_CACHE_BRIGHTNESS_STEP = 0.02;
 const HERO_VIDEO_PATH_DEFAULT = './hero_vid_7.webm';
-const HERO_VIDEO_PATH_IOS = './hero_vid_for_ios.mov';
+const HERO_VIDEO_PATH_APPLE_SAFARI = './hero_vid_7_for_ios.mov';
 const HERO_VIDEO_SOURCE_RUNTIME = {
   candidates: [],
   activeIndex: -1,
@@ -186,8 +186,31 @@ function isLikelyIOS26OrLater() {
   return Number.isFinite(major) && major >= 26;
 }
 
+function isLikelySafariOnMacDesktop() {
+  if (typeof navigator === 'undefined') {
+    return false;
+  }
+  const userAgent = typeof navigator.userAgent === 'string' ? navigator.userAgent : '';
+  const platform = typeof navigator.platform === 'string' ? navigator.platform : '';
+  const maxTouchPoints = Number.isFinite(Number(navigator.maxTouchPoints))
+    ? Number(navigator.maxTouchPoints)
+    : 0;
+  const isMacPlatform = /^Mac/i.test(platform);
+  const isIpadDesktopMode = platform === 'MacIntel' && maxTouchPoints > 1;
+  if (!isMacPlatform || isIpadDesktopMode) {
+    return false;
+  }
+  const hasSafariToken = /Safari\//i.test(userAgent);
+  const hasVersionToken = /Version\//i.test(userAgent);
+  const hasOtherBrowserToken = /(Chrome|Chromium|CriOS|Edg|OPR|FxiOS|Firefox|Brave|Vivaldi|YaBrowser)/i.test(userAgent);
+  return hasSafariToken && hasVersionToken && !hasOtherBrowserToken;
+}
+
 function resolveHeroVideoSourcePath() {
-  return isLikelyIOSDevice() ? HERO_VIDEO_PATH_IOS : HERO_VIDEO_PATH_DEFAULT;
+  if (isLikelyIOSDevice() || isLikelySafariOnMacDesktop()) {
+    return HERO_VIDEO_PATH_APPLE_SAFARI;
+  }
+  return HERO_VIDEO_PATH_DEFAULT;
 }
 
 function setHeroVideoSourcePath(path, options = {}) {
@@ -1925,6 +1948,10 @@ function isHeroPlaybackGrowthStartBlocked(gateConfig = resolveHeroPlaybackGateCo
   if (!gateConfig || gateConfig.enabled !== true || !gateState) {
     return false;
   }
+  // While splash is still up and hero gate startup is deferred, keep branch growth blocked.
+  if (gateState.pendingStartAfterSplashDismiss === true) {
+    return true;
+  }
   if (gateState.growthAnimationEnabledByConfig !== true) {
     return false;
   }
@@ -2776,6 +2803,8 @@ function startHeroPlaybackGateFlow() {
   if (!gateState) {
     return;
   }
+  // Set this immediately so pre-splash renders cannot auto-start branch growth.
+  gateState.growthAnimationEnabledByConfig = CONFIG.branchGrowth.enabled === true;
   if (!isLoadingScreenGone()) {
     try {
       video.pause();
@@ -2796,6 +2825,7 @@ function startHeroPlaybackGateFlow() {
       });
     }
     gateState.stage = 'idle';
+    gateState.growthStarted = false;
     return;
   }
   gateState.pendingStartAfterSplashDismiss = false;
@@ -11724,15 +11754,7 @@ async function bootstrap() {
   STATE.foliageLoad.flowerReady = false;
   STATE.foliageLoad.ready = false;
   setLoadingScreenMessage('please wait, something special is loading');
-  let initialVideoStatus = null;
-  const heroVideoDebugConfig = resolveHeroVideoDebugConfig();
-  if (shouldRunHeroVideoDebugCycle(heroVideoDebugConfig)) {
-    setLoadingScreenVisible(false);
-    initialVideoStatus = await runHeroVideoDebugCycle(heroVideoDebugConfig);
-  } else {
-    initialVideoStatus = await waitForInitialHeroVideoReadyForStartup();
-    setHeroVideoDebugLabel('', { visible: false });
-  }
+  const initialVideoStatus = await waitForInitialHeroVideoReadyForStartup();
   STATE.foliageLoad.videoReady = Boolean(initialVideoStatus && initialVideoStatus.ready);
   refreshHeroVideoReferenceRect({ force: true });
   if (!STATE.foliageLoad.videoReady) {
