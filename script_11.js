@@ -83,7 +83,7 @@ const VIEWPORT_LAYOUT_RELATIVE_190_OVERDRAW_PX = 45;
 const VIEWPORT_LAYOUT_RELATIVE_112_TOP_OVERDRAW_PX = 0;
 const VIEWPORT_LAYOUT_RELATIVE_112_EXTRA_HEIGHT_PX = 12;
 const VIEWPORT_LAYOUT_RELATIVE_166_TOP_OVERDRAW_PX = 0;
-const VIEWPORT_LAYOUT_RELATIVE_166_EXTRA_HEIGHT_PX = 66;
+const VIEWPORT_LAYOUT_RELATIVE_166_TARGET_DVH = 155;
 const VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_20_TOP_OVERDRAW_PX = 20;
 const VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_20_EXTRA_HEIGHT_PX = 40;
 const VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_40_TOP_OVERDRAW_PX = 40;
@@ -370,6 +370,35 @@ function resolveViewportLayoutRelativeAdjustableOverdrawConfig() {
   };
 }
 
+function resolveViewportHeightPxForDvhCalculations() {
+  const vv = window && window.visualViewport ? window.visualViewport : null;
+  const visualViewportHeight = vv && Number.isFinite(Number(vv.height))
+    ? Math.max(0, Number(vv.height))
+    : 0;
+  if (visualViewportHeight > 0) {
+    return visualViewportHeight;
+  }
+  const innerHeight = Number.isFinite(window.innerHeight) ? Math.max(0, window.innerHeight) : 0;
+  const root = document && document.documentElement ? document.documentElement : null;
+  const clientHeight = root && Number.isFinite(root.clientHeight) ? Math.max(0, root.clientHeight) : 0;
+  return Math.max(innerHeight, clientHeight);
+}
+
+function resolveViewportLayoutRelativeDvhOverdrawConfig(targetDvh) {
+  const safeTargetDvh = Number.isFinite(Number(targetDvh))
+    ? Math.max(100, Number(targetDvh))
+    : 100;
+  const viewportHeightPx = resolveViewportHeightPxForDvhCalculations();
+  const extraDvh = Math.max(0, safeTargetDvh - 100);
+  const extraHeightPx = viewportHeightPx > 0
+    ? (viewportHeightPx * extraDvh) / 100
+    : extraDvh;
+  return {
+    topPx: 0,
+    extraHeightPx,
+  };
+}
+
 function resolveViewportLayoutBiasOverdrawConfig(mode) {
   if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_112) {
     return {
@@ -378,9 +407,12 @@ function resolveViewportLayoutBiasOverdrawConfig(mode) {
     };
   }
   if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_166) {
+    const relativeDvhOverdraw = resolveViewportLayoutRelativeDvhOverdrawConfig(
+      VIEWPORT_LAYOUT_RELATIVE_166_TARGET_DVH,
+    );
     return {
       topPx: VIEWPORT_LAYOUT_RELATIVE_166_TOP_OVERDRAW_PX,
-      extraHeightPx: VIEWPORT_LAYOUT_RELATIVE_166_EXTRA_HEIGHT_PX,
+      extraHeightPx: relativeDvhOverdraw.extraHeightPx,
     };
   }
   if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_ADJUSTABLE) {
