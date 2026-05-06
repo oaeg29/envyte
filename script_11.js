@@ -56,6 +56,7 @@ const VIEWPORT_LAYOUT_MODE_COVER = 'cover';
 const VIEWPORT_LAYOUT_MODE_DYNAMIC = 'dynamic';
 const VIEWPORT_LAYOUT_MODE_LEGACY = 'legacy';
 const VIEWPORT_LAYOUT_MODE_RELATIVE_112 = 'relative112';
+const VIEWPORT_LAYOUT_MODE_RELATIVE_ADJUSTABLE = 'relativeAdjustable';
 const VIEWPORT_LAYOUT_MODE_RELATIVE_116 = 'relative116';
 const VIEWPORT_LAYOUT_MODE_RELATIVE_120 = 'relative120';
 const VIEWPORT_LAYOUT_MODE_RELATIVE_124 = 'relative124';
@@ -96,7 +97,12 @@ const VIEWPORT_LAYOUT_MODE_QUERY_PARAM = 'viewportMode';
 const VIEWPORT_LAYOUT_DEBUG_QUERY_PARAM = 'viewportDebug';
 const VIEWPORT_LAYOUT_SCROLL_NUDGE_QUERY_PARAM = 'viewportScrollNudge';
 const VIEWPORT_LAYOUT_MODE_DEBUG_BUTTON_ID = 'viewportModeDebugToggle';
+const VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_CONTROLS_ID = 'viewportRelativeAdjustableControls';
 const VIEWPORT_LAYOUT_SCROLL_STAGE_ID = 'ios-scroll-stage';
+const VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_DEFAULT_VALUE = 112;
+const VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_MIN_VALUE = 100;
+const VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_MAX_VALUE = 240;
+const VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_STEP = 1;
 
 function normalizeHostedAssetPath(path) {
   if (typeof path !== 'string') {
@@ -130,6 +136,7 @@ let loadingScreenHideTimerId = null;
 const loadingScreenGoneCallbacks = [];
 let visualViewportHandlersInstalled = false;
 let viewportLayoutDebugToggleButton = null;
+let viewportRelativeAdjustableControls = null;
 let viewportScrollNudgeApplied = false;
 let viewportBodyFixedOriginalInlineStyles = null;
 let viewportBodyFixedStylesApplied = false;
@@ -248,6 +255,9 @@ function sanitizeViewportLayoutMode(value, fallback = '') {
   if (value === VIEWPORT_LAYOUT_MODE_RELATIVE_112) {
     return VIEWPORT_LAYOUT_MODE_RELATIVE_112;
   }
+  if (value === VIEWPORT_LAYOUT_MODE_RELATIVE_ADJUSTABLE) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_ADJUSTABLE;
+  }
   if (value === VIEWPORT_LAYOUT_MODE_RELATIVE_116) {
     return VIEWPORT_LAYOUT_MODE_RELATIVE_116;
   }
@@ -321,12 +331,31 @@ function resolveRelativeViewportOverdrawPx(mode) {
   return 0;
 }
 
+function resolveViewportLayoutRelativeAdjustableOverdrawConfig() {
+  const normalizedValue = sanitizeViewportRelativeAdjustableValue(
+    STATE && Number.isFinite(STATE.viewportRelativeAdjustableValue)
+      ? STATE.viewportRelativeAdjustableValue
+      : VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_DEFAULT_VALUE,
+    VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_DEFAULT_VALUE,
+  );
+  if (STATE) {
+    STATE.viewportRelativeAdjustableValue = normalizedValue;
+  }
+  return {
+    topPx: 0,
+    extraHeightPx: Math.max(0, normalizedValue - 100),
+  };
+}
+
 function resolveViewportLayoutBiasOverdrawConfig(mode) {
   if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_112) {
     return {
       topPx: VIEWPORT_LAYOUT_RELATIVE_112_TOP_OVERDRAW_PX,
       extraHeightPx: VIEWPORT_LAYOUT_RELATIVE_112_EXTRA_HEIGHT_PX,
     };
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_ADJUSTABLE) {
+    return resolveViewportLayoutRelativeAdjustableOverdrawConfig();
   }
   if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_20) {
     return {
@@ -1219,7 +1248,7 @@ CONFIG.offshoots = CONFIG.offshoot;
 // 3) Runtime State
 // =========================
 const STATE = {
-  dpr: window.devicePixelRatio || 1,
+  dpr: resolveEffectiveRenderDpr(),
   viewportWidth: 0,
   viewportHeight: 0,
   pointerX: Number.NEGATIVE_INFINITY,
@@ -1340,6 +1369,7 @@ const STATE = {
   lastFloralResponsiveScaleFactor: null,
   lastAppliedGlobalFoliageScale: null,
   viewportLayoutMode: VIEWPORT_LAYOUT_MODE_LEGACY,
+  viewportRelativeAdjustableValue: VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_DEFAULT_VALUE,
   viewportOffsetLeftPx: 0,
   viewportOffsetTopPx: 0,
   useIOSFixedViewportWorkaround: false,
@@ -1371,6 +1401,28 @@ STATE.animation = STATE.branchGrowth;
 // =========================
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function sanitizeViewportRelativeAdjustableValue(
+  value,
+  fallback = VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_DEFAULT_VALUE,
+) {
+  const numeric = Number(value);
+  const safeFallback = Number.isFinite(Number(fallback))
+    ? Math.floor(Number(fallback))
+    : VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_DEFAULT_VALUE;
+  if (!Number.isFinite(numeric)) {
+    return clamp(
+      safeFallback,
+      VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_MIN_VALUE,
+      VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_MAX_VALUE,
+    );
+  }
+  return clamp(
+    Math.floor(numeric),
+    VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_MIN_VALUE,
+    VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_MAX_VALUE,
+  );
 }
 
 function resolveGlobalFoliageScale() {
@@ -3418,6 +3470,22 @@ function sanitizeFlowerPerformanceProfile(value) {
   return 'auto';
 }
 
+function resolveRenderDprConfig() {
+  const safeConfig = isPlainObjectLiteral(CONFIG.renderDpr) ? CONFIG.renderDpr : {};
+  const mobileCapInput = Number(safeConfig.mobileCap);
+  const desktopCapInput = Number(safeConfig.desktopCap);
+  return {
+    enabled: safeConfig.enabled !== false,
+    mobileOnly: safeConfig.mobileOnly !== false,
+    mobileCap: Number.isFinite(mobileCapInput) && mobileCapInput > 0
+      ? mobileCapInput
+      : 2,
+    desktopCap: Number.isFinite(desktopCapInput) && desktopCapInput > 0
+      ? desktopCapInput
+      : null,
+  };
+}
+
 function resolveFlowerAdaptiveProfileDeviceInfo(autoProfileConfig = {}) {
   const viewportWidth = Number.isFinite(window.innerWidth) ? window.innerWidth : 0;
   const viewportHeight = Number.isFinite(window.innerHeight) ? window.innerHeight : 0;
@@ -3454,6 +3522,33 @@ function resolveFlowerAdaptiveProfileDeviceInfo(autoProfileConfig = {}) {
     dpr,
     hardwareConcurrency,
   };
+}
+
+function resolveEffectiveRenderDpr() {
+  const rawDpr = Number.isFinite(window.devicePixelRatio)
+    ? Math.max(0.1, window.devicePixelRatio)
+    : 1;
+  const renderDprConfig = resolveRenderDprConfig();
+  if (renderDprConfig.enabled !== true) {
+    return rawDpr;
+  }
+
+  const flowersConfig = isPlainObjectLiteral(CONFIG.flowers) ? CONFIG.flowers : {};
+  const autoProfile = isPlainObjectLiteral(flowersConfig.autoProfile) ? flowersConfig.autoProfile : {};
+  const deviceInfo = resolveFlowerAdaptiveProfileDeviceInfo(autoProfile);
+  const likelyMobile = deviceInfo && deviceInfo.likelyMobile === true;
+
+  let cap = null;
+  if (likelyMobile) {
+    cap = renderDprConfig.mobileCap;
+  } else if (renderDprConfig.mobileOnly !== true) {
+    cap = renderDprConfig.desktopCap;
+  }
+
+  if (!Number.isFinite(cap) || cap <= 0) {
+    return rawDpr;
+  }
+  return Math.max(0.1, Math.min(rawDpr, cap));
 }
 
 function sampleRangeByNormalizedWeight(rangeInput, fallbackMin, fallbackMax, weight) {
@@ -9663,6 +9758,7 @@ function onBranchStructureChanged() {
 function resizeCanvasToViewport() {
   syncIOSFixedViewportWorkaroundFlag();
   syncVisualViewportOffsets();
+  STATE.dpr = resolveEffectiveRenderDpr();
   const viewportSize = resolveViewportSizeForRendering();
   STATE.viewportWidth = viewportSize.width;
   STATE.viewportHeight = viewportSize.height;
@@ -10010,6 +10106,9 @@ function getNextViewportLayoutMode(currentMode) {
     return VIEWPORT_LAYOUT_MODE_RELATIVE_112;
   }
   if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_112) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_ADJUSTABLE;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_ADJUSTABLE) {
     return VIEWPORT_LAYOUT_MODE_RELATIVE_116;
   }
   if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_116) {
@@ -10065,6 +10164,96 @@ function updateViewportLayoutDebugToggleButtonLabel() {
   viewportLayoutDebugToggleButton.textContent = `viewport: ${mode}`;
 }
 
+function updateViewportRelativeAdjustableControlsLabel() {
+  if (!viewportRelativeAdjustableControls) {
+    return;
+  }
+  const valueLabel = viewportRelativeAdjustableControls.querySelector('[data-role="value"]');
+  if (!valueLabel) {
+    return;
+  }
+  const normalizedValue = sanitizeViewportRelativeAdjustableValue(
+    STATE.viewportRelativeAdjustableValue,
+    VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_DEFAULT_VALUE,
+  );
+  STATE.viewportRelativeAdjustableValue = normalizedValue;
+  valueLabel.textContent = `relative: ${normalizedValue}`;
+}
+
+function updateViewportRelativeAdjustableControlsVisibility() {
+  if (!viewportRelativeAdjustableControls) {
+    return;
+  }
+  const mode = sanitizeViewportLayoutMode(STATE.viewportLayoutMode, VIEWPORT_LAYOUT_MODE_COVER);
+  viewportRelativeAdjustableControls.style.display = mode === VIEWPORT_LAYOUT_MODE_RELATIVE_ADJUSTABLE
+    ? 'flex'
+    : 'none';
+}
+
+function adjustViewportRelativeAdjustableValue(delta) {
+  const safeDelta = Number.isFinite(Number(delta)) ? Math.floor(Number(delta)) : 0;
+  if (safeDelta === 0) {
+    return;
+  }
+  const currentValue = sanitizeViewportRelativeAdjustableValue(
+    STATE.viewportRelativeAdjustableValue,
+    VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_DEFAULT_VALUE,
+  );
+  const nextValue = sanitizeViewportRelativeAdjustableValue(
+    currentValue + safeDelta,
+    currentValue,
+  );
+  if (nextValue === currentValue) {
+    updateViewportRelativeAdjustableControlsLabel();
+    return;
+  }
+  STATE.viewportRelativeAdjustableValue = nextValue;
+  updateViewportRelativeAdjustableControlsLabel();
+  applyViewportLayoutMode(STATE.viewportLayoutMode, { forceRerender: true });
+}
+
+function ensureViewportRelativeAdjustableControls() {
+  if (!document || !document.body) {
+    return;
+  }
+  let controls = document.getElementById(VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_CONTROLS_ID);
+  if (!controls) {
+    controls = document.createElement('div');
+    controls.id = VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_CONTROLS_ID;
+    controls.setAttribute('aria-label', 'Relative viewport adjustable controls');
+
+    const minusButton = document.createElement('button');
+    minusButton.type = 'button';
+    minusButton.setAttribute('data-role', 'minus');
+    minusButton.textContent = '−';
+    minusButton.title = 'Decrease relative mode value';
+    minusButton.addEventListener('click', () => {
+      adjustViewportRelativeAdjustableValue(-VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_STEP);
+    });
+
+    const valueLabel = document.createElement('span');
+    valueLabel.setAttribute('data-role', 'value');
+    valueLabel.textContent = 'relative: 112';
+
+    const plusButton = document.createElement('button');
+    plusButton.type = 'button';
+    plusButton.setAttribute('data-role', 'plus');
+    plusButton.textContent = '+';
+    plusButton.title = 'Increase relative mode value';
+    plusButton.addEventListener('click', () => {
+      adjustViewportRelativeAdjustableValue(VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_STEP);
+    });
+
+    controls.appendChild(minusButton);
+    controls.appendChild(valueLabel);
+    controls.appendChild(plusButton);
+    document.body.appendChild(controls);
+  }
+  viewportRelativeAdjustableControls = controls;
+  updateViewportRelativeAdjustableControlsLabel();
+  updateViewportRelativeAdjustableControlsVisibility();
+}
+
 function applyViewportLayoutMode(mode, options = {}) {
   const safeOptions = options && typeof options === 'object' ? options : {};
   const nextMode = sanitizeViewportLayoutMode(
@@ -10077,6 +10266,7 @@ function applyViewportLayoutMode(mode, options = {}) {
     viewportScrollNudgeApplied = false;
   }
   updateViewportLayoutDebugToggleButtonLabel();
+  ensureViewportRelativeAdjustableControls();
 
   if (!changed && safeOptions.forceRerender !== true) {
     return false;
@@ -10107,7 +10297,7 @@ function ensureViewportLayoutDebugToggleButton() {
     button = document.createElement('button');
     button.type = 'button';
     button.id = VIEWPORT_LAYOUT_MODE_DEBUG_BUTTON_ID;
-    button.title = 'Switch viewport layout mode (cover/dynamic/legacy/relative112/relative116/relative120/relative124/relative140/relative160/relative180/relative190/relativeBiasUp20/relativeBiasUp40/relativeBiasUp60/relativeBiasUp80/relativeBiasUp120/rootbg/scrollstage/bodyfixed)';
+    button.title = 'Switch viewport layout mode (cover/dynamic/legacy/relative112/relativeAdjustable/relative116/relative120/relative124/relative140/relative160/relative180/relative190/relativeBiasUp20/relativeBiasUp40/relativeBiasUp60/relativeBiasUp80/relativeBiasUp120/rootbg/scrollstage/bodyfixed)';
     button.addEventListener('click', () => {
       const nextMode = getNextViewportLayoutMode(STATE.viewportLayoutMode);
       applyViewportLayoutMode(nextMode, { forceRerender: true });
@@ -10116,6 +10306,7 @@ function ensureViewportLayoutDebugToggleButton() {
   }
   viewportLayoutDebugToggleButton = button;
   updateViewportLayoutDebugToggleButtonLabel();
+  ensureViewportRelativeAdjustableControls();
 }
 
 function setupVisualViewportHandlers() {
@@ -12374,6 +12565,7 @@ async function bootstrap() {
   STATE.viewportLayoutMode = resolveInitialViewportLayoutMode();
   viewportScrollNudgeApplied = false;
   ensureViewportLayoutDebugToggleButton();
+  ensureViewportRelativeAdjustableControls();
   updateViewportLayoutDebugToggleButtonLabel();
   ensureScrollStageLayoutStructure();
   ensureRootBackgroundLayoutStructure();

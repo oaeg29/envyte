@@ -273,6 +273,13 @@
     swayPerfLogEnabled: false,
   },
 
+  renderDpr: {
+    enabled: true,
+    mobileOnly: true,
+    mobileCap: 2.0,
+    desktopCap: null, // ignored when mobileOnly=true; null disables desktop cap
+  },
+
   flowers: {
     enabled: true,
     renderer: 'pixi', // pixi | canvas

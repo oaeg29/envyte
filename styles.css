@@ -220,6 +220,7 @@ body[data-viewport-layout-mode="scrollstage"] #app {
 }
 
 body[data-viewport-layout-mode="relative112"] #myCanvas,
+body[data-viewport-layout-mode="relativeAdjustable"] #myCanvas,
 body[data-viewport-layout-mode="relative116"] #myCanvas,
 body[data-viewport-layout-mode="relative120"] #myCanvas,
 body[data-viewport-layout-mode="relative124"] #myCanvas,
@@ -234,6 +235,7 @@ body[data-viewport-layout-mode="relativeBiasUp80"] #myCanvas,
 body[data-viewport-layout-mode="relativeBiasUp120"] #myCanvas,
 body[data-viewport-layout-mode="scrollstage"] #myCanvas,
 body[data-viewport-layout-mode="relative112"] #myCanvasFront,
+body[data-viewport-layout-mode="relativeAdjustable"] #myCanvasFront,
 body[data-viewport-layout-mode="relative116"] #myCanvasFront,
 body[data-viewport-layout-mode="relative120"] #myCanvasFront,
 body[data-viewport-layout-mode="relative124"] #myCanvasFront,
@@ -248,6 +250,7 @@ body[data-viewport-layout-mode="relativeBiasUp80"] #myCanvasFront,
 body[data-viewport-layout-mode="relativeBiasUp120"] #myCanvasFront,
 body[data-viewport-layout-mode="scrollstage"] #myCanvasFront,
 body[data-viewport-layout-mode="relative112"] #myCanvasFlowersBack,
+body[data-viewport-layout-mode="relativeAdjustable"] #myCanvasFlowersBack,
 body[data-viewport-layout-mode="relative116"] #myCanvasFlowersBack,
 body[data-viewport-layout-mode="relative120"] #myCanvasFlowersBack,
 body[data-viewport-layout-mode="relative124"] #myCanvasFlowersBack,
@@ -262,6 +265,7 @@ body[data-viewport-layout-mode="relativeBiasUp80"] #myCanvasFlowersBack,
 body[data-viewport-layout-mode="relativeBiasUp120"] #myCanvasFlowersBack,
 body[data-viewport-layout-mode="scrollstage"] #myCanvasFlowersBack,
 body[data-viewport-layout-mode="relative112"] #myCanvasFlowersFront,
+body[data-viewport-layout-mode="relativeAdjustable"] #myCanvasFlowersFront,
 body[data-viewport-layout-mode="relative116"] #myCanvasFlowersFront,
 body[data-viewport-layout-mode="relative120"] #myCanvasFlowersFront,
 body[data-viewport-layout-mode="relative124"] #myCanvasFlowersFront,
@@ -276,6 +280,7 @@ body[data-viewport-layout-mode="relativeBiasUp80"] #myCanvasFlowersFront,
 body[data-viewport-layout-mode="relativeBiasUp120"] #myCanvasFlowersFront,
 body[data-viewport-layout-mode="scrollstage"] #myCanvasFlowersFront,
 body[data-viewport-layout-mode="relative112"] video,
+body[data-viewport-layout-mode="relativeAdjustable"] video,
 body[data-viewport-layout-mode="relative116"] video,
 body[data-viewport-layout-mode="relative120"] video,
 body[data-viewport-layout-mode="relative124"] video,
@@ -290,6 +295,7 @@ body[data-viewport-layout-mode="relativeBiasUp80"] video,
 body[data-viewport-layout-mode="relativeBiasUp120"] video,
 body[data-viewport-layout-mode="scrollstage"] video,
 body[data-viewport-layout-mode="relative112"] #centerOverlayImage,
+body[data-viewport-layout-mode="relativeAdjustable"] #centerOverlayImage,
 body[data-viewport-layout-mode="relative116"] #centerOverlayImage,
 body[data-viewport-layout-mode="relative120"] #centerOverlayImage,
 body[data-viewport-layout-mode="relative124"] #centerOverlayImage,
@@ -304,6 +310,7 @@ body[data-viewport-layout-mode="relativeBiasUp80"] #centerOverlayImage,
 body[data-viewport-layout-mode="relativeBiasUp120"] #centerOverlayImage,
 body[data-viewport-layout-mode="scrollstage"] #centerOverlayImage,
 body[data-viewport-layout-mode="relative112"] #loadingScreen,
+body[data-viewport-layout-mode="relativeAdjustable"] #loadingScreen,
 body[data-viewport-layout-mode="relative116"] #loadingScreen,
 body[data-viewport-layout-mode="relative120"] #loadingScreen,
 body[data-viewport-layout-mode="relative124"] #loadingScreen,
@@ -406,6 +413,7 @@ body.ios26-fixed-workaround #viewportModeDebugToggle {
 }
 
 body[data-viewport-layout-mode="relative112"] #viewportModeDebugToggle,
+body[data-viewport-layout-mode="relativeAdjustable"] #viewportModeDebugToggle,
 body[data-viewport-layout-mode="relative116"] #viewportModeDebugToggle,
 body[data-viewport-layout-mode="relative120"] #viewportModeDebugToggle,
 body[data-viewport-layout-mode="relative124"] #viewportModeDebugToggle,
@@ -419,6 +427,63 @@ body[data-viewport-layout-mode="relativeBiasUp60"] #viewportModeDebugToggle,
 body[data-viewport-layout-mode="relativeBiasUp80"] #viewportModeDebugToggle,
 body[data-viewport-layout-mode="relativeBiasUp120"] #viewportModeDebugToggle,
 body[data-viewport-layout-mode="scrollstage"] #viewportModeDebugToggle {
+  position: absolute;
+}
+
+#viewportRelativeAdjustableControls {
+  position: fixed;
+  top: 54px;
+  left: 10px;
+  z-index: 30001;
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(8, 12, 18, 0.78);
+  color: #f2f6fa;
+  font: 600 12px/1.2 "Avenir Next", "Avenir", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  letter-spacing: 0.01em;
+  pointer-events: auto;
+  user-select: none;
+}
+
+#viewportRelativeAdjustableControls button {
+  border: 0;
+  border-radius: 8px;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.14);
+  color: #f2f6fa;
+  font: 700 16px/1 "Avenir Next", "Avenir", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  cursor: pointer;
+}
+
+#viewportRelativeAdjustableControls [data-role="value"] {
+  min-width: 90px;
+  text-align: center;
+}
+
+body.ios26-fixed-workaround #viewportRelativeAdjustableControls {
+  position: absolute;
+}
+
+body[data-viewport-layout-mode="relative112"] #viewportRelativeAdjustableControls,
+body[data-viewport-layout-mode="relativeAdjustable"] #viewportRelativeAdjustableControls,
+body[data-viewport-layout-mode="relative116"] #viewportRelativeAdjustableControls,
+body[data-viewport-layout-mode="relative120"] #viewportRelativeAdjustableControls,
+body[data-viewport-layout-mode="relative124"] #viewportRelativeAdjustableControls,
+body[data-viewport-layout-mode="relative140"] #viewportRelativeAdjustableControls,
+body[data-viewport-layout-mode="relative160"] #viewportRelativeAdjustableControls,
+body[data-viewport-layout-mode="relative180"] #viewportRelativeAdjustableControls,
+body[data-viewport-layout-mode="relative190"] #viewportRelativeAdjustableControls,
+body[data-viewport-layout-mode="relativeBiasUp20"] #viewportRelativeAdjustableControls,
+body[data-viewport-layout-mode="relativeBiasUp40"] #viewportRelativeAdjustableControls,
+body[data-viewport-layout-mode="relativeBiasUp60"] #viewportRelativeAdjustableControls,
+body[data-viewport-layout-mode="relativeBiasUp80"] #viewportRelativeAdjustableControls,
+body[data-viewport-layout-mode="relativeBiasUp120"] #viewportRelativeAdjustableControls,
+body[data-viewport-layout-mode="scrollstage"] #viewportRelativeAdjustableControls {
   position: absolute;
 }
 
