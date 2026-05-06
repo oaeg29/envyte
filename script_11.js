@@ -862,8 +862,6 @@ function isLikelySafariOnIOS() {
     ? navigator.userAgentData
     : null;
   const brands = uaData && Array.isArray(uaData.brands) ? uaData.brands : [];
-  // Safari-specific on iOS (non-standard, but currently the cleanest discriminator).
-  const hasStandaloneProperty = typeof navigator.standalone === 'boolean';
   const hasSafariToken = /Safari\//i.test(userAgent);
   const hasVersionToken = /Version\//i.test(userAgent);
   const hasAppleWebKitToken = /AppleWebKit\//i.test(userAgent);
@@ -875,9 +873,6 @@ function isLikelySafariOnIOS() {
     && /Chrom(e|ium)|Edge|Opera|Firefox|Samsung|Brave|DuckDuckGo|Vivaldi|Yandex/i.test(entry.brand)
   ));
   if (hasOtherBrowserToken || hasOtherBrandToken) {
-    return false;
-  }
-  if (!hasStandaloneProperty) {
     return false;
   }
   return hasAppleWebKitToken
