@@ -115,6 +115,8 @@ const VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_DEFAULT_IOS_SAFARI_VALUE = 166;
 const VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_MIN_VALUE = 100;
 const VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_MAX_VALUE = 240;
 const VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_STEP = 1;
+const IOS_VIEWPORT_STABLE_SCALE_EPSILON = 0.005;
+const IOS_VIEWPORT_ZOOM_SETTLE_DELAY_MS = 850;
 
 function normalizeHostedAssetPath(path) {
   if (typeof path !== 'string') {
@@ -808,7 +810,8 @@ let iosRelative166StabilizationNestedRafId = null;
 const iosRelative166StabilizationTimeoutIds = [];
 let iosRelative166VisualViewportRerenderQueued = false;
 let wasPinchZoomingViewport = false;
-let viewportResyncTimerId = null;
+let iosViewportInteractionLocked = false;
+let iosViewportUnlockTimer = null;
 
 function flushLoadingScreenGoneCallbacks() {
   if (loadingScreenGoneCallbacks.length <= 0) {
@@ -11370,10 +11373,9 @@ function onBranchStructureChanged() {
 // 14) Scene Render
 // =========================
 function resizeCanvasToViewport() {
-  if (isLikelySafariOnIOS() && isViewportScaleUnstable()) {
+  if (isLikelySafariOnIOS() && (isIOSViewportScaleUnstable() || isIOSViewportInteractionLocked())) {
     wasPinchZoomingViewport = true;
-    clearViewportResyncTimer();
-    scheduleViewportResyncAfterScaleStabilizes();
+    lockIOSViewportInteractions();
     return;
   }
   syncIOSFixedViewportWorkaroundFlag();
@@ -11441,9 +11443,81 @@ function ensureLargeViewportProbeElement() {
   return largeViewportProbeElement;
 }
 
-function isViewportScaleUnstable() {
-  const scale = Number(window && window.visualViewport ? window.visualViewport.scale : NaN);
-  return Number.isFinite(scale) && Math.abs(scale - 1) > 0.005;
+function isIOSViewportScaleUnstable() {
+  const visualViewport = window && window.visualViewport ? window.visualViewport : null;
+  if (!visualViewport) {
+    return false;
+  }
+  const scale = Number(visualViewport.scale);
+  if (!Number.isFinite(scale)) {
+    return false;
+  }
+  return Math.abs(scale - 1) > IOS_VIEWPORT_STABLE_SCALE_EPSILON;
+}
+
+function setIOSViewportInteractionLocked(locked) {
+  const nextLocked = locked === true;
+  if (iosViewportInteractionLocked === nextLocked) {
+    return;
+  }
+  iosViewportInteractionLocked = nextLocked;
+  if (document && document.documentElement && document.documentElement.classList) {
+    document.documentElement.classList.toggle('ios-viewport-interaction-locked', nextLocked);
+  }
+  if (document && document.body && document.body.classList) {
+    document.body.classList.toggle('ios-viewport-interaction-locked', nextLocked);
+  }
+  if (nextLocked) {
+    STATE.pointerX = Number.NEGATIVE_INFINITY;
+    STATE.pointerY = Number.NEGATIVE_INFINITY;
+    STATE.pointerSpeedPxPerSec = 0;
+    STATE.pointerLastSampleX = Number.NEGATIVE_INFINITY;
+    STATE.pointerLastSampleY = Number.NEGATIVE_INFINITY;
+    STATE.pointerLastSampleMs = 0;
+    const flowerSystem = getFlowerSystem();
+    if (flowerSystem && typeof flowerSystem.clearMousePosition === 'function') {
+      flowerSystem.clearMousePosition();
+    }
+  }
+}
+
+function isIOSViewportInteractionLocked() {
+  return iosViewportInteractionLocked === true;
+}
+
+if (typeof window !== 'undefined') {
+  window.__zeinaIsIOSViewportInteractionLocked = function __zeinaIsIOSViewportInteractionLocked() {
+    return iosViewportInteractionLocked === true;
+  };
+}
+
+function clearIOSViewportUnlockTimer() {
+  if (iosViewportUnlockTimer !== null) {
+    clearTimeout(iosViewportUnlockTimer);
+    iosViewportUnlockTimer = null;
+  }
+}
+
+function lockIOSViewportInteractions() {
+  if (!isLikelySafariOnIOS()) {
+    return;
+  }
+  setIOSViewportInteractionLocked(true);
+  clearIOSViewportUnlockTimer();
+  iosViewportUnlockTimer = window.setTimeout(() => {
+    iosViewportUnlockTimer = null;
+    if (isIOSViewportScaleUnstable()) {
+      wasPinchZoomingViewport = true;
+      lockIOSViewportInteractions();
+      return;
+    }
+    setIOSViewportInteractionLocked(false);
+    wasPinchZoomingViewport = false;
+    applyViewportLayoutMode(STATE.viewportLayoutMode, { forceRerender: true });
+    if (isIOSRelative166ViewportModeActive()) {
+      scheduleIOSRelative166ViewportStabilization();
+    }
+  }, IOS_VIEWPORT_ZOOM_SETTLE_DELAY_MS);
 }
 
 function getStableViewportHeightForLayout(visualViewportHeight, fallbackHeight) {
@@ -11453,7 +11527,7 @@ function getStableViewportHeightForLayout(visualViewportHeight, fallbackHeight) 
   const safeVisualViewportHeight = Number.isFinite(visualViewportHeight)
     ? Math.max(0, visualViewportHeight)
     : 0;
-  const shouldGuardForUnstableScale = isLikelySafariOnIOS() && isViewportScaleUnstable();
+  const shouldGuardForUnstableScale = isLikelySafariOnIOS() && isIOSViewportScaleUnstable();
   if (safeVisualViewportHeight > 0 && !shouldGuardForUnstableScale) {
     return safeVisualViewportHeight;
   }
@@ -11562,7 +11636,8 @@ function syncIOSFixedViewportWorkaroundFlag() {
 }
 
 function syncVisualViewportOffsets() {
-  if (isLikelySafariOnIOS() && isViewportScaleUnstable()) {
+  if (isLikelySafariOnIOS() && (isIOSViewportScaleUnstable() || isIOSViewportInteractionLocked())) {
+    lockIOSViewportInteractions();
     return;
   }
   let offsetLeft = 0;
@@ -12005,41 +12080,13 @@ function clearIOSRelative166ViewportStabilizationSchedule() {
   }
 }
 
-function clearViewportResyncTimer() {
-  if (viewportResyncTimerId !== null) {
-    clearTimeout(viewportResyncTimerId);
-    viewportResyncTimerId = null;
-  }
-}
-
-function scheduleViewportResyncAfterScaleStabilizes() {
-  clearViewportResyncTimer();
-  viewportResyncTimerId = window.setTimeout(() => {
-    viewportResyncTimerId = null;
-    if (isLikelySafariOnIOS() && isViewportScaleUnstable()) {
-      wasPinchZoomingViewport = true;
-      return;
-    }
-    if (isIOSRelative166ViewportModeActive()) {
-      rerunIOSRelative166ViewportLayout();
-      scheduleIOSRelative166ViewportStabilization();
-      return;
-    }
-    syncVisualViewportOffsets();
-    resizeCanvasToViewport();
-    refreshHeroVideoReferenceRect({ force: true });
-    renderScene({ skipAutoStart: true });
-  }, 500);
-}
-
 function rerunIOSRelative166ViewportLayout() {
   if (!isIOSRelative166ViewportModeActive()) {
     return false;
   }
-  if (isLikelySafariOnIOS() && isViewportScaleUnstable()) {
+  if (isLikelySafariOnIOS() && (isIOSViewportScaleUnstable() || isIOSViewportInteractionLocked())) {
     wasPinchZoomingViewport = true;
-    clearViewportResyncTimer();
-    scheduleViewportResyncAfterScaleStabilizes();
+    lockIOSViewportInteractions();
     return false;
   }
   applyViewportLayoutMode(VIEWPORT_LAYOUT_MODE_RELATIVE_166, { forceRerender: true });
@@ -12053,10 +12100,9 @@ function scheduleIOSRelative166ViewportStabilization() {
   }
   clearIOSRelative166ViewportStabilizationSchedule();
   const rerun = () => {
-    if (isLikelySafariOnIOS() && isViewportScaleUnstable()) {
+    if (isLikelySafariOnIOS() && (isIOSViewportScaleUnstable() || isIOSViewportInteractionLocked())) {
       wasPinchZoomingViewport = true;
-      clearViewportResyncTimer();
-      scheduleViewportResyncAfterScaleStabilizes();
+      lockIOSViewportInteractions();
       return;
     }
     rerunIOSRelative166ViewportLayout();
@@ -12105,23 +12151,14 @@ function setupVisualViewportHandlers() {
     return;
   }
   const onVisualViewportChanged = () => {
-    if (isLikelySafariOnIOS()) {
-      const scaleUnstable = isViewportScaleUnstable();
-      if (scaleUnstable) {
-        wasPinchZoomingViewport = true;
-        clearViewportResyncTimer();
-        scheduleViewportResyncAfterScaleStabilizes();
-        return;
-      }
-      if (wasPinchZoomingViewport) {
-        wasPinchZoomingViewport = false;
-        clearViewportResyncTimer();
-        scheduleViewportResyncAfterScaleStabilizes();
-        return;
-      }
-      if (viewportResyncTimerId !== null) {
-        return;
-      }
+    if (isLikelySafariOnIOS() && isIOSViewportScaleUnstable()) {
+      wasPinchZoomingViewport = true;
+      lockIOSViewportInteractions();
+      return;
+    }
+    if (isLikelySafariOnIOS() && isIOSViewportInteractionLocked()) {
+      lockIOSViewportInteractions();
+      return;
     }
     if (isIOSRelative166ViewportModeActive()) {
       if (iosRelative166VisualViewportRerenderQueued) {
@@ -12848,10 +12885,9 @@ function renderScene(options = {}) {
 // 15) Events
 // =========================
 function onResize() {
-  if (isLikelySafariOnIOS() && isViewportScaleUnstable()) {
+  if (isLikelySafariOnIOS() && (isIOSViewportScaleUnstable() || isIOSViewportInteractionLocked())) {
     wasPinchZoomingViewport = true;
-    clearViewportResyncTimer();
-    scheduleViewportResyncAfterScaleStabilizes();
+    lockIOSViewportInteractions();
     return;
   }
   // Keep existing branches; do not regenerate on zoom/resize.
@@ -13039,6 +13075,9 @@ function extractPrimaryClientPoint(event) {
 }
 
 function onMouseMove(event) {
+  if (isIOSViewportInteractionLocked()) {
+    return;
+  }
   const pointer = getCanvasPointerPosition(event);
   if (!pointer) {
     return;
@@ -13086,6 +13125,9 @@ function onMouseOut() {
 }
 
 function onMouseClick(event) {
+  if (isIOSViewportInteractionLocked()) {
+    return;
+  }
   if (tryResumeHeroVideoPlaybackFromUserGesture(event)) {
     return;
   }
@@ -14433,6 +14475,8 @@ async function bootstrap() {
     return;
   }
   STATE.hasBootstrapped = true;
+  setIOSViewportInteractionLocked(false);
+  clearIOSViewportUnlockTimer();
   const defaultLoadingMessage = getDefaultLoadingScreenMessage();
   setLoadingScreenVisible(true);
   setLoadingScreenMessage(defaultLoadingMessage);

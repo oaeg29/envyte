@@ -13,6 +13,13 @@
   const DEFAULT_LILY_CLOSED_SPRITE_SCALE = 4.1590909091;
   const DEFAULT_BLUE_SPRITE_PATH = './blue_sprite_2_upscaled.png';
 
+  function isExternalViewportInteractionLocked() {
+    return (
+      typeof globalScope.__zeinaIsIOSViewportInteractionLocked === 'function'
+      && globalScope.__zeinaIsIOSViewportInteractionLocked() === true
+    );
+  }
+
   function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
   }
@@ -2963,6 +2970,9 @@
     }
 
     function setMousePosition(x, y) {
+      if (isExternalViewportInteractionLocked()) {
+        return;
+      }
       const nextX = Number.isFinite(x) ? x : OFFSCREEN_POINTER;
       const nextY = Number.isFinite(y) ? y : OFFSCREEN_POINTER;
       const nowMs = performance.now();
@@ -3105,6 +3115,9 @@
     }
 
     function applyJumpAt(x, y, flowersConfig) {
+      if (isExternalViewportInteractionLocked()) {
+        return 0;
+      }
       if (!Number.isFinite(x) || !Number.isFinite(y) || state.flowers.length === 0) {
         return 0;
       }
@@ -3343,6 +3356,12 @@
     }
 
     function update(flowersConfig, nowMs, commonConfigOverride = null) {
+      if (isExternalViewportInteractionLocked()) {
+        state.activeFlowerIndices = [];
+        state.performance.activeFlowerCount = 0;
+        state.lastUpdateMs = Number.isFinite(nowMs) ? nowMs : performance.now();
+        return 0;
+      }
       if (state.flowers.length === 0) {
         state.activeFlowerIndices = [];
         resetStaticLayerActiveSnapshot();
