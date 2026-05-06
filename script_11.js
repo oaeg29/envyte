@@ -103,7 +103,8 @@ const VIEWPORT_LAYOUT_SCROLL_STAGE_ID = 'ios-scroll-stage';
 const SAFARI_TOP_TINT_SHIM_ID = 'safari-top-tint-shim';
 const SAFARI_TOP_TINT_CSS_VAR = '--safari-top-tint';
 const SAFARI_TOP_TINT_SHIM_OPACITY_CSS_VAR = '--safari-top-tint-shim-opacity';
-const VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_DEFAULT_VALUE = 112;
+const VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_DEFAULT_VALUE = 100;
+const VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_DEFAULT_IOS_SAFARI_VALUE = 166;
 const VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_MIN_VALUE = 100;
 const VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_MAX_VALUE = 240;
 const VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_STEP = 1;
@@ -738,6 +739,24 @@ function isLikelySafariOnMacDesktop() {
   const hasVersionToken = /Version\//i.test(userAgent);
   const hasOtherBrowserToken = /(Chrome|Chromium|CriOS|Edg|OPR|FxiOS|Firefox|Brave|Vivaldi|YaBrowser)/i.test(userAgent);
   return hasSafariToken && hasVersionToken && !hasOtherBrowserToken;
+}
+
+function isLikelySafariOnIOS() {
+  if (!isLikelyIOSDevice() || typeof navigator === 'undefined') {
+    return false;
+  }
+  const userAgent = typeof navigator.userAgent === 'string' ? navigator.userAgent : '';
+  const hasSafariToken = /Safari\//i.test(userAgent);
+  const hasVersionToken = /Version\//i.test(userAgent);
+  const hasOtherBrowserToken = /(CriOS|FxiOS|EdgiOS|OPiOS|YaBrowser|DuckDuckGo|Brave)/i.test(userAgent);
+  return hasSafariToken && hasVersionToken && !hasOtherBrowserToken;
+}
+
+function resolveInitialViewportRelativeAdjustableValue() {
+  if (isLikelySafariOnIOS()) {
+    return VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_DEFAULT_IOS_SAFARI_VALUE;
+  }
+  return VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_DEFAULT_VALUE;
 }
 
 function resolveHeroVideoSourcePath() {
@@ -1620,7 +1639,7 @@ const STATE = {
   lastFloralResponsiveScaleFactor: null,
   lastAppliedGlobalFoliageScale: null,
   viewportLayoutMode: VIEWPORT_LAYOUT_MODE_LEGACY,
-  viewportRelativeAdjustableValue: VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_DEFAULT_VALUE,
+  viewportRelativeAdjustableValue: resolveInitialViewportRelativeAdjustableValue(),
   viewportOffsetLeftPx: 0,
   viewportOffsetTopPx: 0,
   useIOSFixedViewportWorkaround: false,
@@ -10485,7 +10504,7 @@ function ensureViewportRelativeAdjustableControls() {
 
     const valueLabel = document.createElement('span');
     valueLabel.setAttribute('data-role', 'value');
-    valueLabel.textContent = 'relative: 112';
+    valueLabel.textContent = `relative: ${VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_DEFAULT_VALUE}`;
 
     const plusButton = document.createElement('button');
     plusButton.type = 'button';
