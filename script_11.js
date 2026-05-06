@@ -60,6 +60,13 @@ const VIEWPORT_LAYOUT_MODE_RELATIVE_120 = 'relative120';
 const VIEWPORT_LAYOUT_MODE_RELATIVE_124 = 'relative124';
 const VIEWPORT_LAYOUT_MODE_RELATIVE_140 = 'relative140';
 const VIEWPORT_LAYOUT_MODE_RELATIVE_160 = 'relative160';
+const VIEWPORT_LAYOUT_MODE_RELATIVE_180 = 'relative180';
+const VIEWPORT_LAYOUT_MODE_RELATIVE_190 = 'relative190';
+const VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_20 = 'relativeBiasUp20';
+const VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_40 = 'relativeBiasUp40';
+const VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_60 = 'relativeBiasUp60';
+const VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_80 = 'relativeBiasUp80';
+const VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_120 = 'relativeBiasUp120';
 const VIEWPORT_LAYOUT_MODE_BODY_FIXED = 'bodyfixed';
 const VIEWPORT_LAYOUT_MODE_SCROLL_STAGE = 'scrollstage';
 const VIEWPORT_LAYOUT_MODE_ROOT_BG = 'rootbg';
@@ -68,6 +75,18 @@ const VIEWPORT_LAYOUT_RELATIVE_120_OVERDRAW_PX = 10;
 const VIEWPORT_LAYOUT_RELATIVE_124_OVERDRAW_PX = 12;
 const VIEWPORT_LAYOUT_RELATIVE_140_OVERDRAW_PX = 20;
 const VIEWPORT_LAYOUT_RELATIVE_160_OVERDRAW_PX = 30;
+const VIEWPORT_LAYOUT_RELATIVE_180_OVERDRAW_PX = 40;
+const VIEWPORT_LAYOUT_RELATIVE_190_OVERDRAW_PX = 45;
+const VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_20_TOP_OVERDRAW_PX = 20;
+const VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_20_EXTRA_HEIGHT_PX = 40;
+const VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_40_TOP_OVERDRAW_PX = 40;
+const VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_40_EXTRA_HEIGHT_PX = 70;
+const VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_60_TOP_OVERDRAW_PX = 60;
+const VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_60_EXTRA_HEIGHT_PX = 100;
+const VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_80_TOP_OVERDRAW_PX = 80;
+const VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_80_EXTRA_HEIGHT_PX = 130;
+const VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_120_TOP_OVERDRAW_PX = 120;
+const VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_120_EXTRA_HEIGHT_PX = 180;
 const VIEWPORT_LAYOUT_SCROLL_STAGE_OVERDRAW_PX = 300;
 const VIEWPORT_LAYOUT_ROOT_BG_OVERDRAW_PX = 160;
 const VIEWPORT_LAYOUT_MODE_QUERY_PARAM = 'viewportMode';
@@ -238,6 +257,27 @@ function sanitizeViewportLayoutMode(value, fallback = '') {
   if (value === VIEWPORT_LAYOUT_MODE_RELATIVE_160) {
     return VIEWPORT_LAYOUT_MODE_RELATIVE_160;
   }
+  if (value === VIEWPORT_LAYOUT_MODE_RELATIVE_180) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_180;
+  }
+  if (value === VIEWPORT_LAYOUT_MODE_RELATIVE_190) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_190;
+  }
+  if (value === VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_20) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_20;
+  }
+  if (value === VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_40) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_40;
+  }
+  if (value === VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_60) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_60;
+  }
+  if (value === VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_80) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_80;
+  }
+  if (value === VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_120) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_120;
+  }
   if (value === VIEWPORT_LAYOUT_MODE_BODY_FIXED) {
     return VIEWPORT_LAYOUT_MODE_BODY_FIXED;
   }
@@ -266,21 +306,77 @@ function resolveRelativeViewportOverdrawPx(mode) {
   if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_160) {
     return VIEWPORT_LAYOUT_RELATIVE_160_OVERDRAW_PX;
   }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_180) {
+    return VIEWPORT_LAYOUT_RELATIVE_180_OVERDRAW_PX;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_190) {
+    return VIEWPORT_LAYOUT_RELATIVE_190_OVERDRAW_PX;
+  }
   return 0;
 }
 
-function resolveViewportLayoutOverdrawPx(mode) {
+function resolveViewportLayoutBiasOverdrawConfig(mode) {
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_20) {
+    return {
+      topPx: VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_20_TOP_OVERDRAW_PX,
+      extraHeightPx: VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_20_EXTRA_HEIGHT_PX,
+    };
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_40) {
+    return {
+      topPx: VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_40_TOP_OVERDRAW_PX,
+      extraHeightPx: VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_40_EXTRA_HEIGHT_PX,
+    };
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_60) {
+    return {
+      topPx: VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_60_TOP_OVERDRAW_PX,
+      extraHeightPx: VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_60_EXTRA_HEIGHT_PX,
+    };
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_80) {
+    return {
+      topPx: VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_80_TOP_OVERDRAW_PX,
+      extraHeightPx: VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_80_EXTRA_HEIGHT_PX,
+    };
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_120) {
+    return {
+      topPx: VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_120_TOP_OVERDRAW_PX,
+      extraHeightPx: VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_120_EXTRA_HEIGHT_PX,
+    };
+  }
+  return null;
+}
+
+function resolveViewportLayoutOverdrawConfig(mode) {
   const relativeOverdrawPx = resolveRelativeViewportOverdrawPx(mode);
   if (relativeOverdrawPx > 0) {
-    return relativeOverdrawPx;
+    return {
+      topPx: relativeOverdrawPx,
+      extraHeightPx: relativeOverdrawPx * 2,
+    };
+  }
+  const biasOverdrawConfig = resolveViewportLayoutBiasOverdrawConfig(mode);
+  if (biasOverdrawConfig) {
+    return biasOverdrawConfig;
   }
   if (mode === VIEWPORT_LAYOUT_MODE_ROOT_BG) {
-    return VIEWPORT_LAYOUT_ROOT_BG_OVERDRAW_PX;
+    return {
+      topPx: VIEWPORT_LAYOUT_ROOT_BG_OVERDRAW_PX,
+      extraHeightPx: VIEWPORT_LAYOUT_ROOT_BG_OVERDRAW_PX * 2,
+    };
   }
   if (mode === VIEWPORT_LAYOUT_MODE_SCROLL_STAGE) {
-    return VIEWPORT_LAYOUT_SCROLL_STAGE_OVERDRAW_PX;
+    return {
+      topPx: VIEWPORT_LAYOUT_SCROLL_STAGE_OVERDRAW_PX,
+      extraHeightPx: VIEWPORT_LAYOUT_SCROLL_STAGE_OVERDRAW_PX * 2,
+    };
   }
-  return 0;
+  return {
+    topPx: 0,
+    extraHeightPx: 0,
+  };
 }
 
 function readViewportLayoutModeFromSearchParams() {
@@ -9652,11 +9748,11 @@ function resolveViewportSizeForRendering() {
   const height = Math.max(safeInnerHeight, safeClientHeight, probeHeight);
   const resolvedWidth = width > 0 ? width : safeInnerWidth;
   const resolvedHeight = height > 0 ? height : safeInnerHeight;
-  const layoutOverdrawPx = resolveViewportLayoutOverdrawPx(layoutMode);
-  if (layoutOverdrawPx > 0) {
+  const layoutOverdrawConfig = resolveViewportLayoutOverdrawConfig(layoutMode);
+  if (layoutOverdrawConfig.extraHeightPx > 0) {
     return {
       width: resolvedWidth,
-      height: Math.max(resolvedHeight, resolvedHeight + layoutOverdrawPx * 2),
+      height: Math.max(resolvedHeight, resolvedHeight + layoutOverdrawConfig.extraHeightPx),
     };
   }
   return {
@@ -9667,8 +9763,10 @@ function resolveViewportSizeForRendering() {
 
 function syncIOSFixedViewportWorkaroundFlag() {
   const mode = sanitizeViewportLayoutMode(STATE.viewportLayoutMode, VIEWPORT_LAYOUT_MODE_LEGACY);
+  const layoutOverdrawConfig = resolveViewportLayoutOverdrawConfig(mode);
   const useWorkaround = (
-    resolveViewportLayoutOverdrawPx(mode) > 0
+    layoutOverdrawConfig.topPx > 0
+    || layoutOverdrawConfig.extraHeightPx > 0
     || (isLikelyIOS26OrLater() && mode !== VIEWPORT_LAYOUT_MODE_LEGACY)
   );
   STATE.useIOSFixedViewportWorkaround = useWorkaround;
@@ -9703,9 +9801,9 @@ function syncVisualViewportOffsets() {
       offsetTop = vvTop;
     }
   }
-  const layoutOverdrawPx = resolveViewportLayoutOverdrawPx(STATE.viewportLayoutMode);
-  if (layoutOverdrawPx > 0) {
-    offsetTop = -layoutOverdrawPx;
+  const layoutOverdrawConfig = resolveViewportLayoutOverdrawConfig(STATE.viewportLayoutMode);
+  if (layoutOverdrawConfig.topPx > 0) {
+    offsetTop = -layoutOverdrawConfig.topPx;
   }
 
   STATE.viewportOffsetLeftPx = offsetLeft;
@@ -9900,6 +9998,27 @@ function getNextViewportLayoutMode(currentMode) {
     return VIEWPORT_LAYOUT_MODE_RELATIVE_160;
   }
   if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_160) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_180;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_180) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_190;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_190) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_20;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_20) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_40;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_40) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_60;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_60) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_80;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_80) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_120;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_120) {
     return VIEWPORT_LAYOUT_MODE_ROOT_BG;
   }
   if (mode === VIEWPORT_LAYOUT_MODE_ROOT_BG) {
@@ -9961,7 +10080,7 @@ function ensureViewportLayoutDebugToggleButton() {
     button = document.createElement('button');
     button.type = 'button';
     button.id = VIEWPORT_LAYOUT_MODE_DEBUG_BUTTON_ID;
-    button.title = 'Switch viewport layout mode (cover/dynamic/legacy/relative116/relative120/relative124/relative140/relative160/rootbg/scrollstage/bodyfixed)';
+    button.title = 'Switch viewport layout mode (cover/dynamic/legacy/relative116/relative120/relative124/relative140/relative160/relative180/relative190/relativeBiasUp20/relativeBiasUp40/relativeBiasUp60/relativeBiasUp80/relativeBiasUp120/rootbg/scrollstage/bodyfixed)';
     button.addEventListener('click', () => {
       const nextMode = getNextViewportLayoutMode(STATE.viewportLayoutMode);
       applyViewportLayoutMode(nextMode, { forceRerender: true });
