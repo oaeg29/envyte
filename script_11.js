@@ -2418,8 +2418,10 @@ const STATE = {
   openButtonArrowImagePendingPath: '',
   openButtonArrowImageLoadPromise: null,
   centerOverlayImagePath: '',
+  centerOverlayImageTargetPath: '',
   centerOverlayImagePendingPath: '',
   centerOverlayImageLoadPromise: null,
+  centerOverlayImagePreloadEntries: new Map(),
   centerOverlayImageIsLoaded: false,
   centerOverlayImageFailedPath: '',
   centerOverlayImageVisibleSinceMs: 0,
@@ -2580,6 +2582,9 @@ const STATE = {
     transitionDirection: 0,
     wheelAccumulatedDeltaY: 0,
     wheelLastTriggerMs: 0,
+    wheelLastEventMs: 0,
+    wheelGestureConsumed: false,
+    wheelGestureDirection: 0,
     touchTracking: {
       active: false,
       touchIdentifier: null,
@@ -2587,6 +2592,7 @@ const STATE = {
       startClientY: 0,
       startSceneX: 0,
       startSceneY: 0,
+      startMs: 0,
     },
     centerOverlayImagePathOverride: '',
     overlayOpacityMultiplier: 1,
@@ -3824,15 +3830,144 @@ function getSwipeSectionsOverlayOpacityMultiplier() {
   return clamp(opacityMultiplier, 0, 1);
 }
 
+function normalizeCenterOverlayImagePath(path) {
+  if (typeof path !== 'string') {
+    return '';
+  }
+  const trimmed = path.trim();
+  return trimmed.length > 0 ? trimmed : '';
+}
+
+function ensureCenterOverlayImagePreloadEntriesMap() {
+  if (!(STATE.centerOverlayImagePreloadEntries instanceof Map)) {
+    STATE.centerOverlayImagePreloadEntries = new Map();
+  }
+  return STATE.centerOverlayImagePreloadEntries;
+}
+
+function getCenterOverlayImagePreloadEntry(path) {
+  const normalizedPath = normalizeCenterOverlayImagePath(path);
+  if (normalizedPath.length <= 0) {
+    return null;
+  }
+  const preloadMap = ensureCenterOverlayImagePreloadEntriesMap();
+  return preloadMap.get(normalizedPath) || null;
+}
+
+function isCenterOverlayImagePathReady(path) {
+  const entry = getCenterOverlayImagePreloadEntry(path);
+  return Boolean(entry && entry.status === 'loaded' && entry.image);
+}
+
+function ensureCenterOverlayImagePreload(path, options = {}) {
+  const normalizedPath = normalizeCenterOverlayImagePath(path);
+  if (normalizedPath.length <= 0) {
+    return Promise.resolve(null);
+  }
+  const safeOptions = isPlainObjectLiteral(options) ? options : {};
+  const retry = safeOptions.retry === true;
+  const preloadMap = ensureCenterOverlayImagePreloadEntriesMap();
+  const existingEntry = preloadMap.get(normalizedPath);
+  if (existingEntry) {
+    if (existingEntry.status === 'loaded' && existingEntry.image) {
+      return Promise.resolve(existingEntry.image);
+    }
+    if (existingEntry.status === 'loading' && existingEntry.promise) {
+      return existingEntry.promise;
+    }
+    if (existingEntry.status === 'failed' && !retry) {
+      return Promise.resolve(null);
+    }
+  }
+  const nextEntry = {
+    status: 'loading',
+    image: null,
+    promise: null,
+    errorMessage: '',
+  };
+  preloadMap.set(normalizedPath, nextEntry);
+  const loadPromise = loadImage(normalizedPath)
+    .then((image) => {
+      nextEntry.status = 'loaded';
+      nextEntry.image = image;
+      nextEntry.promise = null;
+      nextEntry.errorMessage = '';
+      return image;
+    })
+    .catch((error) => {
+      nextEntry.status = 'failed';
+      nextEntry.image = null;
+      nextEntry.promise = null;
+      nextEntry.errorMessage = error && error.message ? String(error.message) : 'Unknown image load error';
+      return null;
+    });
+  nextEntry.promise = loadPromise;
+  return loadPromise;
+}
+
+function preloadSwipeSectionsOverlayImages(swipeConfig = resolveSwipeSectionsConfig()) {
+  const sections = swipeConfig && Array.isArray(swipeConfig.sections) ? swipeConfig.sections : [];
+  if (sections.length <= 0) {
+    return;
+  }
+  const uniquePaths = new Set();
+  for (let i = 0; i < sections.length; i += 1) {
+    const section = sections[i];
+    const path = normalizeCenterOverlayImagePath(section && section.centerOverlayImagePath);
+    if (path.length > 0) {
+      uniquePaths.add(path);
+    }
+  }
+  uniquePaths.forEach((path) => {
+    const entry = getCenterOverlayImagePreloadEntry(path);
+    if (entry && (entry.status === 'loaded' || entry.status === 'loading' || entry.status === 'failed')) {
+      return;
+    }
+    ensureCenterOverlayImagePreload(path).catch(() => {});
+  });
+}
+
+function resolveSwipeSectionCenterOverlayOffsetYVideoHeightRatio(
+  swipeConfig = resolveSwipeSectionsConfig(),
+) {
+  const swipeState = STATE && STATE.swipeSections ? STATE.swipeSections : null;
+  if (!swipeState || !Array.isArray(swipeConfig.sections) || swipeConfig.sections.length <= 0) {
+    return null;
+  }
+  let sectionIndex = (
+    Number.isFinite(swipeState.activeSectionIndex)
+    ? Math.floor(swipeState.activeSectionIndex)
+    : -1
+  );
+  if (
+    swipeState.isTransitioning === true
+    && Number.isFinite(swipeState.transitionToSectionIndex)
+    && swipeState.transitionToSectionIndex >= 0
+    && swipeState.transitionToSectionIndex < swipeConfig.sections.length
+  ) {
+    sectionIndex = Math.floor(swipeState.transitionToSectionIndex);
+  }
+  if (!(sectionIndex >= 0 && sectionIndex < swipeConfig.sections.length)) {
+    return null;
+  }
+  const section = swipeConfig.sections[sectionIndex];
+  const ratio = Number(section && section.centerOverlayOffsetYVideoHeightRatio);
+  return Number.isFinite(ratio) ? ratio : null;
+}
+
 function requestCenterOverlayImageLoad(options = {}) {
   const safeOptions = isPlainObjectLiteral(options) ? options : {};
   const force = safeOptions.force === true;
   const overlayConfig = resolveCenterOverlayImageConfig();
-  const spritePath = overlayConfig.enabled ? overlayConfig.spritePath : '';
+  const spritePath = overlayConfig.enabled
+    ? normalizeCenterOverlayImagePath(overlayConfig.spritePath)
+    : '';
+  STATE.centerOverlayImageTargetPath = spritePath;
 
   if (spritePath.length === 0) {
     centerOverlayImageLayer.removeAttribute('src');
     STATE.centerOverlayImagePath = '';
+    STATE.centerOverlayImageTargetPath = '';
     STATE.centerOverlayImagePendingPath = '';
     STATE.centerOverlayImageLoadPromise = null;
     STATE.centerOverlayImageIsLoaded = false;
@@ -3840,53 +3975,77 @@ function requestCenterOverlayImageLoad(options = {}) {
     return Promise.resolve(null);
   }
 
-  if (
-    !force
-    && STATE.centerOverlayImageFailedPath === spritePath
-  ) {
-    return Promise.resolve(null);
-  }
-
-  if (
-    !force
-    && STATE.centerOverlayImageIsLoaded
-    && STATE.centerOverlayImagePath === spritePath
-  ) {
+  if (!force && STATE.centerOverlayImagePath === spritePath && STATE.centerOverlayImageIsLoaded === true) {
     return Promise.resolve(centerOverlayImageLayer);
   }
 
-  if (
-    !force
-    && STATE.centerOverlayImageLoadPromise
-    && STATE.centerOverlayImagePendingPath === spritePath
-  ) {
-    return STATE.centerOverlayImageLoadPromise;
+  const applyLoadedOverlayPath = (image) => {
+    if (!image || STATE.centerOverlayImageTargetPath !== spritePath) {
+      return image;
+    }
+    centerOverlayImageLayer.src = image.src;
+    STATE.centerOverlayImagePath = spritePath;
+    STATE.centerOverlayImagePendingPath = '';
+    STATE.centerOverlayImageLoadPromise = null;
+    STATE.centerOverlayImageIsLoaded = true;
+    STATE.centerOverlayImageFailedPath = '';
+    renderScene({ skipAutoStart: true });
+    return image;
+  };
+
+  if (isCenterOverlayImagePathReady(spritePath)) {
+    const readyEntry = getCenterOverlayImagePreloadEntry(spritePath);
+    if (readyEntry && readyEntry.image) {
+      applyLoadedOverlayPath(readyEntry.image);
+      return Promise.resolve(readyEntry.image);
+    }
+  }
+
+  const existingEntry = getCenterOverlayImagePreloadEntry(spritePath);
+  if (!force && existingEntry && existingEntry.status === 'failed') {
+    STATE.centerOverlayImagePendingPath = '';
+    STATE.centerOverlayImageLoadPromise = null;
+    STATE.centerOverlayImageIsLoaded = false;
+    STATE.centerOverlayImageFailedPath = spritePath;
+    return Promise.resolve(null);
   }
 
   STATE.centerOverlayImagePendingPath = spritePath;
-  const loadPromise = loadImage(spritePath)
+  STATE.centerOverlayImageIsLoaded = false;
+  const loadPromise = ensureCenterOverlayImagePreload(spritePath, { retry: force })
     .then((image) => {
-      if (STATE.centerOverlayImagePendingPath !== spritePath) {
+      if (STATE.centerOverlayImageTargetPath !== spritePath) {
+        if (STATE.centerOverlayImagePendingPath === spritePath) {
+          STATE.centerOverlayImagePendingPath = '';
+        }
+        if (STATE.centerOverlayImageLoadPromise === loadPromise) {
+          STATE.centerOverlayImageLoadPromise = null;
+        }
         return image;
       }
-      centerOverlayImageLayer.src = image.src;
-      STATE.centerOverlayImagePath = spritePath;
-      STATE.centerOverlayImagePendingPath = '';
-      STATE.centerOverlayImageLoadPromise = null;
-      STATE.centerOverlayImageIsLoaded = true;
-      STATE.centerOverlayImageFailedPath = '';
-      renderScene({ skipAutoStart: true });
-      return image;
-    })
-    .catch((error) => {
-      if (STATE.centerOverlayImagePendingPath === spritePath) {
-        STATE.centerOverlayImagePendingPath = '';
+      if (!image) {
+        if (STATE.centerOverlayImagePendingPath === spritePath) {
+          STATE.centerOverlayImagePendingPath = '';
+        }
+        if (STATE.centerOverlayImageLoadPromise === loadPromise) {
+          STATE.centerOverlayImageLoadPromise = null;
+        }
+        STATE.centerOverlayImageIsLoaded = false;
+        if (STATE.centerOverlayImageFailedPath !== spritePath) {
+          const failedEntry = getCenterOverlayImagePreloadEntry(spritePath);
+          const failureMessage = (
+            failedEntry
+            && typeof failedEntry.errorMessage === 'string'
+            && failedEntry.errorMessage.length > 0
+          )
+            ? failedEntry.errorMessage
+            : `Failed to load image: ${spritePath}`;
+          console.warn(`${failureMessage} | Center overlay image disabled until path is fixed.`);
+        }
+        STATE.centerOverlayImageFailedPath = spritePath;
+        return null;
       }
-      STATE.centerOverlayImageLoadPromise = null;
-      STATE.centerOverlayImageIsLoaded = false;
-      STATE.centerOverlayImageFailedPath = spritePath;
-      console.warn(error.message + ' | Center overlay image disabled until path is fixed.');
-      return null;
+      return applyLoadedOverlayPath(image);
     });
 
   STATE.centerOverlayImageLoadPromise = loadPromise;
@@ -3895,6 +4054,7 @@ function requestCenterOverlayImageLoad(options = {}) {
 
 function syncCenterOverlayImageLayer(nowMs = performance.now(), currentFrame = null) {
   const overlayConfig = resolveCenterOverlayImageConfig();
+  const swipeConfig = resolveSwipeSectionsConfig();
   const videoRect = getHeroVideoRenderedRect();
   const videoSizePx = (
     videoRect
@@ -3910,9 +4070,14 @@ function syncCenterOverlayImageLayer(nowMs = performance.now(), currentFrame = n
         : (Number.isFinite(window.innerHeight) ? Math.max(0, window.innerHeight) : 0)
     );
 
-  const resolvedOffsetYPx = overlayConfig.offsetYMode === 'videoSizeRatio'
-    ? (overlayConfig.offsetYPx * videoSizePx)
-    : overlayConfig.offsetYPx;
+  const sectionOffsetYRatio = resolveSwipeSectionCenterOverlayOffsetYVideoHeightRatio(swipeConfig);
+  const resolvedOffsetYPx = Number.isFinite(sectionOffsetYRatio)
+    ? (sectionOffsetYRatio * videoSizePx)
+    : (
+      overlayConfig.offsetYMode === 'videoSizeRatio'
+        ? (overlayConfig.offsetYPx * videoSizePx)
+        : overlayConfig.offsetYPx
+    );
 
   centerOverlayImageLayer.style.left = `calc(50% + ${overlayConfig.offsetXPx}px)`;
   centerOverlayImageLayer.style.top = `calc(50% + ${resolvedOffsetYPx}px)`;
@@ -12109,10 +12274,15 @@ function resolveSwipeSectionsConfig(configCandidate = CONFIG.swipeSections) {
     )
       ? rawEntry.centerOverlayImagePath.trim()
       : fallbackOverlayPath;
+    const centerOverlayOffsetYVideoHeightRatioRaw = Number(rawEntry.centerOverlayOffsetYVideoHeightRatio);
+    const centerOverlayOffsetYVideoHeightRatio = Number.isFinite(centerOverlayOffsetYVideoHeightRatioRaw)
+      ? centerOverlayOffsetYVideoHeightRatioRaw
+      : null;
     sections.push({
       id,
       frame,
       centerOverlayImagePath,
+      centerOverlayOffsetYVideoHeightRatio,
     });
   }
   if (sections.length <= 0) {
@@ -12120,6 +12290,7 @@ function resolveSwipeSectionsConfig(configCandidate = CONFIG.swipeSections) {
       id: 'section-1',
       frame: fallbackFrame,
       centerOverlayImagePath: fallbackOverlayPath,
+      centerOverlayOffsetYVideoHeightRatio: null,
     });
   }
 
@@ -12145,10 +12316,20 @@ function resolveSwipeSectionsConfig(configCandidate = CONFIG.swipeSections) {
         : 95,
       wheelCooldownMs: Number.isFinite(Number(inputConfig.wheelCooldownMs))
         ? Math.max(0, Number(inputConfig.wheelCooldownMs))
-        : 340,
+        : 0,
+      wheelGestureQuietWindowMs: Number.isFinite(Number(inputConfig.wheelGestureQuietWindowMs))
+        ? Math.max(0, Number(inputConfig.wheelGestureQuietWindowMs))
+        : 80,
+      wheelGestureResetDeltaPx: Number.isFinite(Number(inputConfig.wheelGestureResetDeltaPx))
+        ? Math.max(0, Number(inputConfig.wheelGestureResetDeltaPx))
+        : 12,
+      wheelDirectionResetEnabled: inputConfig.wheelDirectionResetEnabled !== false,
       touchSwipeThresholdPx: Number.isFinite(Number(inputConfig.touchSwipeThresholdPx))
         ? Math.max(1, Number(inputConfig.touchSwipeThresholdPx))
         : 42,
+      touchMinFlickVelocityPxPerMs: Number.isFinite(Number(inputConfig.touchMinFlickVelocityPxPerMs))
+        ? Math.max(0, Number(inputConfig.touchMinFlickVelocityPxPerMs))
+        : 0.62,
       touchAxisLockRatio: Number.isFinite(Number(inputConfig.touchAxisLockRatio))
         ? Math.max(0.01, Number(inputConfig.touchAxisLockRatio))
         : 1.2,
@@ -14751,7 +14932,7 @@ function setSwipeSectionOverlayPathOverride(path, options = {}) {
     return;
   }
   swipeState.centerOverlayImagePathOverride = nextPath;
-  requestCenterOverlayImageLoad({ force: true }).catch(() => {});
+  requestCenterOverlayImageLoad({ force: forceLoad }).catch(() => {});
 }
 
 function clearSwipeSectionsTouchTracking() {
@@ -14765,6 +14946,17 @@ function clearSwipeSectionsTouchTracking() {
   swipeState.touchTracking.startClientY = 0;
   swipeState.touchTracking.startSceneX = 0;
   swipeState.touchTracking.startSceneY = 0;
+  swipeState.touchTracking.startMs = 0;
+}
+
+function resetSwipeSectionsWheelGestureSession() {
+  const swipeState = STATE.swipeSections;
+  if (!swipeState) {
+    return;
+  }
+  swipeState.wheelAccumulatedDeltaY = 0;
+  swipeState.wheelGestureConsumed = false;
+  swipeState.wheelGestureDirection = 0;
 }
 
 function cancelSwipeSectionTransition() {
@@ -14877,8 +15069,11 @@ function syncSwipeSectionsStateWithConfig(options = {}) {
   if (!swipeState || !Array.isArray(swipeConfig.sections) || swipeConfig.sections.length <= 0) {
     return swipeConfig;
   }
+  preloadSwipeSectionsOverlayImages(swipeConfig);
   if (swipeConfig.enabled !== true) {
     cancelSwipeSectionTransition();
+    resetSwipeSectionsWheelGestureSession();
+    clearSwipeSectionsTouchTracking();
     if (swipeState.isTransitioning !== true) {
       setSwipeSectionOverlayPathOverride('');
       swipeState.overlayOpacityMultiplier = 1;
@@ -15307,29 +15502,74 @@ function onSwipeSectionsWheel(event) {
   if (Math.abs(deltaY) <= 1e-6) {
     return;
   }
-  swipeState.wheelAccumulatedDeltaY += deltaY;
-  const threshold = Math.max(1, Number(swipeConfig.input.wheelDeltaThresholdPx) || 95);
-  if (Math.abs(swipeState.wheelAccumulatedDeltaY) < threshold) {
-    if (event && event.cancelable === true) {
-      event.preventDefault();
-    }
-    return;
-  }
   const nowMs = performance.now();
-  const cooldownMs = Math.max(0, Number(swipeConfig.input.wheelCooldownMs) || 0);
-  if (nowMs - swipeState.wheelLastTriggerMs < cooldownMs) {
-    swipeState.wheelAccumulatedDeltaY = 0;
+  const threshold = Math.max(1, Number(swipeConfig.input.wheelDeltaThresholdPx) || 95);
+  const quietWindowMs = Math.max(0, Number(swipeConfig.input.wheelGestureQuietWindowMs) || 0);
+  const resetDeltaPx = Math.max(0, Number(swipeConfig.input.wheelGestureResetDeltaPx) || 0);
+  const directionResetEnabled = swipeConfig.input.wheelDirectionResetEnabled !== false;
+  const deltaDirection = deltaY > 0 ? 1 : -1;
+
+  const hasQuietGap = (
+    swipeState.wheelLastEventMs <= 0
+    || (nowMs - swipeState.wheelLastEventMs) >= quietWindowMs
+  );
+  if (hasQuietGap) {
+    resetSwipeSectionsWheelGestureSession();
+  }
+
+  if (swipeState.wheelGestureConsumed === true) {
+    const directionChanged = (
+      directionResetEnabled
+      && swipeState.wheelGestureDirection !== 0
+      && deltaDirection !== swipeState.wheelGestureDirection
+      && Math.abs(deltaY) >= resetDeltaPx
+    );
+    if (directionChanged) {
+      resetSwipeSectionsWheelGestureSession();
+    } else {
+      swipeState.wheelLastEventMs = nowMs;
+      if (event && event.cancelable === true) {
+        event.preventDefault();
+      }
+      return;
+    }
+  }
+
+  swipeState.wheelAccumulatedDeltaY += deltaY;
+  if (Math.abs(swipeState.wheelAccumulatedDeltaY) < threshold) {
+    swipeState.wheelLastEventMs = nowMs;
     if (event && event.cancelable === true) {
       event.preventDefault();
     }
     return;
   }
+
+  const cooldownMs = Math.max(0, Number(swipeConfig.input.wheelCooldownMs) || 0);
+  const rapidMode = sanitizeSwipeSectionRapidMode(
+    swipeConfig.transition && swipeConfig.transition.rapidSwipeMode,
+    'ignore',
+  );
+  const bypassCooldownForRetarget = swipeState.isTransitioning === true && rapidMode === 'retarget';
+  if (!bypassCooldownForRetarget && nowMs - swipeState.wheelLastTriggerMs < cooldownMs) {
+    swipeState.wheelGestureConsumed = true;
+    swipeState.wheelGestureDirection = swipeState.wheelAccumulatedDeltaY > 0 ? 1 : -1;
+    swipeState.wheelAccumulatedDeltaY = 0;
+    swipeState.wheelLastEventMs = nowMs;
+    if (event && event.cancelable === true) {
+      event.preventDefault();
+    }
+    return;
+  }
+
   const direction = swipeState.wheelAccumulatedDeltaY > 0 ? 1 : -1;
+  swipeState.wheelGestureConsumed = true;
+  swipeState.wheelGestureDirection = direction;
   swipeState.wheelAccumulatedDeltaY = 0;
   const triggered = tryNavigateSwipeSectionDirection(direction, 'wheel', event);
   if (triggered) {
     swipeState.wheelLastTriggerMs = nowMs;
   }
+  swipeState.wheelLastEventMs = nowMs;
   if (event && event.cancelable === true) {
     event.preventDefault();
   }
@@ -15376,6 +15616,7 @@ function onSwipeSectionsTouchStart(event) {
   swipeState.touchTracking.startClientY = touch.clientY;
   swipeState.touchTracking.startSceneX = scenePos.x;
   swipeState.touchTracking.startSceneY = scenePos.y;
+  swipeState.touchTracking.startMs = performance.now();
   if (swipeConfig.input.touchPreventDefault === true && event && event.cancelable === true) {
     event.preventDefault();
   }
@@ -15409,10 +15650,19 @@ function onSwipeSectionsTouchEnd(event) {
   const dy = trackedTouch.clientY - swipeState.touchTracking.startClientY;
   const absDx = Math.abs(dx);
   const absDy = Math.abs(dy);
+  const startMs = Number(swipeState.touchTracking.startMs);
+  const elapsedMs = Number.isFinite(startMs)
+    ? Math.max(1, performance.now() - startMs)
+    : 1;
+  const velocityYPxPerMs = dy / elapsedMs;
   const threshold = Math.max(1, Number(swipeConfig.input.touchSwipeThresholdPx) || 42);
+  const minFlickVelocity = Math.max(0, Number(swipeConfig.input.touchMinFlickVelocityPxPerMs) || 0);
   const axisLockRatio = Math.max(0.01, Number(swipeConfig.input.touchAxisLockRatio) || 1.2);
   let triggered = false;
-  if (absDy >= threshold && absDy > (absDx * axisLockRatio)) {
+  const passesVerticalIntent = absDy > (absDx * axisLockRatio);
+  const passesDistance = absDy >= threshold;
+  const passesVelocity = Math.abs(velocityYPxPerMs) >= minFlickVelocity;
+  if (passesVerticalIntent && (passesDistance || passesVelocity)) {
     const direction = dy < 0 ? 1 : -1;
     triggered = tryNavigateSwipeSectionDirection(direction, 'touch', event);
   }

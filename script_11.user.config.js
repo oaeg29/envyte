@@ -444,29 +444,39 @@
         id: 'section-1',
         frame: 261,
         centerOverlayImagePath: './test_page.png',
+        // Optional per-section Y placement override for centerOverlayImage.
+        // Ratio uses the same video-size basis as centerOverlayImage.offsetYMode='videoSizeRatio'.
+        centerOverlayOffsetYVideoHeightRatio: -0.0520833333,
       },
       {
         id: 'section-2',
         frame: 280,
         centerOverlayImagePath: './page_2.png',
+        centerOverlayOffsetYVideoHeightRatio: -0.0520833333,
       },
       {
         id: 'section-3',
         frame: 304,
         centerOverlayImagePath: './page_2.png',
+        centerOverlayOffsetYVideoHeightRatio: -0.0520833333,
       },
       {
         id: 'section-4',
         frame: 330,
         centerOverlayImagePath: './test_page2.png',
+        centerOverlayOffsetYVideoHeightRatio: -0.0520833333,
       },
     ],
     input: {
       wheelEnabled: true,
       touchEnabled: true,
       wheelDeltaThresholdPx: 95,
-      wheelCooldownMs: 340,
-      touchSwipeThresholdPx: 42,
+      wheelCooldownMs: 0, // optional legacy throttle after trigger (ms)
+      wheelGestureQuietWindowMs: 80, // reset gesture latch after no wheel events for this long (ms)
+      wheelGestureResetDeltaPx: 12, // minimum opposite-direction delta to reset latch early (px)
+      wheelDirectionResetEnabled: true, // allows immediate opposite-direction wheel gesture reset
+      touchSwipeThresholdPx: 42, // minimum touch distance before swipe triggers (px)
+      touchMinFlickVelocityPxPerMs: 0.62, // OR-rule with distance threshold; useful for short fast flicks
       touchAxisLockRatio: 1.2,
       touchPreventDefault: true,
       touchRequireOverlayWrapBandStart: true,
@@ -478,7 +488,7 @@
       fixedDurationMs: 520, // used only by timingMode=fixedDuration
       minDurationMs: 220,
       maxDurationMs: 900,
-      rapidSwipeMode: 'ignore', // ignore | retarget
+      rapidSwipeMode: 'ignore', // canonical toggle: ignore | retarget
     },
     overlayTransition: {
       mode: 'fade', // fade | none
@@ -523,13 +533,13 @@
     skipHiddenBackDrawEnabled: true,
     spriteHiddenCullInnerPaddingPx: 0,
     spriteHiddenCullRadiusScale: 0.3, // 0.05..1 scales the hidden-cull test circle radius
-    debugHiddenSpriteCullCirclesEnabled: true,
+    debugHiddenSpriteCullCirclesEnabled: false,
     debugHiddenSpriteCullCirclesMode: 'culled', // culled | all
     debugHiddenSpriteCullCirclesMaxPerFrame: 400,
     debugHiddenSpriteCullCircleStrokeVisible: 'rgba(90, 220, 120, 0.55)',
     debugHiddenSpriteCullCircleStrokeCulled: 'rgba(255, 80, 80, 0.65)',
     debugHiddenSpriteCullCircleLineWidth: 1,
-    showCenterBandOverlay: true,
+    showCenterBandOverlay: false,
     centerBandOverlayFill: 'rgba(255, 95, 95, 0.16)',
     centerBandOverlayStroke: 'rgba(255, 95, 95, 0.85)',
     centerBandOverlayLineWidth: 1.5,

@@ -1,6 +1,7 @@
 /* Make the canvas fill the entire viewport and sit under content */
 :root {
-  --app-viewport-height: 100vh;
+  --viewport-relative166-extra-height: 55px;
+  --app-viewport-height: calc(100vh + var(--viewport-relative166-extra-height));
   --app-viewport-width: 100vw;
   --app-viewport-offset-left: 0px;
   --app-viewport-offset-top: 0px;
@@ -19,6 +20,12 @@
 }
 
 @supports (height: 100dvh) {
+  :root {
+    --app-viewport-height: calc(100dvh + var(--viewport-relative166-extra-height));
+  }
+}
+
+@supports (height: 100dvh) and (not (-webkit-touch-callout: default)) {
   :root {
     --app-viewport-height: 100dvh;
   }
@@ -312,9 +319,6 @@ body[data-viewport-layout-mode="relative166"] #loadingScreen {
   position: absolute;
 }
 
-body[data-viewport-layout-mode="relative166"] {
-  height: calc(var(--app-viewport-height) + 55px);
-}
 
 #viewportRelativeAdjustableControls {
   position: fixed;
