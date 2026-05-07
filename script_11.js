@@ -2459,6 +2459,20 @@ const STATE = {
     criticalPathDistance: 0,
     maxCompletionSec: 0,
   },
+  flowerGrowth: {
+    dynamicEndpointsActive: false,
+    lastEndpointSignature: '',
+    openTimerId: null,
+    openScheduled: false,
+    openTriggered: false,
+    openSweepStartMs: 0,
+    openSweepElapsedSec: 0,
+    openSweepLastTickMs: 0,
+    openSweepCompleted: false,
+    openStateLatched: false,
+    cycleToken: 0,
+    branchCompleteReached: false,
+  },
   lastInteractionRenderMs: 0,
   nextInteractionFrameDueMs: 0,
 
@@ -7949,7 +7963,7 @@ function getBranchEndpointPoint(branch) {
   return getPathPointAtLength(branch.pathData, totalLength);
 }
 
-function getBranchEndpointTangentDeg(branch) {
+function getBranchPointAtDistance(branch, distanceOnPath) {
   if (!branch || !branch.pathData || !Number.isFinite(branch.pathData.totalLength)) {
     return null;
   }
@@ -7957,7 +7971,27 @@ function getBranchEndpointTangentDeg(branch) {
   if (totalLength <= 1e-8) {
     return null;
   }
+  const clampedDistance = clamp(
+    Number.isFinite(distanceOnPath) ? distanceOnPath : totalLength,
+    0,
+    totalLength,
+  );
+  return getPathPointAtLength(branch.pathData, clampedDistance);
+}
 
+function getBranchTangentDegAtDistance(branch, distanceOnPath) {
+  if (!branch || !branch.pathData || !Number.isFinite(branch.pathData.totalLength)) {
+    return null;
+  }
+  const totalLength = Math.max(0, branch.pathData.totalLength);
+  if (totalLength <= 1e-8) {
+    return null;
+  }
+  const clampedDistance = clamp(
+    Number.isFinite(distanceOnPath) ? distanceOnPath : totalLength,
+    0,
+    totalLength,
+  );
   const flowersConfig = CONFIG.flowers || {};
   const tailLengthInput = Number(flowersConfig.endpointDirectionTailLengthPx);
   const sampleCountInput = Number(flowersConfig.endpointDirectionSampleCount);
@@ -7969,7 +8003,7 @@ function getBranchEndpointTangentDeg(branch) {
     : 5;
 
   const resolveSingleTangentDeg = () => {
-    const tangent = getPathTangentAtLength(branch.pathData, totalLength);
+    const tangent = getPathTangentAtLength(branch.pathData, clampedDistance);
     if (!tangent || !Number.isFinite(tangent.x) || !Number.isFinite(tangent.y)) {
       return null;
     }
@@ -7980,8 +8014,8 @@ function getBranchEndpointTangentDeg(branch) {
     return resolveSingleTangentDeg();
   }
 
-  const startDistance = Math.max(0, totalLength - tailLength);
-  const span = totalLength - startDistance;
+  const startDistance = Math.max(0, clampedDistance - tailLength);
+  const span = clampedDistance - startDistance;
   if (span <= 1e-6) {
     return resolveSingleTangentDeg();
   }
@@ -8012,6 +8046,17 @@ function getBranchEndpointTangentDeg(branch) {
   return Math.atan2(sumY, sumX) * 180 / Math.PI;
 }
 
+function getBranchEndpointTangentDeg(branch) {
+  if (!branch || !branch.pathData || !Number.isFinite(branch.pathData.totalLength)) {
+    return null;
+  }
+  const totalLength = Math.max(0, branch.pathData.totalLength);
+  if (totalLength <= 1e-8) {
+    return null;
+  }
+  return getBranchTangentDegAtDistance(branch, totalLength);
+}
+
 function collectBranchEndpoints() {
   if (!STATE.branchGarden || !Array.isArray(STATE.branchGarden.branches)) {
     return [];
@@ -8038,9 +8083,69 @@ function collectBranchEndpoints() {
   return endpoints;
 }
 
+let __flowersLoggedLazyCreate = false;
+let __flowersLoggedSpriteLoadBegin = false;
+let __flowersLoggedSpriteLoadEnd = false;
+let __flowersLoggedSpriteLoadFail = false;
+let __flowersLoggedBranchCompleteTransition = false;
+let flowerGrowthAnimatedOpenTriggered = false;
+
+function shouldDebugFlowerHotkeys() {
+  return Boolean(CONFIG && CONFIG.flowers && CONFIG.flowers.debugLogHotkeys === true);
+}
+
+function flowerDebugLog(force, ...parts) {
+  if (!force && !shouldDebugFlowerHotkeys()) {
+    return;
+  }
+  try {
+    console.log('[flowers]', ...parts);
+  } catch (_error) {
+    // ignore
+  }
+}
+
 function getFlowerSystem() {
   if (STATE.flowerSystem && typeof STATE.flowerSystem.render === 'function') {
     return STATE.flowerSystem;
+  }
+  // Lazy init in case `script_11_flowers.js` loaded after bootstrap.
+  if (
+    !STATE.flowerSystem
+    && window.StemWarpFlowerSystem11
+    && typeof window.StemWarpFlowerSystem11.createFlowerSystem === 'function'
+  ) {
+    STATE.flowerSystem = window.StemWarpFlowerSystem11.createFlowerSystem();
+    if (STATE.flowerSystem && typeof STATE.flowerSystem.setPixiSurfaces === 'function') {
+      STATE.flowerSystem.setPixiSurfaces({
+        backCanvas: flowersBackCanvas,
+        frontCanvas: flowersFrontCanvas,
+      });
+    }
+    if (!__flowersLoggedLazyCreate) {
+      __flowersLoggedLazyCreate = true;
+      flowerDebugLog(false, 'created flower system (lazy init)', {
+        hasModule: Boolean(window.StemWarpFlowerSystem11),
+        hasSystem: Boolean(STATE.flowerSystem),
+      });
+    }
+    // If the system was missing during bootstrap, sprite load may have been skipped.
+    if (STATE.foliageLoad && STATE.foliageLoad.flowerReady !== true) {
+      loadFlowerSpriteIntoSystem()
+        .then(() => {
+          setFoliageLoadReadyFlag('flowerReady', true);
+          invalidateCompletedBranchLayer();
+          renderScene({ skipAutoStart: true });
+        })
+        .catch((error) => {
+          console.warn(error && error.message ? error.message : String(error));
+          setFoliageLoadReadyFlag('flowerReady', true);
+        });
+    }
+    if (typeof rebuildEndpointFlowers === 'function') {
+      rebuildEndpointFlowers();
+    }
+    return (STATE.flowerSystem && typeof STATE.flowerSystem.render === 'function') ? STATE.flowerSystem : null;
   }
   return null;
 }
@@ -8272,8 +8377,16 @@ async function loadFlowerSpriteIntoSystem() {
   ensureFlowerConfigShapeInPlace(CONFIG.flowers);
 
   try {
+    if (!__flowersLoggedSpriteLoadBegin) {
+      __flowersLoggedSpriteLoadBegin = true;
+      flowerDebugLog(false, 'sprite load begin');
+    }
     if (typeof flowerSystem.loadAssets === 'function') {
       await flowerSystem.loadAssets(getFlowersRuntimeConfig());
+      if (!__flowersLoggedSpriteLoadEnd) {
+        __flowersLoggedSpriteLoadEnd = true;
+        flowerDebugLog(false, 'sprite load end (loadAssets)');
+      }
       return;
     }
 
@@ -8286,7 +8399,15 @@ async function loadFlowerSpriteIntoSystem() {
       ? lilyConfig.spritePath
       : './lily_sprite.png';
     await flowerSystem.loadSprite(spritePath);
+    if (!__flowersLoggedSpriteLoadEnd) {
+      __flowersLoggedSpriteLoadEnd = true;
+      flowerDebugLog(false, 'sprite load end (loadSprite)', spritePath);
+    }
   } catch (error) {
+    if (!__flowersLoggedSpriteLoadFail) {
+      __flowersLoggedSpriteLoadFail = true;
+      flowerDebugLog(true, 'sprite load failed', error && error.message ? error.message : String(error));
+    }
     console.warn(error.message + ' | Flowers disabled because sprite failed to load.');
   }
 }
@@ -8315,6 +8436,835 @@ function refreshBranchEndpointsAndFlowerSystem() {
     `endpointCount=${STATE.branchEndpoints.length}`,
     `duration=${(performance.now() - refreshStartMs).toFixed(2)}ms`,
   );
+}
+
+function clearFlowerGrowthOpenTimer() {
+  if (STATE.flowerGrowth && STATE.flowerGrowth.openTimerId !== null) {
+    clearTimeout(STATE.flowerGrowth.openTimerId);
+    STATE.flowerGrowth.openTimerId = null;
+  }
+}
+
+function resetFlowerGrowthRuntimeState(options = {}) {
+  const clearSignature = options.clearSignature !== false;
+  const clearOpenOverrides = options.clearOpenOverrides !== false;
+  const clearOpenLatch = options.clearOpenLatch === true || clearSignature;
+  const state = STATE.flowerGrowth;
+  if (!state) {
+    return;
+  }
+  const flowerSystem = getFlowerSystem();
+  clearFlowerGrowthOpenTimer();
+  state.openScheduled = false;
+  state.openTriggered = false;
+  state.openSweepStartMs = 0;
+  state.openSweepElapsedSec = 0;
+  state.openSweepLastTickMs = 0;
+  state.openSweepCompleted = false;
+  state.branchCompleteReached = false;
+  if (clearOpenLatch) {
+    state.openStateLatched = false;
+  }
+  state.cycleToken = (Number.isFinite(state.cycleToken) ? state.cycleToken : 0) + 1;
+  if (clearSignature) {
+    state.dynamicEndpointsActive = false;
+    state.lastEndpointSignature = '';
+    flowerGrowthAnimatedOpenTriggered = false;
+  }
+  if (clearOpenOverrides) {
+    if (flowerSystem && typeof flowerSystem.clearFlowerOpenAmountOverridesByBranchId === 'function') {
+      flowerSystem.clearFlowerOpenAmountOverridesByBranchId();
+    }
+  }
+}
+
+function resolveFlowerGrowthAnimationConfig(flowersConfig = CONFIG.flowers || {}) {
+  const safeConfig = isPlainObjectLiteral(flowersConfig) ? flowersConfig : {};
+  const typeConfigs = isPlainObjectLiteral(safeConfig.types) ? safeConfig.types : {};
+  const lilyTypeConfig = isPlainObjectLiteral(typeConfigs.lily) ? typeConfigs.lily : {};
+  const blueTypeConfig = isPlainObjectLiteral(typeConfigs.blue) ? typeConfigs.blue : {};
+  const lilyGrowthConfig = isPlainObjectLiteral(lilyTypeConfig.growth) ? lilyTypeConfig.growth : {};
+  const blueGrowthConfig = isPlainObjectLiteral(blueTypeConfig.growth) ? blueTypeConfig.growth : {};
+
+  const resolveBaseGrowthConfig = (typeGrowthConfig) => {
+    const source = isPlainObjectLiteral(typeGrowthConfig) ? typeGrowthConfig : {};
+    const enabled = source.enabled !== undefined
+      ? source.enabled !== false
+      : (safeConfig.growthEnabled !== false);
+    const tipLeadFractionInput = Number(
+      source.tipLeadFraction !== undefined
+        ? source.tipLeadFraction
+        : safeConfig.growthTipLeadFraction,
+    );
+    const tipLeadFraction = Number.isFinite(tipLeadFractionInput)
+      ? clamp(tipLeadFractionInput, 0, 1)
+      : 0.1;
+    const sizeMinScaleInput = Number(
+      source.sizeMinScale !== undefined
+        ? source.sizeMinScale
+        : safeConfig.growthMinScale,
+    );
+    const sizeMinScale = Number.isFinite(sizeMinScaleInput)
+      ? clamp(sizeMinScaleInput, 0, 1)
+      : 0.05;
+    const sizeDurationSecInput = Number(
+      source.sizeDurationSec !== undefined
+        ? source.sizeDurationSec
+        : safeConfig.growthDurationSec,
+    );
+    const sizeDurationSec = Number.isFinite(sizeDurationSecInput)
+      ? Math.max(0, sizeDurationSecInput)
+      : 1;
+    const sizeEase = sanitizeLeafGrowthEaseMode(
+      source.sizeEase !== undefined ? source.sizeEase : safeConfig.growthEase,
+    );
+    const sizeEasePowerInput = Number(
+      source.sizeEasePower !== undefined
+        ? source.sizeEasePower
+        : safeConfig.growthEasePower,
+    );
+    const sizeEasePower = Number.isFinite(sizeEasePowerInput)
+      ? Math.max(0.01, sizeEasePowerInput)
+      : 2;
+    return {
+      enabled,
+      tipLeadFraction,
+      sizeMinScale,
+      sizeDurationSec,
+      sizeEase,
+      sizeEasePower,
+    };
+  };
+
+  const lilyBase = resolveBaseGrowthConfig(lilyGrowthConfig);
+  const blueBase = resolveBaseGrowthConfig(blueGrowthConfig);
+
+  const bluePositionMinScaleInput = Number(
+    blueGrowthConfig.positionMinScale !== undefined
+      ? blueGrowthConfig.positionMinScale
+      : safeConfig.growthPositionMinScale,
+  );
+  const bluePositionMinScale = Number.isFinite(bluePositionMinScaleInput)
+    ? clamp(bluePositionMinScaleInput, 0, 1)
+    : blueBase.sizeMinScale;
+  const bluePositionDurationSecInput = Number(
+    blueGrowthConfig.positionDurationSec !== undefined
+      ? blueGrowthConfig.positionDurationSec
+      : safeConfig.growthPositionDurationSec,
+  );
+  const bluePositionDurationSec = Number.isFinite(bluePositionDurationSecInput)
+    ? Math.max(0, bluePositionDurationSecInput)
+    : blueBase.sizeDurationSec;
+  const bluePositionEase = sanitizeLeafGrowthEaseMode(
+    blueGrowthConfig.positionEase !== undefined
+      ? blueGrowthConfig.positionEase
+      : (
+        safeConfig.growthPositionEase !== undefined
+          ? safeConfig.growthPositionEase
+          : blueBase.sizeEase
+      ),
+  );
+  const bluePositionEasePowerInput = Number(
+    blueGrowthConfig.positionEasePower !== undefined
+      ? blueGrowthConfig.positionEasePower
+      : safeConfig.growthPositionEasePower,
+  );
+  const bluePositionEasePower = Number.isFinite(bluePositionEasePowerInput)
+    ? Math.max(0.01, bluePositionEasePowerInput)
+    : blueBase.sizeEasePower;
+
+  const lilyOpenAutoEnabled = lilyGrowthConfig.openAutoEnabled !== undefined
+    ? lilyGrowthConfig.openAutoEnabled !== false
+    : (safeConfig.growthAutoOpenEnabled !== false);
+  const lilyOpenDelayMsInput = Number(
+    lilyGrowthConfig.openDelayMs !== undefined
+      ? lilyGrowthConfig.openDelayMs
+      : safeConfig.growthOpenDelayMs,
+  );
+  const lilyOpenDelayMs = Number.isFinite(lilyOpenDelayMsInput)
+    ? Math.max(0, lilyOpenDelayMsInput)
+    : 350;
+  const lilyOpenSweepDirection = sanitizeBranchGrowthSweepDirection(
+    lilyGrowthConfig.openSweepDirection !== undefined
+      ? lilyGrowthConfig.openSweepDirection
+      : safeConfig.growthOpenSweepDirection,
+    'down',
+  );
+  const lilyOpenSweepDurationSecInput = Number(
+    lilyGrowthConfig.openSweepDurationSec !== undefined
+      ? lilyGrowthConfig.openSweepDurationSec
+      : safeConfig.growthOpenSweepDurationSec,
+  );
+  const lilyOpenSweepDurationSec = Number.isFinite(lilyOpenSweepDurationSecInput)
+    ? Math.max(0, lilyOpenSweepDurationSecInput)
+    : 0.8;
+  const lilyOpenPetalDurationSecInput = Number(
+    lilyGrowthConfig.openPetalDurationSec !== undefined
+      ? lilyGrowthConfig.openPetalDurationSec
+      : safeConfig.growthOpenPetalDurationSec,
+  );
+  const lilyOpenPetalDurationSec = Number.isFinite(lilyOpenPetalDurationSecInput)
+    ? Math.max(0, lilyOpenPetalDurationSecInput)
+    : (
+      Number.isFinite(Number(safeConfig.petalToggleAnimationDurationSec))
+        ? Math.max(0, Number(safeConfig.petalToggleAnimationDurationSec))
+        : 0.4
+    );
+  const lilyOpenPetalEase = sanitizeLeafGrowthEaseMode(
+    lilyGrowthConfig.openPetalEase !== undefined
+      ? lilyGrowthConfig.openPetalEase
+      : safeConfig.growthOpenPetalEase,
+  );
+  const lilyOpenPetalEasePowerInput = Number(
+    lilyGrowthConfig.openPetalEasePower !== undefined
+      ? lilyGrowthConfig.openPetalEasePower
+      : safeConfig.growthOpenPetalEasePower,
+  );
+  const lilyOpenPetalEasePower = Number.isFinite(lilyOpenPetalEasePowerInput)
+    ? Math.max(0.01, lilyOpenPetalEasePowerInput)
+    : 2;
+
+  return {
+    lily: {
+      enabled: lilyBase.enabled,
+      tipLeadFraction: lilyBase.tipLeadFraction,
+      size: {
+        minScale: lilyBase.sizeMinScale,
+        durationSec: lilyBase.sizeDurationSec,
+        ease: lilyBase.sizeEase,
+        easePower: lilyBase.sizeEasePower,
+      },
+      open: {
+        autoEnabled: lilyOpenAutoEnabled,
+        delayMs: lilyOpenDelayMs,
+        sweepDirection: lilyOpenSweepDirection,
+        sweepDurationSec: lilyOpenSweepDurationSec,
+        petalDurationSec: lilyOpenPetalDurationSec,
+        petalEase: lilyOpenPetalEase,
+        petalEasePower: lilyOpenPetalEasePower,
+      },
+    },
+    blue: {
+      enabled: blueBase.enabled,
+      tipLeadFraction: blueBase.tipLeadFraction,
+      size: {
+        minScale: blueBase.sizeMinScale,
+        durationSec: blueBase.sizeDurationSec,
+        ease: blueBase.sizeEase,
+        easePower: blueBase.sizeEasePower,
+      },
+      position: {
+        minScale: bluePositionMinScale,
+        durationSec: bluePositionDurationSec,
+        ease: bluePositionEase,
+        easePower: bluePositionEasePower,
+      },
+    },
+  };
+}
+
+function sanitizeFlowerGrowthAssignmentMode(mode) {
+  return mode === 'mixed' ? 'mixed' : 'single';
+}
+
+function sanitizeFlowerGrowthTypeName(typeName, fallback = 'lily') {
+  if (typeName === 'lily' || typeName === 'blue') {
+    return typeName;
+  }
+  return fallback;
+}
+
+function sanitizeFlowerGrowthMixRatios(rawRatios, fallback = 'lily') {
+  const out = {};
+  if (isPlainObjectLiteral(rawRatios)) {
+    const keys = Object.keys(rawRatios).sort();
+    for (let i = 0; i < keys.length; i += 1) {
+      const key = keys[i];
+      if (key !== 'lily' && key !== 'blue') {
+        continue;
+      }
+      const weight = Number(rawRatios[key]);
+      if (Number.isFinite(weight) && weight > 0) {
+        out[key] = weight;
+      }
+    }
+  }
+  if (Object.keys(out).length <= 0) {
+    out[fallback] = 1;
+  }
+  return out;
+}
+
+function getFlowerGrowthStableToken(endpoint, index) {
+  if (endpoint && typeof endpoint.stableKey === 'string' && endpoint.stableKey.length > 0) {
+    return endpoint.stableKey;
+  }
+  return `endpoint:${index}`;
+}
+
+function resolveFlowerTypeNameForGrowthEndpoint(endpoint, index, flowersConfig = CONFIG.flowers || {}) {
+  const safeConfig = isPlainObjectLiteral(flowersConfig) ? flowersConfig : {};
+  const mode = sanitizeFlowerGrowthAssignmentMode(safeConfig.assignmentMode);
+  const fallbackType = 'lily';
+
+  if (mode === 'single') {
+    return sanitizeFlowerGrowthTypeName(safeConfig.singleType, fallbackType);
+  }
+
+  const ratios = sanitizeFlowerGrowthMixRatios(safeConfig.mixRatios, fallbackType);
+  const entries = Object.entries(ratios);
+  if (entries.length <= 1) {
+    return entries[0] ? entries[0][0] : fallbackType;
+  }
+  let total = 0;
+  for (let i = 0; i < entries.length; i += 1) {
+    total += entries[i][1];
+  }
+  if (total <= 0) {
+    return fallbackType;
+  }
+  const stableToken = getFlowerGrowthStableToken(endpoint, index);
+  const rng = mulberry32(hashSeed(`${stableToken}|flower-type`));
+  const target = rng() * total;
+
+  let cumulative = 0;
+  for (let i = 0; i < entries.length; i += 1) {
+    cumulative += entries[i][1];
+    if (target <= cumulative) {
+      return entries[i][0];
+    }
+  }
+  return entries[entries.length - 1][0];
+}
+
+function buildFlowerGrowthEndpointSignature(endpoints) {
+  if (!Array.isArray(endpoints) || endpoints.length === 0) {
+    return '0';
+  }
+  const parts = [String(endpoints.length)];
+  for (let i = 0; i < endpoints.length; i += 1) {
+    const endpoint = endpoints[i];
+    const branchId = Number.isFinite(endpoint && endpoint.branchId) ? endpoint.branchId : 'n';
+    const typeName = (
+      endpoint && endpoint.assignedFlowerType === 'blue'
+    )
+      ? 'blue'
+      : 'lily';
+    const x = Number.isFinite(endpoint && endpoint.x) ? endpoint.x.toFixed(2) : '0.00';
+    const y = Number.isFinite(endpoint && endpoint.y) ? endpoint.y.toFixed(2) : '0.00';
+    const tangent = Number.isFinite(endpoint && endpoint.tangentDeg) ? endpoint.tangentDeg.toFixed(2) : 'n';
+    const scale = Number.isFinite(endpoint && endpoint.growthScale) ? endpoint.growthScale.toFixed(4) : '1.0000';
+    const positionScale = Number.isFinite(endpoint && endpoint.growthPositionScale)
+      ? endpoint.growthPositionScale.toFixed(4)
+      : '1.0000';
+    parts.push(`${branchId}:${typeName}:${x}:${y}:${tangent}:${scale}:${positionScale}`);
+  }
+  return parts.join('|');
+}
+
+function resolveFlowerGrowthChannelScaleAtBranchTip(
+  branch,
+  spawnDistanceOnPath,
+  elapsedSec,
+  growthChannelConfig,
+) {
+  if (!branch || !growthChannelConfig || CONFIG.branchGrowth.enabled !== true) {
+    return 1;
+  }
+  const minScale = clamp(growthChannelConfig.minScale, 0, 1);
+  const durationSec = Number.isFinite(growthChannelConfig.durationSec)
+    ? Math.max(0, growthChannelConfig.durationSec)
+    : 0;
+  if (durationSec <= 1e-8) {
+    return 1;
+  }
+  const ratePxPerSec = Number.isFinite(STATE.branchGrowth && STATE.branchGrowth.globalRatePxPerSec)
+    ? Math.max(0, STATE.branchGrowth.globalRatePxPerSec)
+    : 0;
+  if (ratePxPerSec <= 1e-8) {
+    return 1;
+  }
+  const branchStartMetric = Number.isFinite(branch.startDistanceMetric)
+    ? Math.max(0, branch.startDistanceMetric)
+    : 0;
+  const branchSweepStartDelaySec = Number.isFinite(branch.sweepStartDelaySec)
+    ? Math.max(0, branch.sweepStartDelaySec)
+    : 0;
+  const safeSpawnDistance = Number.isFinite(spawnDistanceOnPath)
+    ? Math.max(0, spawnDistanceOnPath)
+    : 0;
+  const spawnTimeSec = branchSweepStartDelaySec + ((branchStartMetric + safeSpawnDistance) / ratePxPerSec);
+  const ageSec = Math.max(0, (Number.isFinite(elapsedSec) ? elapsedSec : 0) - spawnTimeSec);
+  const progress = clamp(ageSec / durationSec, 0, 1);
+  const eased = evaluateLeafGrowthEaseT(
+    progress,
+    growthChannelConfig.ease,
+    growthChannelConfig.easePower,
+  );
+  return minScale + (1 - minScale) * eased;
+}
+
+function collectBranchEndpointsForGrowthAnimation(
+  branches,
+  branchVisibleLengthById,
+  elapsedSec,
+  growthConfigByType,
+  flowersRuntimeConfig,
+) {
+  if (!Array.isArray(branches) || branches.length === 0) {
+    return [];
+  }
+  const endpoints = [];
+  for (let i = 0; i < branches.length; i += 1) {
+    const branch = branches[i];
+    if (!branch || !branch.pathData || !Number.isFinite(branch.pathData.totalLength)) {
+      continue;
+    }
+    const branchLength = Math.max(0, branch.pathData.totalLength);
+    if (branchLength <= 1e-8) {
+      continue;
+    }
+    const branchId = Number.isFinite(branch.id) ? branch.id : null;
+    const visibleLength = (
+      Number.isFinite(branchId)
+      && branchVisibleLengthById
+      && branchVisibleLengthById.has(branchId)
+    )
+      ? clamp(branchVisibleLengthById.get(branchId), 0, branchLength)
+      : branchLength;
+    const endpointIndex = endpoints.length;
+    const stableKey = typeof branch.stableKey === 'string' ? branch.stableKey : `branch-index:${i}`;
+    const assignedFlowerType = resolveFlowerTypeNameForGrowthEndpoint(
+      {
+        stableKey,
+      },
+      endpointIndex,
+      flowersRuntimeConfig,
+    );
+    const typeGrowthConfig = assignedFlowerType === 'blue'
+      ? growthConfigByType.blue
+      : growthConfigByType.lily;
+    const growthEnabled = Boolean(typeGrowthConfig && typeGrowthConfig.enabled === true);
+    const tipLeadFraction = growthEnabled
+      ? clamp(
+        Number.isFinite(typeGrowthConfig.tipLeadFraction) ? typeGrowthConfig.tipLeadFraction : 0,
+        0,
+        1,
+      )
+      : 0;
+    const spawnDistanceOnPath = branchLength * (1 - tipLeadFraction);
+    if (visibleLength + 1e-6 < spawnDistanceOnPath) {
+      continue;
+    }
+    const tipDistance = clamp(visibleLength, 0, branchLength);
+    const tipPoint = getBranchPointAtDistance(branch, tipDistance);
+    if (!tipPoint || !Number.isFinite(tipPoint.x) || !Number.isFinite(tipPoint.y)) {
+      continue;
+    }
+    const tangentDeg = getBranchTangentDegAtDistance(branch, tipDistance);
+    endpoints.push({
+      branchId,
+      parentId: Number.isFinite(branch.parentId) ? branch.parentId : null,
+      depth: Number.isFinite(branch.depth) ? branch.depth : 0,
+      stableKey,
+      assignedFlowerType,
+      x: tipPoint.x,
+      y: tipPoint.y,
+      tangentDeg: Number.isFinite(tangentDeg) ? tangentDeg : null,
+      growthScale: growthEnabled
+        ? resolveFlowerGrowthChannelScaleAtBranchTip(
+          branch,
+          spawnDistanceOnPath,
+          elapsedSec,
+          {
+            minScale: typeGrowthConfig && typeGrowthConfig.size
+              ? typeGrowthConfig.size.minScale
+              : 1,
+            durationSec: typeGrowthConfig && typeGrowthConfig.size
+              ? typeGrowthConfig.size.durationSec
+              : 0,
+            ease: typeGrowthConfig && typeGrowthConfig.size
+              ? typeGrowthConfig.size.ease
+              : 'linear',
+            easePower: typeGrowthConfig && typeGrowthConfig.size
+              ? typeGrowthConfig.size.easePower
+              : 1,
+          },
+        )
+        : 1,
+      growthPositionScale: (
+        assignedFlowerType === 'blue'
+        && growthEnabled
+      )
+        ? resolveFlowerGrowthChannelScaleAtBranchTip(
+          branch,
+          spawnDistanceOnPath,
+          elapsedSec,
+          {
+            minScale: typeGrowthConfig && typeGrowthConfig.position
+              ? typeGrowthConfig.position.minScale
+              : 1,
+            durationSec: typeGrowthConfig && typeGrowthConfig.position
+              ? typeGrowthConfig.position.durationSec
+              : 0,
+            ease: typeGrowthConfig && typeGrowthConfig.position
+              ? typeGrowthConfig.position.ease
+              : 'linear',
+            easePower: typeGrowthConfig && typeGrowthConfig.position
+              ? typeGrowthConfig.position.easePower
+              : 1,
+          },
+        )
+        : 1,
+    });
+  }
+  return endpoints;
+}
+
+function resolveFlowerOpenSweepByBranchId(
+  endpoints,
+  nowMs,
+  growthState,
+  lilyGrowthConfig,
+  elapsedSecOverride = null,
+) {
+  const openMap = new Map();
+  if (!Array.isArray(endpoints) || endpoints.length <= 0) {
+    return {
+      openMap,
+      completed: true,
+    };
+  }
+  const startMs = Number.isFinite(growthState && growthState.openSweepStartMs)
+    ? growthState.openSweepStartMs
+    : nowMs;
+  const elapsedSec = Number.isFinite(elapsedSecOverride)
+    ? Math.max(0, elapsedSecOverride)
+    : Math.max(0, (nowMs - startMs) / 1000);
+  const sweepDurationSec = Number.isFinite(
+    lilyGrowthConfig
+    && lilyGrowthConfig.open
+    && lilyGrowthConfig.open.sweepDurationSec,
+  )
+    ? Math.max(0, lilyGrowthConfig.open.sweepDurationSec)
+    : 0;
+  const perFlowerDurationSec = Number.isFinite(
+    lilyGrowthConfig
+    && lilyGrowthConfig.open
+    && lilyGrowthConfig.open.petalDurationSec,
+  )
+    ? Math.max(0, lilyGrowthConfig.open.petalDurationSec)
+    : 0;
+  const openEase = sanitizeLeafGrowthEaseMode(
+    lilyGrowthConfig
+    && lilyGrowthConfig.open
+    && lilyGrowthConfig.open.petalEase,
+  );
+  const openEasePower = Number.isFinite(
+    lilyGrowthConfig
+    && lilyGrowthConfig.open
+    && lilyGrowthConfig.open.petalEasePower,
+  )
+    ? Math.max(0.01, lilyGrowthConfig.open.petalEasePower)
+    : 2;
+  const sweepDirection = sanitizeBranchGrowthSweepDirection(
+    lilyGrowthConfig
+    && lilyGrowthConfig.open
+    && lilyGrowthConfig.open.sweepDirection,
+    'down',
+  );
+  const validEndpoints = [];
+  for (let i = 0; i < endpoints.length; i += 1) {
+    const endpoint = endpoints[i];
+    if (
+      !endpoint
+      || !Number.isFinite(endpoint.branchId)
+      || endpoint.assignedFlowerType !== 'lily'
+    ) {
+      continue;
+    }
+    validEndpoints.push(endpoint);
+  }
+  if (validEndpoints.length <= 0) {
+    return {
+      openMap,
+      completed: true,
+    };
+  }
+
+  let minY = Number.POSITIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  for (let i = 0; i < validEndpoints.length; i += 1) {
+    const y = Number(validEndpoints[i].y);
+    if (!Number.isFinite(y)) {
+      continue;
+    }
+    minY = Math.min(minY, y);
+    maxY = Math.max(maxY, y);
+  }
+  const hasYRange = Number.isFinite(minY) && Number.isFinite(maxY);
+  const spanY = hasYRange ? Math.max(0, maxY - minY) : 0;
+
+  let allOpen = true;
+  for (let i = 0; i < validEndpoints.length; i += 1) {
+    const endpoint = validEndpoints[i];
+    const y = Number(endpoint.y);
+    const normalizedOrder = (
+      hasYRange
+      && spanY > 1e-8
+      && Number.isFinite(y)
+    )
+      ? (
+        sweepDirection === 'up'
+          ? clamp((maxY - y) / spanY, 0, 1)
+          : clamp((y - minY) / spanY, 0, 1)
+      )
+      : (
+        validEndpoints.length <= 1
+          ? 0
+          : (i / (validEndpoints.length - 1))
+      );
+    const startOffsetSec = normalizedOrder * sweepDurationSec;
+    const progress = perFlowerDurationSec <= 1e-8
+      ? (elapsedSec >= startOffsetSec ? 1 : 0)
+      : clamp((elapsedSec - startOffsetSec) / perFlowerDurationSec, 0, 1);
+    const openAmount = evaluateLeafGrowthEaseT(progress, openEase, openEasePower);
+    openMap.set(endpoint.branchId, openAmount);
+    if (openAmount < 0.999) {
+      allOpen = false;
+    }
+  }
+  return {
+    openMap,
+    completed: allOpen,
+  };
+}
+
+function syncFlowerGrowthAnimationWithBranchGrowth(
+  useAnimation,
+  elapsedSec,
+  animationTotalTimeSec,
+  branches,
+  branchVisibleLengthById,
+  nowMs,
+) {
+  const flowerSystem = getFlowerSystem();
+  if (!flowerSystem || !CONFIG.flowers || CONFIG.flowers.enabled !== true) {
+    resetFlowerGrowthRuntimeState({ clearSignature: true });
+    return;
+  }
+  const clearOpenOverrides = () => {
+    if (typeof flowerSystem.clearFlowerOpenAmountOverridesByBranchId === 'function') {
+      flowerSystem.clearFlowerOpenAmountOverridesByBranchId();
+    }
+  };
+  ensureFlowerConfigShapeInPlace(CONFIG.flowers);
+  const flowersRuntimeConfig = getFlowersRuntimeConfig();
+  const growthConfigByType = resolveFlowerGrowthAnimationConfig(flowersRuntimeConfig);
+  const lilyGrowthConfig = growthConfigByType && growthConfigByType.lily
+    ? growthConfigByType.lily
+    : null;
+  const blueGrowthConfig = growthConfigByType && growthConfigByType.blue
+    ? growthConfigByType.blue
+    : null;
+  const growthState = STATE.flowerGrowth;
+  const useGrowthAnimation = (
+    useAnimation
+    && (
+      (lilyGrowthConfig && lilyGrowthConfig.enabled === true)
+      || (blueGrowthConfig && blueGrowthConfig.enabled === true)
+    )
+  );
+
+  if (!useGrowthAnimation) {
+    if (growthState.dynamicEndpointsActive) {
+      STATE.branchEndpoints = collectBranchEndpoints();
+      flowerSystem.setEndpoints(STATE.branchEndpoints, flowersRuntimeConfig);
+    }
+    resetFlowerGrowthRuntimeState({ clearSignature: true });
+    clearOpenOverrides();
+    return;
+  }
+
+  const dynamicEndpoints = collectBranchEndpointsForGrowthAnimation(
+    branches,
+    branchVisibleLengthById,
+    elapsedSec,
+    growthConfigByType,
+    flowersRuntimeConfig,
+  );
+  const endpointSignature = buildFlowerGrowthEndpointSignature(dynamicEndpoints);
+  if (endpointSignature !== growthState.lastEndpointSignature) {
+    STATE.branchEndpoints = dynamicEndpoints;
+    flowerSystem.setEndpoints(dynamicEndpoints, flowersRuntimeConfig);
+    growthState.lastEndpointSignature = endpointSignature;
+  }
+  growthState.dynamicEndpointsActive = true;
+
+  const hadBranchCompleteLatch = growthState.branchCompleteReached === true;
+  const branchCompleteNow = (
+    animationTotalTimeSec <= 1e-8
+    || elapsedSec >= animationTotalTimeSec - 1e-6
+  );
+  if (branchCompleteNow) {
+    growthState.branchCompleteReached = true;
+  }
+  const branchComplete = branchCompleteNow || growthState.branchCompleteReached === true;
+  if (!__flowersLoggedBranchCompleteTransition && !hadBranchCompleteLatch && branchCompleteNow) {
+    __flowersLoggedBranchCompleteTransition = true;
+    flowerDebugLog(false, 'branchComplete transitioned true', {
+      elapsedSec: Number.isFinite(elapsedSec) ? Number(elapsedSec.toFixed(3)) : elapsedSec,
+      animationTotalTimeSec: Number.isFinite(animationTotalTimeSec)
+        ? Number(animationTotalTimeSec.toFixed(3))
+        : animationTotalTimeSec,
+    });
+  }
+
+  if (!branchComplete) {
+    if (
+      growthState.openScheduled
+      || growthState.openTriggered
+      || growthState.openSweepCompleted
+      || growthState.openStateLatched
+    ) {
+      resetFlowerGrowthRuntimeState({ clearSignature: false, clearOpenLatch: true });
+    }
+    flowerGrowthAnimatedOpenTriggered = false;
+    clearOpenOverrides();
+    const currentOpen = typeof flowerSystem.getPetalOpenAmount === 'function'
+      ? flowerSystem.getPetalOpenAmount()
+      : 1;
+    if (currentOpen > 0.001 && typeof flowerSystem.setPetalOpenAmount === 'function') {
+      flowerSystem.setPetalOpenAmount(0);
+    }
+    return;
+  }
+
+  const lilyAutoOpenEnabled = Boolean(
+    lilyGrowthConfig
+    && lilyGrowthConfig.enabled === true
+    && lilyGrowthConfig.open
+    && lilyGrowthConfig.open.autoEnabled === true,
+  );
+
+  if (!lilyAutoOpenEnabled) {
+    clearOpenOverrides();
+    flowerGrowthAnimatedOpenTriggered = false;
+    return;
+  }
+
+  if (growthState.openStateLatched === true) {
+    clearOpenOverrides();
+    return;
+  }
+
+  if (!growthState.openScheduled) {
+    const openDelayMs = Number.isFinite(lilyGrowthConfig && lilyGrowthConfig.open && lilyGrowthConfig.open.delayMs)
+      ? Math.max(0, lilyGrowthConfig.open.delayMs)
+      : 0;
+    growthState.openScheduled = true;
+    growthState.openTriggered = false;
+    growthState.openSweepCompleted = false;
+    growthState.openStateLatched = false;
+    growthState.openSweepStartMs = nowMs + openDelayMs;
+    growthState.openSweepElapsedSec = 0;
+    growthState.openSweepLastTickMs = 0;
+    flowerGrowthAnimatedOpenTriggered = false;
+  }
+
+  if (nowMs < growthState.openSweepStartMs) {
+    const currentOpen = typeof flowerSystem.getPetalOpenAmount === 'function'
+      ? flowerSystem.getPetalOpenAmount()
+      : 1;
+    if (currentOpen > 0.001 && typeof flowerSystem.setPetalOpenAmount === 'function') {
+      flowerSystem.setPetalOpenAmount(0);
+    }
+    clearOpenOverrides();
+    return;
+  }
+
+  growthState.openTriggered = true;
+  if (!Number.isFinite(growthState.openSweepLastTickMs) || growthState.openSweepLastTickMs <= 0) {
+    growthState.openSweepLastTickMs = nowMs;
+  }
+  const sweepDtSec = clamp(
+    (nowMs - growthState.openSweepLastTickMs) / 1000,
+    0,
+    0.05,
+  );
+  growthState.openSweepElapsedSec = Math.max(
+    0,
+    (Number.isFinite(growthState.openSweepElapsedSec) ? growthState.openSweepElapsedSec : 0) + sweepDtSec,
+  );
+  growthState.openSweepLastTickMs = nowMs;
+  const sweepResult = resolveFlowerOpenSweepByBranchId(
+    dynamicEndpoints,
+    nowMs,
+    growthState,
+    lilyGrowthConfig,
+    growthState.openSweepElapsedSec,
+  );
+  if (typeof flowerSystem.setFlowerOpenAmountOverridesByBranchId === 'function') {
+    flowerSystem.setFlowerOpenAmountOverridesByBranchId(sweepResult.openMap);
+  } else {
+    clearOpenOverrides();
+    const currentOpen = typeof flowerSystem.getPetalOpenAmount === 'function'
+      ? flowerSystem.getPetalOpenAmount()
+      : 1;
+    if (currentOpen < 0.5 && typeof flowerSystem.animateTogglePetalOpenState === 'function') {
+      flowerSystem.animateTogglePetalOpenState(getFlowersRuntimeConfig(), performance.now());
+    }
+    growthState.openSweepCompleted = true;
+    growthState.openStateLatched = true;
+    flowerGrowthAnimatedOpenTriggered = true;
+    return;
+  }
+
+  if (sweepResult.completed) {
+    growthState.openSweepCompleted = true;
+    growthState.openStateLatched = true;
+    clearOpenOverrides();
+    if (!flowerGrowthAnimatedOpenTriggered && typeof flowerSystem.setPetalOpenAmount === 'function') {
+      flowerSystem.setPetalOpenAmount(1);
+    }
+    flowerGrowthAnimatedOpenTriggered = true;
+    return;
+  } else {
+    growthState.openSweepCompleted = false;
+    growthState.openStateLatched = false;
+    flowerGrowthAnimatedOpenTriggered = false;
+  }
+
+  if (shouldDebugFlowerHotkeys()) {
+    flowerDebugLog(false, 'branchComplete sweep state', {
+      scheduled: growthState.openScheduled === true,
+      triggered: growthState.openTriggered === true,
+      completed: growthState.openSweepCompleted === true,
+      openCount: sweepResult && sweepResult.openMap ? sweepResult.openMap.size : 0,
+      nowMs: Number.isFinite(nowMs) ? Number(nowMs.toFixed(2)) : nowMs,
+      openSweepStartMs: Number.isFinite(growthState.openSweepStartMs)
+        ? Number(growthState.openSweepStartMs.toFixed(2))
+        : growthState.openSweepStartMs,
+    });
+  }
+
+  if (shouldDebugFlowerHotkeys() && growthState.openSweepCompleted === true) {
+    flowerDebugLog(false, 'branchComplete open attempt', {
+      didTriggerOpen: true,
+      currentOpen: 1,
+      hasAnimateToggle: typeof flowerSystem.animateTogglePetalOpenState === 'function',
+    });
+  } else if (shouldDebugFlowerHotkeys()) {
+    const currentOpen = typeof flowerSystem.getPetalOpenAmount === 'function'
+      ? flowerSystem.getPetalOpenAmount()
+      : 1;
+    flowerDebugLog(false, 'branchComplete open attempt', {
+      didTriggerOpen: false,
+      currentOpen,
+      hasAnimateToggle: typeof flowerSystem.animateTogglePetalOpenState === 'function',
+    });
+  }
+  return;
 }
 
 function shouldRenderEndpointFlowers() {
@@ -8396,6 +9346,15 @@ function cancelFlowerInteractionFrame() {
 function shouldKeepFlowerInteractionLoopAlive() {
   if (STATE.branchGrowth.running) {
     return false;
+  }
+
+  const growthState = STATE.flowerGrowth;
+  if (
+    growthState
+    && growthState.openScheduled === true
+    && growthState.openStateLatched !== true
+  ) {
+    return true;
   }
 
   const leavesConfig = resolveLeavesConfig(CONFIG.leaves || {});
@@ -11296,6 +12255,7 @@ function stopBranchAnimation(options = {}) {
   if (!keepElapsed) {
     animationState.elapsedSec = 0;
   }
+  resetFlowerGrowthRuntimeState({ clearSignature: false, clearOpenLatch: true });
 }
 
 function startBranchAnimation(options = {}) {
@@ -11309,6 +12269,7 @@ function startBranchAnimation(options = {}) {
     animationState.elapsedSec = 0;
     invalidateCompletedBranchLayer();
     resetOverlayWrapPromotionState();
+    resetFlowerGrowthRuntimeState({ clearSignature: true });
   }
 
   refreshBranchAnimationMetrics();
@@ -11395,6 +12356,7 @@ function stepBranchAnimationFrame(timestampMs) {
 }
 
 function onBranchStructureChanged() {
+  resetFlowerGrowthRuntimeState({ clearSignature: true });
   refreshBranchEndpointsAndFlowerSystem();
   refreshBranchThicknessBaseScales();
   refreshBranchFilterVariations();
@@ -12691,6 +13653,7 @@ function renderScene(options = {}) {
 
   const branches = STATE.branchGarden.branches;
   const branchById = new Map();
+  const branchVisibleLengthById = new Map();
   const branchEndpointVisibleById = new Map();
   for (let i = 0; i < branches.length; i += 1) {
     const branch = branches[i];
@@ -12701,6 +13664,7 @@ function renderScene(options = {}) {
           ? Math.max(0, branch.pathData.totalLength)
           : 0;
         const visibleLength = getBranchVisibleLengthAtElapsed(branch, elapsedSec);
+        branchVisibleLengthById.set(branch.id, visibleLength);
         branchEndpointVisibleById.set(
           branch.id,
           visibleLength >= branchLength - 1e-6,
@@ -12708,7 +13672,19 @@ function renderScene(options = {}) {
       }
     }
   }
+  syncFlowerGrowthAnimationWithBranchGrowth(
+    useAnimation,
+    elapsedSec,
+    animationTotalTimeSec,
+    branches,
+    branchVisibleLengthById,
+    renderTimestampMs,
+  );
   const isBranchFlowerEndpointVisible = (branchId) => {
+    const growthState = STATE.flowerGrowth;
+    if (growthState && growthState.dynamicEndpointsActive === true) {
+      return true;
+    }
     if (!useAnimation || !Number.isFinite(branchId)) {
       return true;
     }
@@ -12742,7 +13718,11 @@ function renderScene(options = {}) {
         continue;
       }
       const visibleLength = useAnimation
-        ? getBranchVisibleLengthAtElapsed(branch, elapsedSec)
+        ? (
+          Number.isFinite(branch.id) && branchVisibleLengthById.has(branch.id)
+            ? branchVisibleLengthById.get(branch.id)
+            : getBranchVisibleLengthAtElapsed(branch, elapsedSec)
+        )
         : branch.pathData.totalLength;
       const branchTextures = getBranchStemTextures(branch, CONFIG.brush);
       if (!branchTextures || !branchTextures.defaultImage) {
@@ -12829,7 +13809,11 @@ function renderScene(options = {}) {
     for (let i = 0; i < branches.length; i += 1) {
       const branch = branches[i];
       const visibleLength = useAnimation
-        ? getBranchVisibleLengthAtElapsed(branch, elapsedSec)
+        ? (
+          Number.isFinite(branch.id) && branchVisibleLengthById.has(branch.id)
+            ? branchVisibleLengthById.get(branch.id)
+            : getBranchVisibleLengthAtElapsed(branch, elapsedSec)
+        )
         : null;
 
       if (useSingleCompletedLayer && branch.pathData) {
@@ -12923,9 +13907,17 @@ function renderScene(options = {}) {
         const cutover = Number.isFinite(entry.promotionCutoverDistanceOnPath)
           ? Math.max(0, entry.promotionCutoverDistanceOnPath)
           : Number.POSITIVE_INFINITY;
-        const tipDistance = Number.isFinite(branch.pathData.totalLength)
-          ? Math.max(0, branch.pathData.totalLength)
-          : 0;
+        const tipDistance = (
+          useAnimation
+          && branchVisibleLengthById
+          && branchVisibleLengthById.has(branchId)
+        )
+          ? Math.max(0, branchVisibleLengthById.get(branchId))
+          : (
+            Number.isFinite(branch.pathData.totalLength)
+              ? Math.max(0, branch.pathData.totalLength)
+              : 0
+          );
         return tipDistance < cutover - 1e-6;
       };
       const backBranchFilter = (branchId, flower) => (
@@ -13160,19 +14152,53 @@ function onKeydown(event) {
   }
 
   if (key === 'q') {
+    flowerDebugLog(true, "hotkey 'q' received", {
+      hasModule: Boolean(window.StemWarpFlowerSystem11),
+      hasCreate: Boolean(window.StemWarpFlowerSystem11 && typeof window.StemWarpFlowerSystem11.createFlowerSystem === 'function'),
+      hasSystem: Boolean(STATE.flowerSystem),
+    });
     const flowerSystem = getFlowerSystem();
     if (!flowerSystem || typeof flowerSystem.animateTogglePetalOpenState !== 'function') {
+      if (!flowerSystem) {
+        flowerDebugLog(true, "hotkey 'q' no-op: getFlowerSystem() returned null", {
+          moduleMissing: !window.StemWarpFlowerSystem11,
+          missingCreate: Boolean(window.StemWarpFlowerSystem11)
+            && typeof window.StemWarpFlowerSystem11.createFlowerSystem !== 'function',
+        });
+      } else {
+        flowerDebugLog(true, "hotkey 'q' no-op: missing method", {
+          hasAnimateToggle: typeof flowerSystem.animateTogglePetalOpenState === 'function',
+        });
+      }
       return;
     }
+    flowerDebugLog(true, "hotkey 'q' invoking animateTogglePetalOpenState");
     flowerSystem.animateTogglePetalOpenState(getFlowersRuntimeConfig(), performance.now());
     renderScene({ skipAutoStart: true });
   }
 
   if (key === 'c') {
+    flowerDebugLog(true, "hotkey 'c' received", {
+      hasModule: Boolean(window.StemWarpFlowerSystem11),
+      hasCreate: Boolean(window.StemWarpFlowerSystem11 && typeof window.StemWarpFlowerSystem11.createFlowerSystem === 'function'),
+      hasSystem: Boolean(STATE.flowerSystem),
+    });
     const flowerSystem = getFlowerSystem();
     if (!flowerSystem || typeof flowerSystem.togglePetalOpenState !== 'function') {
+      if (!flowerSystem) {
+        flowerDebugLog(true, "hotkey 'c' no-op: getFlowerSystem() returned null", {
+          moduleMissing: !window.StemWarpFlowerSystem11,
+          missingCreate: Boolean(window.StemWarpFlowerSystem11)
+            && typeof window.StemWarpFlowerSystem11.createFlowerSystem !== 'function',
+        });
+      } else {
+        flowerDebugLog(true, "hotkey 'c' no-op: missing method", {
+          hasToggle: typeof flowerSystem.togglePetalOpenState === 'function',
+        });
+      }
       return;
     }
+    flowerDebugLog(true, "hotkey 'c' invoking togglePetalOpenState");
     flowerSystem.togglePetalOpenState();
     renderScene({ skipAutoStart: true });
   }
@@ -13528,6 +14554,7 @@ async function applyFlowerOptions(nextOptions) {
 
   await loadFlowerSpriteIntoSystem();
 
+  resetFlowerGrowthRuntimeState({ clearSignature: true });
   rebuildEndpointFlowers();
   renderScene({ skipAutoStart: true });
 }

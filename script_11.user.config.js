@@ -365,7 +365,7 @@
 
 
     wash1: {
-    enabled: true,
+    enabled: false,
     triggerFrame: 56, // fires when hero video playback frame crosses this value
     retriggerOnLoop: true,
     positionBasis: 'video', // video | viewport
@@ -393,7 +393,7 @@
   },
 
   wash2: {
-    enabled: true,
+    enabled: false,
     triggerFrame: 175, // fires when hero video playback frame crosses this value
     retriggerOnLoop: true,
     positionBasis: 'video', // video | viewport
@@ -530,7 +530,7 @@
     mixRatios: {
 
       lily: 1,
-      blue: 1,
+      blue: 2,
     },
     endpointDirectionTailLengthPx: 26,
     endpointDirectionSampleCount: 5,
@@ -602,6 +602,21 @@
         closedSpriteCols: 8,
         closedSpriteRows: 1,
         closedSpriteScale: 4.1590909091,
+        growth: {
+          enabled: true,
+          tipLeadFraction: 0.4, // 0..1, show flower this far before branch tip reaches final endpoint
+          sizeMinScale: 0.05, // 0..1 fraction of final lily draw size
+          sizeDurationSec: 2, // time from minScale to full size
+          sizeEase: 'easeInOut', // linear | easeIn | easeOut | easeInOut
+          sizeEasePower: 4, // easing curve strength
+          openAutoEnabled: true, // when false, lilies remain closed after growth
+          openDelayMs:200, // delay after branch growth completes before lilies begin opening
+          openSweepDirection: 'down', // down = top lilies open first, up = bottom lilies open first
+          openSweepDurationSec: 0.8, // time for the lily-open wave to travel across flowers
+          openPetalDurationSec: 0.4, // per-lily opening duration once wave reaches it
+          openPetalEase: 'easeOut', // linear | easeIn | easeOut | easeInOut
+          openPetalEasePower: 2, // easing curve strength for per-lily opening
+        },
         pairRotationDegByRowPair: {
           1: { 1: 20, 2: 13, 3: 30},
           2: { 1: 15, 2: 10, 3: 48 },
@@ -653,6 +668,18 @@
         centerBiasExponent: 1, // larger = stronger center clustering
         pointDrawSize: 40,
         drawOrder: 'random', // outerFirst | random
+        growth: {
+          enabled: true,
+          tipLeadFraction: 0.4, // 0..1, show flower this far before branch tip reaches final endpoint
+          sizeMinScale: 0.05, // 0..1 fraction of final blue point sprite size
+          sizeDurationSec: 4.5, // time for blue point sprite size growth
+          sizeEase: 'easeIn', // linear | easeIn | easeOut | easeInOut
+          sizeEasePower: 4, // easing curve strength for blue point sprite size growth
+          positionMinScale: 0.05, // 0..1 radial spread from center at spawn time
+          positionDurationSec: 6, // time for blue radial spread growth
+          positionEase: 'easeInOut', // linear | easeIn | easeOut | easeInOut
+          positionEasePower: 4, // easing curve strength for blue radial spread growth
+        },
         hoverAmplitudeDegRange: [2, 6],
         hoverSpeedRange: [2.2, 4.2],
       },

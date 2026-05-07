@@ -1264,73 +1264,12 @@
     return buildLilySweepFlower(endpoint, typeConfig, commonConfig, rng);
   }
 
-  function resolveFlowerGrowthScaleFactor(flower) {
-    const value = Number(flower && flower.growthScale);
-    if (!Number.isFinite(value)) {
-      return 1;
-    }
-    return Math.max(0.0001, value);
-  }
-
-  function resolveFlowerGrowthPositionScaleFactor(flower) {
-    const value = Number(flower && flower.growthPositionScale);
-    if (!Number.isFinite(value)) {
-      return 1;
-    }
-    return Math.max(0.0001, value);
-  }
-
-  function resolveLilyRuntimePetalOpenAmount(runtimeState, flower) {
-    if (
-      runtimeState
-      && typeof runtimeState.getPetalOpenAmountForBranchId === 'function'
-      && flower
-      && Number.isFinite(flower.branchId)
-    ) {
-      return clamp(runtimeState.getPetalOpenAmountForBranchId(flower.branchId), 0, 1);
-    }
-    if (runtimeState && typeof runtimeState.getPetalOpenAmount === 'function') {
-      return clamp(runtimeState.getPetalOpenAmount(), 0, 1);
-    }
-    return 1;
-  }
-
-  function resolveLilyRuntimeUseClosedPetalSprites(runtimeState, flower, petalOpenAmount, commonConfig = null) {
-    const branchId = flower && Number.isFinite(flower.branchId) ? flower.branchId : null;
-    const hasBranchOverride = (
-      runtimeState
-      && typeof runtimeState.hasPetalOpenAmountOverrideForBranchId === 'function'
-      && Number.isFinite(branchId)
-      && runtimeState.hasPetalOpenAmountOverrideForBranchId(branchId) === true
-    );
-    if (hasBranchOverride) {
-      const spriteSwapProgress = clamp(
-        Number(commonConfig && commonConfig.petalToggleSpriteSwapProgress),
-        0,
-        1,
-      );
-      const openingSpriteSwapProgress = 1 - spriteSwapProgress;
-      return clamp(Number(petalOpenAmount), 0, 1) < openingSpriteSwapProgress;
-    }
-    if (
-      runtimeState
-      && typeof runtimeState.getUseClosedPetalSpritesForBranchId === 'function'
-      && Number.isFinite(branchId)
-    ) {
-      return runtimeState.getUseClosedPetalSpritesForBranchId(branchId) === true;
-    }
-    if (runtimeState && typeof runtimeState.getUseClosedPetalSprites === 'function') {
-      return runtimeState.getUseClosedPetalSprites() === true;
-    }
-    return clamp(Number(petalOpenAmount), 0, 1) <= 0.001;
-  }
-
   function drawLilyFlower(ctx, flower, typeConfig, commonConfig, runtimeState) {
     if (!Array.isArray(flower.petals) || flower.petals.length === 0) {
       return false;
     }
 
-    const drawSize = commonConfig.drawSize * resolveFlowerGrowthScaleFactor(flower);
+    const drawSize = commonConfig.drawSize;
     const spriteCellHeight = Number.isFinite(typeConfig.spriteCellHeight)
       ? Math.max(1, typeConfig.spriteCellHeight)
       : 45.819;
@@ -1338,12 +1277,13 @@
     const centerAngleRad = Number.isFinite(flower.centerAngleRad) ? flower.centerAngleRad : 0;
     const cosCenter = Math.cos(centerAngleRad);
     const sinCenter = Math.sin(centerAngleRad);
-    const basePetalOpenAmount = resolveLilyRuntimePetalOpenAmount(runtimeState, flower);
-    const useClosedPetalSprites = resolveLilyRuntimeUseClosedPetalSprites(
-      runtimeState,
-      flower,
-      basePetalOpenAmount,
-      commonConfig,
+    const basePetalOpenAmount = runtimeState && typeof runtimeState.getPetalOpenAmount === 'function'
+      ? Math.max(0, runtimeState.getPetalOpenAmount())
+      : 1;
+    const useClosedPetalSprites = (
+      runtimeState
+      && typeof runtimeState.getUseClosedPetalSprites === 'function'
+      && runtimeState.getUseClosedPetalSprites() === true
     );
     const petalToggleIsActive = (
       runtimeState
@@ -1668,12 +1608,10 @@
       return false;
     }
 
-    const pointDrawSizeBase = Number.isFinite(typeConfig.pointDrawSize)
+    const pointDrawSize = Number.isFinite(typeConfig.pointDrawSize)
       ? Math.max(1, typeConfig.pointDrawSize)
       : 18;
-    const pointDrawSize = pointDrawSizeBase * resolveFlowerGrowthScaleFactor(flower);
     const halfPointSize = pointDrawSize * 0.5;
-    const growthPositionScale = resolveFlowerGrowthPositionScaleFactor(flower);
     const swayAroundPersonalOrigin = commonConfig.blueSwayRotateAroundPetalOrigin === true;
     const jumpAroundPersonalOrigin = commonConfig.blueJumpRotateAroundPetalOrigin === true;
     const useFastPath = commonConfig.swayFastPathEnabled === true;
@@ -1692,8 +1630,7 @@
     for (let i = 0; i < flower.petals.length; i += 1) {
       const point = flower.petals[i];
       let sourceRect = point.sourceRect || getSpriteSourceRect(typeConfig, point.col, point.row);
-      const radialDistanceBase = Number.isFinite(point.radialDistance) ? point.radialDistance : 0;
-      const radialDistance = radialDistanceBase * growthPositionScale;
+      const radialDistance = Number.isFinite(point.radialDistance) ? point.radialDistance : 0;
       const baseAngle = point.baseAngleRad || 0;
       const swayOffset = useSpriteDebugSway ? 0 : resolvePetalSwayOffsetRad(flower, point);
       const jumpOffset = useSpriteDebugSway ? 0 : resolvePetalJumpOffsetRad(point);
@@ -1897,7 +1834,6 @@
       staticLayerDirty: true,
       staticLayerScaleX: 1,
       staticLayerScaleY: 1,
-      flowerOpenAmountOverrideByBranchId: new Map(),
       pendingStaticLayerResize: false,
       pendingStaticLayerWidth: 0,
       pendingStaticLayerHeight: 0,
@@ -3074,12 +3010,6 @@
           branchId: endpoint && Number.isFinite(endpoint.branchId) ? endpoint.branchId : null,
           x: endpoint && Number.isFinite(endpoint.x) ? endpoint.x : 0,
           y: endpoint && Number.isFinite(endpoint.y) ? endpoint.y : 0,
-          growthScale: endpoint && Number.isFinite(endpoint.growthScale)
-            ? Math.max(0.0001, endpoint.growthScale)
-            : 1,
-          growthPositionScale: endpoint && Number.isFinite(endpoint.growthPositionScale)
-            ? Math.max(0.0001, endpoint.growthPositionScale)
-            : 1,
           petals,
           interactionRadius,
           hoverInfluence: 0,
@@ -3166,9 +3096,6 @@
       if (!Number.isFinite(numeric)) {
         return state.petalOpenAmount;
       }
-      if (state.flowerOpenAmountOverrideByBranchId.size > 0) {
-        state.flowerOpenAmountOverrideByBranchId.clear();
-      }
       state.petalOpenAmount = clamp(numeric, 0, 1);
       state.useClosedPetalSprites = state.petalOpenAmount <= 0.001;
       state.petalToggleTransition.active = false;
@@ -3180,9 +3107,6 @@
     }
 
     function togglePetalOpenState() {
-      if (state.flowerOpenAmountOverrideByBranchId.size > 0) {
-        state.flowerOpenAmountOverrideByBranchId.clear();
-      }
       state.petalOpenAmount = state.petalOpenAmount >= 0.5 ? 0 : 1;
       state.useClosedPetalSprites = state.petalOpenAmount <= 0.001;
       state.petalToggleTransition.active = false;
@@ -3197,9 +3121,6 @@
       const commonConfig = resolveCommonFlowerConfig(flowersConfig || {});
       const startAmount = clamp(state.petalOpenAmount, 0, 1);
       const targetAmount = startAmount >= 0.5 ? 0 : 1;
-      if (state.flowerOpenAmountOverrideByBranchId.size > 0) {
-        state.flowerOpenAmountOverrideByBranchId.clear();
-      }
       const durationMs = Math.max(0, commonConfig.petalToggleAnimationDurationSec * 1000);
       const startTimeMs = Number.isFinite(nowMs) ? nowMs : performance.now();
 
@@ -3230,85 +3151,6 @@
 
     function getPetalOpenAmount() {
       return state.petalOpenAmount;
-    }
-
-    function getPetalOpenAmountForBranchId(branchId) {
-      if (
-        Number.isFinite(branchId)
-        && state.flowerOpenAmountOverrideByBranchId
-        && state.flowerOpenAmountOverrideByBranchId.has(branchId)
-      ) {
-        const overrideAmount = Number(state.flowerOpenAmountOverrideByBranchId.get(branchId));
-        if (Number.isFinite(overrideAmount)) {
-          return clamp(overrideAmount, 0, 1);
-        }
-      }
-      return state.petalOpenAmount;
-    }
-
-    function hasPetalOpenAmountOverrideForBranchId(branchId) {
-      return (
-        Number.isFinite(branchId)
-        && state.flowerOpenAmountOverrideByBranchId
-        && state.flowerOpenAmountOverrideByBranchId.has(branchId)
-      );
-    }
-
-    function getUseClosedPetalSpritesForBranchId(branchId) {
-      if (
-        Number.isFinite(branchId)
-        && state.flowerOpenAmountOverrideByBranchId
-        && state.flowerOpenAmountOverrideByBranchId.has(branchId)
-      ) {
-        const overrideAmount = Number(state.flowerOpenAmountOverrideByBranchId.get(branchId));
-        if (Number.isFinite(overrideAmount)) {
-          return clamp(overrideAmount, 0, 1) <= 0.001;
-        }
-      }
-      return state.useClosedPetalSprites === true;
-    }
-
-    function setFlowerOpenAmountOverridesByBranchId(nextMap) {
-      state.flowerOpenAmountOverrideByBranchId.clear();
-      if (nextMap instanceof Map) {
-        nextMap.forEach((value, key) => {
-          if (!Number.isFinite(key)) {
-            return;
-          }
-          const amount = Number(value);
-          if (!Number.isFinite(amount)) {
-            return;
-          }
-          state.flowerOpenAmountOverrideByBranchId.set(key, clamp(amount, 0, 1));
-        });
-      } else if (nextMap && typeof nextMap === 'object') {
-        const keys = Object.keys(nextMap);
-        for (let i = 0; i < keys.length; i += 1) {
-          const keyNum = Number(keys[i]);
-          if (!Number.isFinite(keyNum)) {
-            continue;
-          }
-          const amount = Number(nextMap[keys[i]]);
-          if (!Number.isFinite(amount)) {
-            continue;
-          }
-          state.flowerOpenAmountOverrideByBranchId.set(keyNum, clamp(amount, 0, 1));
-        }
-      }
-      markStaticLayerDirty();
-      invalidateAllFlowerRenderCaches();
-      return state.flowerOpenAmountOverrideByBranchId.size;
-    }
-
-    function clearFlowerOpenAmountOverridesByBranchId() {
-      if (state.flowerOpenAmountOverrideByBranchId.size <= 0) {
-        return 0;
-      }
-      const cleared = state.flowerOpenAmountOverrideByBranchId.size;
-      state.flowerOpenAmountOverrideByBranchId.clear();
-      markStaticLayerDirty();
-      invalidateAllFlowerRenderCaches();
-      return cleared;
     }
 
     function getUseClosedPetalSprites() {
@@ -4023,13 +3865,9 @@
           const pointDrawSizeCached = Number.isFinite(typeConfig.pointDrawSize)
             ? Math.max(1, typeConfig.pointDrawSize)
             : 18;
-          const growthScaleCached = resolveFlowerGrowthScaleFactor(flower);
-          const growthPositionScaleCached = resolveFlowerGrowthPositionScaleFactor(flower);
           if (
             cachedRadius.type === 'blue'
-            && Math.abs((cachedRadius.pointDrawSize || 0) - (pointDrawSizeCached * growthScaleCached)) <= 1e-8
-            && Math.abs((cachedRadius.growthScale || 1) - growthScaleCached) <= 1e-8
-            && Math.abs((cachedRadius.growthPositionScale || 1) - growthPositionScaleCached) <= 1e-8
+            && Math.abs((cachedRadius.pointDrawSize || 0) - pointDrawSizeCached) <= 1e-8
           ) {
             return cachedRadius.value;
           }
@@ -4037,10 +3875,9 @@
           const drawSizeCached = Number.isFinite(commonConfig && commonConfig.drawSize)
             ? Math.max(1, commonConfig.drawSize)
             : 80;
-          const growthScaleCached = resolveFlowerGrowthScaleFactor(flower);
           if (
             cachedRadius.type === 'lily'
-            && Math.abs((cachedRadius.drawSize || 0) - (drawSizeCached * growthScaleCached)) <= 1e-8
+            && Math.abs((cachedRadius.drawSize || 0) - drawSizeCached) <= 1e-8
           ) {
             return cachedRadius.value;
           }
@@ -4049,18 +3886,13 @@
       const petals = Array.isArray(flower.petals) ? flower.petals : [];
       if (flower.type === 'blue') {
         const typeConfig = flower.typeConfig || {};
-        const pointDrawSizeBase = Number.isFinite(typeConfig.pointDrawSize)
+        const pointDrawSize = Number.isFinite(typeConfig.pointDrawSize)
           ? Math.max(1, typeConfig.pointDrawSize)
           : 18;
-        const growthScale = resolveFlowerGrowthScaleFactor(flower);
-        const growthPositionScale = resolveFlowerGrowthPositionScaleFactor(flower);
-        const pointDrawSize = pointDrawSizeBase * growthScale;
         let maxDistance = 0;
         for (let i = 0; i < petals.length; i += 1) {
           const petal = petals[i];
-          const radialDistance = (
-            Number.isFinite(petal.radialDistance) ? petal.radialDistance : 0
-          ) * growthPositionScale;
+          const radialDistance = Number.isFinite(petal.radialDistance) ? petal.radialDistance : 0;
           if (radialDistance > maxDistance) {
             maxDistance = radialDistance;
           }
@@ -4069,16 +3901,12 @@
         flower._swCachedRadius = {
           type: 'blue',
           pointDrawSize,
-          growthScale,
-          growthPositionScale,
           value,
         };
         return value;
       }
 
-      const drawSize = (
-        Number.isFinite(commonConfig.drawSize) ? Math.max(1, commonConfig.drawSize) : 80
-      ) * resolveFlowerGrowthScaleFactor(flower);
+      const drawSize = Number.isFinite(commonConfig.drawSize) ? Math.max(1, commonConfig.drawSize) : 80;
       let maxOffset = 0;
       for (let i = 0; i < petals.length; i += 1) {
         const petal = petals[i];
@@ -4129,12 +3957,8 @@
       const originXCss = widthCss * 0.5;
       const originYCss = heightCss * 0.5;
       const usesPetalToggleState = flower.type === 'lily';
-      const petalOpenAmount = usesPetalToggleState
-        ? resolveLilyRuntimePetalOpenAmount(runtimeState, flower)
-        : runtimeState.getPetalOpenAmount();
-      const useClosedPetalSprites = usesPetalToggleState
-        ? resolveLilyRuntimeUseClosedPetalSprites(runtimeState, flower, petalOpenAmount, commonConfig)
-        : (runtimeState.getUseClosedPetalSprites() === true);
+      const petalOpenAmount = runtimeState.getPetalOpenAmount();
+      const useClosedPetalSprites = runtimeState.getUseClosedPetalSprites() === true;
       const dynamicPose = options && options.dynamicPose === true;
       const poseKey = dynamicPose && typeof options.poseKey === 'string' ? options.poseKey : '';
 
@@ -4299,12 +4123,9 @@
         const spriteRows = Number.isFinite(typeConfig.spriteRows)
           ? Math.max(1, Math.floor(typeConfig.spriteRows))
           : 1;
-        const pointDrawSizeBase = Number.isFinite(typeConfig.pointDrawSize)
+        const pointDrawSize = Number.isFinite(typeConfig.pointDrawSize)
           ? Math.max(1, typeConfig.pointDrawSize)
           : 18;
-        const growthScale = resolveFlowerGrowthScaleFactor(flower);
-        const growthPositionScale = resolveFlowerGrowthPositionScaleFactor(flower);
-        const pointDrawSize = pointDrawSizeBase * growthScale;
         const swayAroundPersonalOrigin = commonConfig.blueSwayRotateAroundPetalOrigin === true;
         const jumpAroundPersonalOrigin = commonConfig.blueJumpRotateAroundPetalOrigin === true;
         const orbitIsStatic = swayAroundPersonalOrigin && jumpAroundPersonalOrigin;
@@ -4313,8 +4134,7 @@
         for (let i = 0; i < flower.petals.length; i += 1) {
           const point = flower.petals[i];
           let sourceRect = point.sourceRect || getSpriteSourceRect(typeConfig, point.col, point.row);
-          const radialDistanceBase = Number.isFinite(point.radialDistance) ? point.radialDistance : 0;
-          const radialDistance = radialDistanceBase * growthPositionScale;
+          const radialDistance = Number.isFinite(point.radialDistance) ? point.radialDistance : 0;
           const baseAngle = point.baseAngleRad || 0;
           const swayOffset = useSpriteDebugSway ? 0 : resolvePetalSwayOffsetRad(flower, point);
           const jumpOffset = useSpriteDebugSway ? 0 : resolvePetalJumpOffsetRad(point);
@@ -4393,7 +4213,7 @@
       }
 
       const typeConfig = flower.typeConfig || {};
-      const drawSize = commonConfig.drawSize * resolveFlowerGrowthScaleFactor(flower);
+      const drawSize = commonConfig.drawSize;
       const spriteCellHeight = Number.isFinite(typeConfig.spriteCellHeight)
         ? Math.max(1, typeConfig.spriteCellHeight)
         : 45.819;
@@ -4401,12 +4221,13 @@
       const centerAngleRad = Number.isFinite(flower.centerAngleRad) ? flower.centerAngleRad : 0;
       const cosCenter = Math.cos(centerAngleRad);
       const sinCenter = Math.sin(centerAngleRad);
-      const basePetalOpenAmount = resolveLilyRuntimePetalOpenAmount(runtimeState, flower);
-      const useClosedPetalSprites = resolveLilyRuntimeUseClosedPetalSprites(
-        runtimeState,
-        flower,
-        basePetalOpenAmount,
-        commonConfig,
+      const basePetalOpenAmount = runtimeState && typeof runtimeState.getPetalOpenAmount === 'function'
+        ? Math.max(0, runtimeState.getPetalOpenAmount())
+        : 1;
+      const useClosedPetalSprites = (
+        runtimeState
+        && typeof runtimeState.getUseClosedPetalSprites === 'function'
+        && runtimeState.getUseClosedPetalSprites() === true
       );
       const petalToggleIsActive = (
         runtimeState
@@ -4808,10 +4629,7 @@
       const runtimeState = {
         getImage,
         getPetalOpenAmount,
-        getPetalOpenAmountForBranchId,
-        hasPetalOpenAmountOverrideForBranchId,
         getUseClosedPetalSprites,
-        getUseClosedPetalSpritesForBranchId,
         getPetalToggleIsActive,
         getPetalToggleIsClosing,
         getPetalToggleProgress,
@@ -5020,10 +4838,6 @@
       togglePetalOpenState,
       animateTogglePetalOpenState,
       getPetalOpenAmount,
-      getPetalOpenAmountForBranchId,
-      hasPetalOpenAmountOverrideForBranchId,
-      setFlowerOpenAmountOverridesByBranchId,
-      clearFlowerOpenAmountOverridesByBranchId,
       applyJumpAt,
       loadAssets,
       loadSprite,

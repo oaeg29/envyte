@@ -370,23 +370,12 @@ body[data-viewport-layout-mode="relative166"] #loadingScreen {
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
-  padding: var(--loading-edge-padding, 24px);
-  background:
-    radial-gradient(
-      120% 95% at 50% 18%,
-      var(--loading-gradient-radial-start, rgba(62, 92, 126, 0.34)) 0%,
-      var(--loading-gradient-radial-mid, rgba(28, 44, 63, 0.14)) 42%,
-      var(--loading-gradient-radial-end, rgba(11, 16, 24, 0)) 74%
-    ),
-    linear-gradient(
-      180deg,
-      var(--loading-gradient-linear-top, rgba(16, 24, 36, 0.97)) 0%,
-      var(--loading-gradient-linear-mid, rgba(12, 18, 27, 0.985)) 48%,
-      var(--loading-gradient-linear-bottom, rgba(9, 14, 21, 0.995)) 100%
-    );
-  color: var(--loading-text-color, #f2f6fa);
-  font: var(--loading-font-weight, 700)
-    var(--loading-font-size, 18px) / var(--loading-line-height, 1.28)
+  padding: var(--loading-edge-padding, 30px);
+  background-color: var(--loading-background-color, #ffffff);
+  background-image: none;
+  color: var(--loading-text-color, #000000);
+  font: var(--loading-font-weight, 100)
+    var(--loading-font-size, 17px) / var(--loading-line-height, 1.2)
     var(--loading-font-family, "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, "Times New Roman", serif);
   text-align: center;
   pointer-events: none;
@@ -403,15 +392,7 @@ body[data-viewport-layout-mode="relative166"] #loadingScreen {
   opacity: 0;
   transform: scale(var(--loading-wash-scale-start, 0.05));
   transform-origin: 50% 50%;
-  background:
-    radial-gradient(
-      circle at 50% 50%,
-      var(--loading-wash-center-color, rgba(255, 255, 255, 0.98)) var(--loading-wash-center-stop, 0%),
-      var(--loading-wash-mid-color, rgba(255, 255, 255, 0.8)) var(--loading-wash-mid-stop, 25%),
-      var(--loading-wash-mid2-color, rgba(255, 255, 255, 0.45)) var(--loading-wash-mid2-stop, 48%),
-      var(--loading-wash-edge-color, rgba(255, 255, 255, 0.12)) var(--loading-wash-edge-stop, 72%),
-      var(--loading-wash-outer-color, rgba(255, 255, 255, 0)) var(--loading-wash-outer-stop, 100%)
-    );
+  background-color: var(--loading-wash-background-color, transparent);
 }
 
 #loadingScreen.is-hidden {
@@ -435,7 +416,7 @@ body[data-viewport-layout-mode="relative166"] #loadingScreen {
 }
 
 .loading-card {
-  max-width: min(100%, var(--loading-message-max-width, 760px));
+  max-width: min(100%, var(--loading-message-max-width, 300px));
   padding: 0;
   border-radius: 0;
   background: transparent;
@@ -446,18 +427,18 @@ body[data-viewport-layout-mode="relative166"] #loadingScreen {
   max-width: 100%;
   letter-spacing: 0.03em;
   text-transform: lowercase;
-  text-shadow: var(--loading-text-shadow, 0 1px 8px rgba(0, 0, 0, 0.34));
+  text-shadow: var(--loading-text-shadow, none);
   overflow-wrap: break-word;
   white-space: pre-line;
 }
 
 .loading-dots {
-  margin-top: var(--loading-dots-gap, 8px);
+  margin-top: var(--loading-dots-gap, 10px);
   display: inline-flex;
   gap: 6px;
   color: inherit;
-  line-height: var(--loading-dots-line-height, 1);
-  min-height: calc(1em * var(--loading-dots-line-height, 1));
+  line-height: var(--loading-dots-line-height, 0.5);
+  min-height: calc(1em * var(--loading-dots-line-height, 0.5));
   align-items: center;
   justify-content: center;
 }
