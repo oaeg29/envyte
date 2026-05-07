@@ -8526,6 +8526,22 @@ function resolveFlowerGrowthAnimationConfig(flowersConfig = CONFIG.flowers || {}
     const sizeEasePower = Number.isFinite(sizeEasePowerInput)
       ? Math.max(0.01, sizeEasePowerInput)
       : 2;
+    const sizeEaseInPowerInput = Number(
+      source.sizeEaseInPower !== undefined
+        ? source.sizeEaseInPower
+        : sizeEasePower,
+    );
+    const sizeEaseInPower = Number.isFinite(sizeEaseInPowerInput)
+      ? Math.max(0.01, sizeEaseInPowerInput)
+      : sizeEasePower;
+    const sizeEaseOutPowerInput = Number(
+      source.sizeEaseOutPower !== undefined
+        ? source.sizeEaseOutPower
+        : sizeEasePower,
+    );
+    const sizeEaseOutPower = Number.isFinite(sizeEaseOutPowerInput)
+      ? Math.max(0.01, sizeEaseOutPowerInput)
+      : sizeEasePower;
     return {
       enabled,
       tipLeadFraction,
@@ -8533,6 +8549,8 @@ function resolveFlowerGrowthAnimationConfig(flowersConfig = CONFIG.flowers || {}
       sizeDurationSec,
       sizeEase,
       sizeEasePower,
+      sizeEaseInPower,
+      sizeEaseOutPower,
     };
   };
 
@@ -8572,6 +8590,22 @@ function resolveFlowerGrowthAnimationConfig(flowersConfig = CONFIG.flowers || {}
   const bluePositionEasePower = Number.isFinite(bluePositionEasePowerInput)
     ? Math.max(0.01, bluePositionEasePowerInput)
     : blueBase.sizeEasePower;
+  const bluePositionEaseInPowerInput = Number(
+    blueGrowthConfig.positionEaseInPower !== undefined
+      ? blueGrowthConfig.positionEaseInPower
+      : bluePositionEasePower,
+  );
+  const bluePositionEaseInPower = Number.isFinite(bluePositionEaseInPowerInput)
+    ? Math.max(0.01, bluePositionEaseInPowerInput)
+    : bluePositionEasePower;
+  const bluePositionEaseOutPowerInput = Number(
+    blueGrowthConfig.positionEaseOutPower !== undefined
+      ? blueGrowthConfig.positionEaseOutPower
+      : bluePositionEasePower,
+  );
+  const bluePositionEaseOutPower = Number.isFinite(bluePositionEaseOutPowerInput)
+    ? Math.max(0.01, bluePositionEaseOutPowerInput)
+    : bluePositionEasePower;
 
   const lilyOpenAutoEnabled = lilyGrowthConfig.openAutoEnabled !== undefined
     ? lilyGrowthConfig.openAutoEnabled !== false
@@ -8633,6 +8667,8 @@ function resolveFlowerGrowthAnimationConfig(flowersConfig = CONFIG.flowers || {}
         durationSec: lilyBase.sizeDurationSec,
         ease: lilyBase.sizeEase,
         easePower: lilyBase.sizeEasePower,
+        easeInPower: lilyBase.sizeEaseInPower,
+        easeOutPower: lilyBase.sizeEaseOutPower,
       },
       open: {
         autoEnabled: lilyOpenAutoEnabled,
@@ -8652,12 +8688,16 @@ function resolveFlowerGrowthAnimationConfig(flowersConfig = CONFIG.flowers || {}
         durationSec: blueBase.sizeDurationSec,
         ease: blueBase.sizeEase,
         easePower: blueBase.sizeEasePower,
+        easeInPower: blueBase.sizeEaseInPower,
+        easeOutPower: blueBase.sizeEaseOutPower,
       },
       position: {
         minScale: bluePositionMinScale,
         durationSec: bluePositionDurationSec,
         ease: bluePositionEase,
         easePower: bluePositionEasePower,
+        easeInPower: bluePositionEaseInPower,
+        easeOutPower: bluePositionEaseOutPower,
       },
     },
   };
@@ -8796,10 +8836,12 @@ function resolveFlowerGrowthChannelScaleAtBranchTip(
   const spawnTimeSec = branchSweepStartDelaySec + ((branchStartMetric + safeSpawnDistance) / ratePxPerSec);
   const ageSec = Math.max(0, (Number.isFinite(elapsedSec) ? elapsedSec : 0) - spawnTimeSec);
   const progress = clamp(ageSec / durationSec, 0, 1);
-  const eased = evaluateLeafGrowthEaseT(
+  const eased = evaluateFlowerGrowthEaseT(
     progress,
     growthChannelConfig.ease,
     growthChannelConfig.easePower,
+    growthChannelConfig.easeInPower,
+    growthChannelConfig.easeOutPower,
   );
   return minScale + (1 - minScale) * eased;
 }
@@ -8889,6 +8931,12 @@ function collectBranchEndpointsForGrowthAnimation(
             easePower: typeGrowthConfig && typeGrowthConfig.size
               ? typeGrowthConfig.size.easePower
               : 1,
+            easeInPower: typeGrowthConfig && typeGrowthConfig.size
+              ? typeGrowthConfig.size.easeInPower
+              : 1,
+            easeOutPower: typeGrowthConfig && typeGrowthConfig.size
+              ? typeGrowthConfig.size.easeOutPower
+              : 1,
           },
         )
         : 1,
@@ -8912,6 +8960,12 @@ function collectBranchEndpointsForGrowthAnimation(
               : 'linear',
             easePower: typeGrowthConfig && typeGrowthConfig.position
               ? typeGrowthConfig.position.easePower
+              : 1,
+            easeInPower: typeGrowthConfig && typeGrowthConfig.position
+              ? typeGrowthConfig.position.easeInPower
+              : 1,
+            easeOutPower: typeGrowthConfig && typeGrowthConfig.position
+              ? typeGrowthConfig.position.easeOutPower
               : 1,
           },
         )
@@ -10641,6 +10695,32 @@ function evaluateLeafGrowthEaseT(t, easeMode, easePower) {
     return 1 - (0.5 * Math.pow((1 - clampedT) * 2, power));
   }
   return 1 - Math.pow(1 - clampedT, power);
+}
+
+function evaluateFlowerGrowthEaseT(
+  t,
+  easeMode,
+  easePower,
+  easeInPower = null,
+  easeOutPower = null,
+) {
+  const clampedT = clamp(Number.isFinite(t) ? t : 0, 0, 1);
+  const basePower = Number.isFinite(easePower) ? Math.max(0.01, easePower) : 2;
+  const inPower = Number.isFinite(easeInPower) ? Math.max(0.01, easeInPower) : basePower;
+  const outPower = Number.isFinite(easeOutPower) ? Math.max(0.01, easeOutPower) : basePower;
+  if (easeMode === 'linear') {
+    return clampedT;
+  }
+  if (easeMode === 'easeIn') {
+    return Math.pow(clampedT, inPower);
+  }
+  if (easeMode === 'easeInOut') {
+    if (clampedT <= 0.5) {
+      return 0.5 * Math.pow(clampedT * 2, inPower);
+    }
+    return 1 - (0.5 * Math.pow((1 - clampedT) * 2, outPower));
+  }
+  return 1 - Math.pow(1 - clampedT, outPower);
 }
 
 function resolveLeafGrowthScale(leaf, branch, leavesConfig) {

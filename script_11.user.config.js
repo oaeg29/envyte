@@ -144,7 +144,7 @@
     enabled: true,
     mode: 'linearBySeedY', // simultaneous | linearBySeedY
     linearSweepDirection: 'up', // down (top->bottom) | up (bottom->top)
-    linearSweepDurationSec: 7, // sweep time across root seed Y range
+    linearSweepDurationSec: 13, // sweep time across root seed Y range
     speedMode: 'rate', // duration | rate
     totalDurationSec: 1.5,
     pixelsPerSecond: 50,
@@ -671,14 +671,18 @@
         growth: {
           enabled: true,
           tipLeadFraction: 0.4, // 0..1, show flower this far before branch tip reaches final endpoint
-          sizeMinScale: 0.05, // 0..1 fraction of final blue point sprite size
+          sizeMinScale: 0.09, // 0..1 fraction of final blue point sprite size
           sizeDurationSec: 4.5, // time for blue point sprite size growth
           sizeEase: 'easeIn', // linear | easeIn | easeOut | easeInOut
           sizeEasePower: 4, // easing curve strength for blue point sprite size growth
+          sizeEaseInPower: 4.5, // used by easeIn/easeInOut entry-half; defaults to sizeEasePower
+          sizeEaseOutPower: 4, // used by easeOut/easeInOut exit-half; defaults to sizeEasePower
           positionMinScale: 0.05, // 0..1 radial spread from center at spawn time
           positionDurationSec: 6, // time for blue radial spread growth
           positionEase: 'easeInOut', // linear | easeIn | easeOut | easeInOut
           positionEasePower: 4, // easing curve strength for blue radial spread growth
+          positionEaseInPower: 3, // used by easeIn/easeInOut entry-half; defaults to positionEasePower
+          positionEaseOutPower: 4, // used by easeOut/easeInOut exit-half; defaults to positionEasePower
         },
         hoverAmplitudeDegRange: [2, 6],
         hoverSpeedRange: [2.2, 4.2],
