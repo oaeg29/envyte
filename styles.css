@@ -310,11 +310,10 @@ body[data-viewport-layout-mode="relative166"] video,
 body[data-viewport-layout-mode="relative166"] #centerOverlayImage,
 body[data-viewport-layout-mode="relative166"] #loadingScreen {
   position: absolute;
-  height: calc(var(--app-viewport-height) + 66px);
 }
 
 body[data-viewport-layout-mode="relative166"] {
-  height: calc(var(--app-viewport-height) + 66px);
+  height: calc(var(--app-viewport-height) + 55px);
 }
 
 #viewportRelativeAdjustableControls {
