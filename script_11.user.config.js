@@ -153,6 +153,7 @@
     autoStart: true,
     requireFoliageLoadedBeforeStart: true,
     useOffscreenLayerCache: true,
+    overlayPromotionGrowthOnMode: 'matchGrowthOff', // growthON only: matchGrowthOff | firstExitCutover
   },
 
   frameJumpHotkeys: {
@@ -750,7 +751,7 @@
 
   global.STEM_WARP_USER_CONFIG = createStemWarpUserConfig({
     gradient: undefined,
-    valScaling: 0.01,
+    valScaling: 0.0001,
     defaultCountPerSide: 9,
   });
 })(typeof window !== 'undefined' ? window : globalThis);

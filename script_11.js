@@ -11747,6 +11747,22 @@ function sanitizeBranchGrowthSweepDirection(value, fallback = 'down') {
   return 'down';
 }
 
+function sanitizeOverlayPromotionGrowthOnMode(value, fallback = 'matchGrowthOff') {
+  if (value === 'matchGrowthOff' || value === 'firstExitCutover') {
+    return value;
+  }
+  if (value === 'firstExitSolver') {
+    return 'firstExitCutover';
+  }
+  if (fallback === 'matchGrowthOff' || fallback === 'firstExitCutover') {
+    return fallback;
+  }
+  if (fallback === 'firstExitSolver') {
+    return 'firstExitCutover';
+  }
+  return 'matchGrowthOff';
+}
+
 function sanitizeFrameJumpBindingValue(value, fallback = null) {
   if (value === null) {
     return null;
@@ -12276,6 +12292,162 @@ function updateOverlayPromotionFromTipExit(branch, visibleLength, hiddenBand) {
     entry.promoted = true;
     entry.promotionCutoverDistanceOnPath = tipDistance;
   }
+  return entry;
+}
+
+function resolveOverlayPromotionGrowthOnMode() {
+  const growthConfig = isPlainObjectLiteral(CONFIG.branchGrowth) ? CONFIG.branchGrowth : {};
+  return sanitizeOverlayPromotionGrowthOnMode(
+    growthConfig.overlayPromotionGrowthOnMode,
+    'matchGrowthOff',
+  );
+}
+
+function isPointInsideOverlayHiddenBand(point, hiddenBand) {
+  if (!point || !hiddenBand || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+    return false;
+  }
+  const bounds = resolveOverlayHiddenBandBoundsAtY(hiddenBand, point.y);
+  if (!bounds) {
+    return false;
+  }
+  // Keep boundary semantics aligned with the existing tip-exit promotion logic.
+  return point.x > bounds.leftX && point.x < bounds.rightX;
+}
+
+function findOverlayFirstExitCutoverDistance(pathData, hiddenBand) {
+  if (
+    !pathData
+    || !Array.isArray(pathData.segments)
+    || pathData.segments.length === 0
+    || !hiddenBand
+  ) {
+    return null;
+  }
+  const totalLength = Number.isFinite(pathData.totalLength)
+    ? Math.max(0, pathData.totalLength)
+    : 0;
+  if (totalLength <= 1e-8) {
+    return null;
+  }
+
+  const pointAtSegmentT = (segment, t) => ({
+    x: segment.start.x + segment.dx * t,
+    y: segment.start.y + segment.dy * t,
+  });
+
+  const firstSegment = pathData.segments[0];
+  if (!firstSegment || !firstSegment.start) {
+    return null;
+  }
+  if (!isPointInsideOverlayHiddenBand(firstSegment.start, hiddenBand)) {
+    return 0;
+  }
+
+  const switchY = Number.isFinite(hiddenBand.switchY) ? hiddenBand.switchY : null;
+  let distanceBefore = 0;
+
+  for (let i = 0; i < pathData.segments.length; i += 1) {
+    const segment = pathData.segments[i];
+    if (!segment || !segment.start) {
+      continue;
+    }
+
+    const segmentLength = Number.isFinite(segment.length)
+      ? Math.max(0, segment.length)
+      : 0;
+    if (segmentLength <= 1e-8) {
+      continue;
+    }
+
+    const segmentEnd = {
+      x: segment.start.x + segment.dx,
+      y: segment.start.y + segment.dy,
+    };
+    const intervalStops = [0, 1];
+    if (Number.isFinite(switchY)) {
+      const dy = segmentEnd.y - segment.start.y;
+      if (Math.abs(dy) > 1e-8) {
+        const splitT = (switchY - segment.start.y) / dy;
+        if (splitT > 1e-8 && splitT < 1 - 1e-8) {
+          intervalStops.push(splitT);
+        }
+      }
+    }
+    intervalStops.sort((a, b) => a - b);
+
+    for (let j = 0; j < intervalStops.length - 1; j += 1) {
+      const t0 = intervalStops[j];
+      const t1 = intervalStops[j + 1];
+      const startPoint = pointAtSegmentT(segment, t0);
+      if (!isPointInsideOverlayHiddenBand(startPoint, hiddenBand)) {
+        return clamp(distanceBefore + t0 * segmentLength, 0, totalLength);
+      }
+
+      const endPoint = pointAtSegmentT(segment, t1);
+      if (isPointInsideOverlayHiddenBand(endPoint, hiddenBand)) {
+        continue;
+      }
+
+      let low = t0;
+      let high = t1;
+      for (let iter = 0; iter < 20; iter += 1) {
+        const mid = (low + high) * 0.5;
+        const midPoint = pointAtSegmentT(segment, mid);
+        if (isPointInsideOverlayHiddenBand(midPoint, hiddenBand)) {
+          low = mid;
+        } else {
+          high = mid;
+        }
+      }
+      return clamp(distanceBefore + high * segmentLength, 0, totalLength);
+    }
+
+    distanceBefore += segmentLength;
+  }
+
+  return totalLength;
+}
+
+function updateOverlayPromotionForGrowthOn(branch, visibleLength, hiddenBand) {
+  const growthOnMode = resolveOverlayPromotionGrowthOnMode();
+  if (growthOnMode === 'matchGrowthOff') {
+    const branchLength = Number.isFinite(branch && branch.pathData && branch.pathData.totalLength)
+      ? Math.max(0, branch.pathData.totalLength)
+      : 0;
+    // Intentional: make growth-ON match growth-OFF by evaluating promotion at full tip distance.
+    return updateOverlayPromotionFromTipExit(branch, branchLength, hiddenBand);
+  }
+
+  const entry = getOverlayPromotionEntry(branch);
+  if (!entry || entry.promoted === true) {
+    return entry;
+  }
+  if (!branch || !branch.pathData || !hiddenBand) {
+    return entry;
+  }
+  const branchLength = Number.isFinite(branch.pathData.totalLength)
+    ? Math.max(0, branch.pathData.totalLength)
+    : 0;
+  if (branchLength <= 1e-8) {
+    return entry;
+  }
+  const finalTipPoint = getPathPointAtLength(branch.pathData, branchLength);
+  if (!finalTipPoint || !Number.isFinite(finalTipPoint.x)) {
+    return entry;
+  }
+  if (isPointInsideOverlayHiddenBand(finalTipPoint, hiddenBand)) {
+    return entry;
+  }
+
+  const firstExitCutover = findOverlayFirstExitCutoverDistance(branch.pathData, hiddenBand);
+  // Intentional: final-tip classification, then deterministic first-exit cutover on the full path.
+  entry.promoted = true;
+  entry.promotionCutoverDistanceOnPath = clamp(
+    Number.isFinite(firstExitCutover) ? firstExitCutover : branchLength,
+    0,
+    branchLength,
+  );
   return entry;
 }
 
@@ -13811,7 +13983,9 @@ function renderScene(options = {}) {
       if (visibleLength > 1e-8) {
         activeBranches += 1;
       }
-      const promotionEntry = updateOverlayPromotionFromTipExit(branch, visibleLength, hiddenBand);
+      const promotionEntry = useAnimation
+        ? updateOverlayPromotionForGrowthOn(branch, visibleLength, hiddenBand)
+        : updateOverlayPromotionFromTipExit(branch, visibleLength, hiddenBand);
       const ranges = resolveOverlayRenderRanges(branch, visibleLength, promotionEntry);
       if (useDualCompletedLayer && completedLayerBack && completedLayerFront && frontCtx) {
         const branchRenderId = getBranchRenderId(branch);
@@ -14435,6 +14609,10 @@ function applyBranchGrowthOptions(nextOptions) {
     enabled: Boolean(CONFIG.branchGrowth.enabled),
     autoStart: Boolean(CONFIG.branchGrowth.autoStart),
     useOffscreenLayerCache: CONFIG.branchGrowth.useOffscreenLayerCache !== false,
+    overlayPromotionGrowthOnMode: sanitizeOverlayPromotionGrowthOnMode(
+      CONFIG.branchGrowth.overlayPromotionGrowthOnMode,
+      'matchGrowthOff',
+    ),
   };
 
   const sanitized = {};
@@ -14492,8 +14670,18 @@ function applyBranchGrowthOptions(nextOptions) {
   if (nextOptions.requireFoliageLoadedBeforeStart !== undefined) {
     sanitized.requireFoliageLoadedBeforeStart = Boolean(nextOptions.requireFoliageLoadedBeforeStart);
   }
+  if (nextOptions.overlayPromotionGrowthOnMode !== undefined) {
+    sanitized.overlayPromotionGrowthOnMode = sanitizeOverlayPromotionGrowthOnMode(
+      nextOptions.overlayPromotionGrowthOnMode,
+      CONFIG.branchGrowth.overlayPromotionGrowthOnMode,
+    );
+  }
 
   Object.assign(CONFIG.branchGrowth, sanitized);
+  CONFIG.branchGrowth.overlayPromotionGrowthOnMode = sanitizeOverlayPromotionGrowthOnMode(
+    CONFIG.branchGrowth.overlayPromotionGrowthOnMode,
+    previous.overlayPromotionGrowthOnMode,
+  );
   if (STATE.heroPlaybackGate) {
     STATE.heroPlaybackGate.growthAnimationEnabledByConfig = CONFIG.branchGrowth.enabled === true;
   }
@@ -14503,6 +14691,14 @@ function applyBranchGrowthOptions(nextOptions) {
     !== (CONFIG.branchGrowth.useOffscreenLayerCache !== false)
   );
   if (offscreenCacheChanged) {
+    invalidateCompletedBranchLayer();
+  }
+  const overlayPromotionModeChanged = (
+    previous.overlayPromotionGrowthOnMode
+    !== CONFIG.branchGrowth.overlayPromotionGrowthOnMode
+  );
+  if (overlayPromotionModeChanged) {
+    resetOverlayWrapPromotionState();
     invalidateCompletedBranchLayer();
   }
 
