@@ -436,6 +436,58 @@
     fadeInDurationSec: 0.45,
   },
 
+  swipeSections: {
+    enabled: true,
+    // Section count is derived from this array length.
+    sections: [
+      {
+        id: 'section-1',
+        frame: 261,
+        centerOverlayImagePath: './test_page.png',
+      },
+      {
+        id: 'section-2',
+        frame: 280,
+        centerOverlayImagePath: './page_2.png',
+      },
+      {
+        id: 'section-3',
+        frame: 304,
+        centerOverlayImagePath: './page_2.png',
+      },
+      {
+        id: 'section-4',
+        frame: 330,
+        centerOverlayImagePath: './test_page2.png',
+      },
+    ],
+    input: {
+      wheelEnabled: true,
+      touchEnabled: true,
+      wheelDeltaThresholdPx: 95,
+      wheelCooldownMs: 340,
+      touchSwipeThresholdPx: 42,
+      touchAxisLockRatio: 1.2,
+      touchPreventDefault: true,
+      touchRequireOverlayWrapBandStart: true,
+      touchFallbackToFullscreenWhenOverlayWrapDisabled: true,
+    },
+    transition: {
+      timingMode: 'matchFrameDelta', // matchFrameDelta | fixedDuration | instant
+      speedMultiplier: 1.15, // >1 is faster
+      fixedDurationMs: 520, // used only by timingMode=fixedDuration
+      minDurationMs: 220,
+      maxDurationMs: 900,
+      rapidSwipeMode: 'ignore', // ignore | retarget
+    },
+    overlayTransition: {
+      mode: 'fade', // fade | none
+      fadeOutDurationMs: 170,
+      fadeInDurationMs: 230,
+      swapNearTargetProgress: 0.85, // 0..1; when the target image path swaps during section travel
+    },
+  },
+
   floralResponsiveScale: {
     enabled: true,
     // [viewportWidthCssPx, scaleFactor]
@@ -468,8 +520,9 @@
     centerHalfWidthPxVideoHeightRatioBottom: 0.21, // second width ratio used below the switch Y
     centerHalfWidthSwitchYVideoHeightRatio: 0.78, // switch Y as % of initially sampled video height (0..1 or 0..100)
     centerHalfWidthPx: 50, // fallback when video size is unavailable
-    skipHiddenBackDrawEnabled: false,
-    showCenterBandOverlay: false,
+    skipHiddenBackDrawEnabled: true,
+    spriteHiddenCullInnerPaddingPx: 0,
+    showCenterBandOverlay: true,
     centerBandOverlayFill: 'rgba(255, 95, 95, 0.16)',
     centerBandOverlayStroke: 'rgba(255, 95, 95, 0.85)',
     centerBandOverlayLineWidth: 1.5,

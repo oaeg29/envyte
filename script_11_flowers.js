@@ -189,6 +189,106 @@
     return (petal.baseAngleRad || 0) + resolvePetalMotionOffsetRad(flower, petal);
   }
 
+  function resolveOverlayHiddenBandBoundsAtY(hiddenBand, y) {
+    if (!hiddenBand || !Number.isFinite(hiddenBand.centerX)) {
+      return null;
+    }
+    const topHalfWidthPx = Number.isFinite(hiddenBand.topHalfWidthPx)
+      ? Math.max(0, hiddenBand.topHalfWidthPx)
+      : (
+        Number.isFinite(hiddenBand.halfWidthPx)
+          ? Math.max(0, hiddenBand.halfWidthPx)
+          : 0
+      );
+    const bottomHalfWidthPx = Number.isFinite(hiddenBand.bottomHalfWidthPx)
+      ? Math.max(0, hiddenBand.bottomHalfWidthPx)
+      : topHalfWidthPx;
+    const switchY = Number.isFinite(hiddenBand.switchY)
+      ? hiddenBand.switchY
+      : Number.POSITIVE_INFINITY;
+    const useBottom = Number.isFinite(y) && y >= switchY;
+    const halfWidthPx = useBottom ? bottomHalfWidthPx : topHalfWidthPx;
+    return {
+      leftX: hiddenBand.centerX - halfWidthPx,
+      rightX: hiddenBand.centerX + halfWidthPx,
+    };
+  }
+
+  function resolveOverlayHiddenBandInnerBoundsForYRange(hiddenBand, minY, maxY, paddingPx = 0) {
+    if (!hiddenBand || !Number.isFinite(hiddenBand.centerX)) {
+      return null;
+    }
+    const safePaddingPx = Number.isFinite(paddingPx) ? Math.max(0, paddingPx) : 0;
+    const safeMinY = Number.isFinite(minY) ? minY : 0;
+    const safeMaxY = Number.isFinite(maxY) ? maxY : safeMinY;
+    const y0 = Math.min(safeMinY, safeMaxY);
+    const y1 = Math.max(safeMinY, safeMaxY);
+    const topBounds = resolveOverlayHiddenBandBoundsAtY(hiddenBand, y0);
+    const bottomBounds = resolveOverlayHiddenBandBoundsAtY(hiddenBand, y1);
+    if (!topBounds || !bottomBounds) {
+      return null;
+    }
+    const leftX = Math.max(topBounds.leftX, bottomBounds.leftX) + safePaddingPx;
+    const rightX = Math.min(topBounds.rightX, bottomBounds.rightX) - safePaddingPx;
+    if (!(leftX < rightX)) {
+      return null;
+    }
+    return { leftX, rightX };
+  }
+
+  function isSpriteCircleFullyHiddenInBand(centerX, centerY, radius, hiddenBand, paddingPx = 0) {
+    if (
+      !Number.isFinite(centerX)
+      || !Number.isFinite(centerY)
+      || !Number.isFinite(radius)
+      || !hiddenBand
+      || !Number.isFinite(hiddenBand.centerX)
+    ) {
+      return false;
+    }
+    const safeRadius = Math.max(0, radius);
+    const innerBounds = resolveOverlayHiddenBandInnerBoundsForYRange(
+      hiddenBand,
+      centerY - safeRadius,
+      centerY + safeRadius,
+      paddingPx,
+    );
+    if (!innerBounds) {
+      return false;
+    }
+    return (
+      (centerX - safeRadius) >= innerBounds.leftX
+      && (centerX + safeRadius) <= innerBounds.rightX
+    );
+  }
+
+  function resolveSpriteCircleCenterFromDrawTransformInto(
+    anchorX,
+    anchorY,
+    rotationRad,
+    drawX,
+    drawY,
+    drawWidth,
+    drawHeight,
+    out,
+  ) {
+    const target = out || { x: 0, y: 0 };
+    const localCenterX = (Number.isFinite(drawX) ? drawX : 0) + ((Number.isFinite(drawWidth) ? drawWidth : 0) * 0.5);
+    const localCenterY = (Number.isFinite(drawY) ? drawY : 0) + ((Number.isFinite(drawHeight) ? drawHeight : 0) * 0.5);
+    const angle = Number.isFinite(rotationRad) ? rotationRad : 0;
+    const cosA = Math.cos(angle);
+    const sinA = Math.sin(angle);
+    target.x = anchorX + (localCenterX * cosA) - (localCenterY * sinA);
+    target.y = anchorY + (localCenterX * sinA) + (localCenterY * cosA);
+    return target;
+  }
+
+  function resolveSpriteCircleRadius(drawWidth, drawHeight) {
+    const safeWidth = Number.isFinite(drawWidth) ? Math.max(0, drawWidth) : 0;
+    const safeHeight = Number.isFinite(drawHeight) ? Math.max(0, drawHeight) : 0;
+    return Math.hypot(safeWidth * 0.5, safeHeight * 0.5);
+  }
+
   function hashSeed(value) {
     const text = String(value);
     let hash = 2166136261 >>> 0;
@@ -1325,7 +1425,7 @@
     return clamp(Number(petalOpenAmount), 0, 1) <= 0.001;
   }
 
-  function drawLilyFlower(ctx, flower, typeConfig, commonConfig, runtimeState) {
+  function drawLilyFlower(ctx, flower, typeConfig, commonConfig, runtimeState, drawContext = null) {
     if (!Array.isArray(flower.petals) || flower.petals.length === 0) {
       return false;
     }
@@ -1424,6 +1524,18 @@
     const spriteRows = Number.isFinite(typeConfig.spriteRows)
       ? Math.max(1, Math.floor(typeConfig.spriteRows))
       : 1;
+    const drawX = -drawSize * 0.5;
+    const drawY = -drawSize + ((2.2 / spriteCellHeight) * drawSize);
+    const spriteRadius = resolveSpriteCircleRadius(drawSize, drawSize);
+    const hiddenSpriteCullContext = (
+      drawContext
+      && drawContext.hiddenSpriteCullEnabled === true
+      && drawContext.hiddenBand
+      && Number.isFinite(drawContext.hiddenBand.centerX)
+    )
+      ? drawContext
+      : null;
+    const centerScratch = { x: 0, y: 0 };
     const canUseFastPath = (
       useFastPath
       && !useSpriteDebugSway
@@ -1448,6 +1560,32 @@
           x += localOffsetX;
           y += localOffsetY;
         }
+        if (hiddenSpriteCullContext) {
+          resolveSpriteCircleCenterFromDrawTransformInto(
+            x,
+            y,
+            openAngle,
+            drawX,
+            drawY,
+            drawSize,
+            drawSize,
+            centerScratch,
+          );
+          if (
+            isSpriteCircleFullyHiddenInBand(
+              centerScratch.x,
+              centerScratch.y,
+              spriteRadius,
+              hiddenSpriteCullContext.hiddenBand,
+              hiddenSpriteCullContext.hiddenPaddingPx,
+            )
+          ) {
+            if (runtimeState && Number.isFinite(runtimeState.hiddenSpriteCulledCount)) {
+              runtimeState.hiddenSpriteCulledCount += 1;
+            }
+            continue;
+          }
+        }
         ctx.save();
         ctx.translate(x, y);
         ctx.rotate(openAngle);
@@ -1457,8 +1595,8 @@
           sourceRect.sy,
           sourceRect.sw,
           sourceRect.sh,
-          -drawSize * 0.5,
-          -drawSize + ((2.2 / spriteCellHeight) * drawSize),
+          drawX,
+          drawY,
           drawSize,
           drawSize,
         );
@@ -1569,8 +1707,36 @@
       resolvePetalScreenOffsetsInto(petal, displacementSpace, cosCenter, sinCenter, offsetScratch);
       const blendedOffsetX = offsetScratch.x * petalOpenAmount;
       const blendedOffsetY = offsetScratch.y * petalOpenAmount;
+      const anchorX = flower.x + blendedOffsetX;
+      const anchorY = flower.y + blendedOffsetY;
+      if (hiddenSpriteCullContext) {
+        resolveSpriteCircleCenterFromDrawTransformInto(
+          anchorX,
+          anchorY,
+          angle,
+          drawX,
+          drawY,
+          drawSize,
+          drawSize,
+          centerScratch,
+        );
+        if (
+          isSpriteCircleFullyHiddenInBand(
+            centerScratch.x,
+            centerScratch.y,
+            spriteRadius,
+            hiddenSpriteCullContext.hiddenBand,
+            hiddenSpriteCullContext.hiddenPaddingPx,
+          )
+        ) {
+          if (runtimeState && Number.isFinite(runtimeState.hiddenSpriteCulledCount)) {
+            runtimeState.hiddenSpriteCulledCount += 1;
+          }
+          continue;
+        }
+      }
       ctx.save();
-      ctx.translate(flower.x + blendedOffsetX, flower.y + blendedOffsetY);
+      ctx.translate(anchorX, anchorY);
       ctx.rotate(angle);
       if (shouldFlipEdgePair) {
         ctx.scale(-1, 1);
@@ -1581,8 +1747,8 @@
         sourceRect.sy,
         sourceRect.sw,
         sourceRect.sh,
-        -drawSize * 0.5,
-        -drawSize + ((2.2 / spriteCellHeight) * drawSize),
+        drawX,
+        drawY,
         drawSize,
         drawSize,
       );
@@ -1662,7 +1828,7 @@
     };
   }
 
-  function drawBlueFlower(ctx, flower, typeConfig, commonConfig, runtimeState) {
+  function drawBlueFlower(ctx, flower, typeConfig, commonConfig, runtimeState, drawContext = null) {
     const image = runtimeState.getImage(flower.assetPath);
     if (!image || !Array.isArray(flower.petals) || flower.petals.length === 0) {
       return false;
@@ -1673,6 +1839,7 @@
       : 18;
     const pointDrawSize = pointDrawSizeBase * resolveFlowerGrowthScaleFactor(flower);
     const halfPointSize = pointDrawSize * 0.5;
+    const spriteRadius = resolveSpriteCircleRadius(pointDrawSize, pointDrawSize);
     const growthPositionScale = resolveFlowerGrowthPositionScaleFactor(flower);
     const swayAroundPersonalOrigin = commonConfig.blueSwayRotateAroundPetalOrigin === true;
     const jumpAroundPersonalOrigin = commonConfig.blueJumpRotateAroundPetalOrigin === true;
@@ -1686,6 +1853,14 @@
     const spriteRows = Number.isFinite(typeConfig.spriteRows)
       ? Math.max(1, Math.floor(typeConfig.spriteRows))
       : 1;
+    const hiddenSpriteCullContext = (
+      drawContext
+      && drawContext.hiddenSpriteCullEnabled === true
+      && drawContext.hiddenBand
+      && Number.isFinite(drawContext.hiddenBand.centerX)
+    )
+      ? drawContext
+      : null;
     const orbitIsStatic = swayAroundPersonalOrigin && jumpAroundPersonalOrigin;
     const orbitUsesCombinedRotation = !swayAroundPersonalOrigin && !jumpAroundPersonalOrigin;
 
@@ -1739,6 +1914,22 @@
       }
       if (jumpAroundPersonalOrigin) {
         spriteAngle += jumpOffset;
+      }
+
+      if (
+        hiddenSpriteCullContext
+        && isSpriteCircleFullyHiddenInBand(
+          x,
+          y,
+          spriteRadius,
+          hiddenSpriteCullContext.hiddenBand,
+          hiddenSpriteCullContext.hiddenPaddingPx,
+        )
+      ) {
+        if (runtimeState && Number.isFinite(runtimeState.hiddenSpriteCulledCount)) {
+          runtimeState.hiddenSpriteCulledCount += 1;
+        }
+        continue;
       }
 
       if (Math.abs(spriteAngle) > 1e-8) {
@@ -1796,8 +1987,8 @@
         return buildLilyFlower(endpoint, typeConfig, commonConfig, rng);
       },
 
-      drawFlower(ctx, flower, typeConfig, commonConfig, runtimeState) {
-        return drawLilyFlower(ctx, flower, typeConfig, commonConfig, runtimeState);
+      drawFlower(ctx, flower, typeConfig, commonConfig, runtimeState, drawContext = null) {
+        return drawLilyFlower(ctx, flower, typeConfig, commonConfig, runtimeState, drawContext);
       },
     },
     blue: {
@@ -1813,8 +2004,8 @@
         return buildBlueFlower(endpoint, typeConfig, commonConfig, rng);
       },
 
-      drawFlower(ctx, flower, typeConfig, commonConfig, runtimeState) {
-        return drawBlueFlower(ctx, flower, typeConfig, commonConfig, runtimeState);
+      drawFlower(ctx, flower, typeConfig, commonConfig, runtimeState, drawContext = null) {
+        return drawBlueFlower(ctx, flower, typeConfig, commonConfig, runtimeState, drawContext);
       },
     },
   };
@@ -1888,6 +2079,12 @@
       mouseLastSampleX: OFFSCREEN_POINTER,
       mouseLastSampleY: OFFSCREEN_POINTER,
       mouseLastSampleMs: 0,
+      backLayerHiddenSpriteCullContext: {
+        enabled: false,
+        hiddenBand: null,
+        hiddenPaddingPx: 0,
+        branchFilter: null,
+      },
       lastUpdateMs: 0,
       alwaysSimLastMs: 0,
       alwaysSimAccumulatorSec: 0,
@@ -1991,6 +2188,150 @@
         },
       },
     };
+
+    function sanitizeHiddenSpriteCullPaddingPx(value) {
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric)) {
+        return 0;
+      }
+      return Math.max(0, numeric);
+    }
+
+    function updateBackLayerHiddenSpriteCullContext(renderOptions) {
+      const safeOptions = isPlainObject(renderOptions) ? renderOptions : null;
+      const layerName = safeOptions && safeOptions.layerName === 'front' ? 'front' : 'back';
+      if (layerName !== 'back') {
+        return;
+      }
+      const hiddenBand = safeOptions && safeOptions.hiddenBand && typeof safeOptions.hiddenBand === 'object'
+        ? safeOptions.hiddenBand
+        : null;
+      const enabled = (
+        safeOptions
+        && safeOptions.skipHiddenBackDrawEnabled === true
+        && hiddenBand
+        && Number.isFinite(hiddenBand.centerX)
+      );
+      const context = state.backLayerHiddenSpriteCullContext;
+      context.enabled = enabled === true;
+      context.hiddenBand = context.enabled ? hiddenBand : null;
+      context.hiddenPaddingPx = context.enabled
+        ? sanitizeHiddenSpriteCullPaddingPx(safeOptions.hiddenSpriteCullInnerPaddingPx)
+        : 0;
+      context.branchFilter = (
+        context.enabled
+        && typeof safeOptions.branchFilter === 'function'
+      )
+        ? safeOptions.branchFilter
+        : null;
+    }
+
+    function resolveBackLayerHiddenSpriteCullContextForFlower(flower) {
+      const context = state.backLayerHiddenSpriteCullContext;
+      if (!context || context.enabled !== true || !flower) {
+        return null;
+      }
+      if (typeof context.branchFilter === 'function') {
+        if (context.branchFilter(flower.branchId, flower) !== true) {
+          return null;
+        }
+      }
+      return context;
+    }
+
+    function resolveFlowerPetalOpenAmountForInteraction(flower) {
+      if (flower && Number.isFinite(flower.branchId)) {
+        return clamp(getPetalOpenAmountForBranchId(flower.branchId), 0, 1);
+      }
+      return clamp(getPetalOpenAmount(), 0, 1);
+    }
+
+    function isFlowerPetalCircleHiddenByContext(
+      flower,
+      petal,
+      commonConfig,
+      hiddenContext,
+      offsetScratch,
+      centerScratch,
+    ) {
+      if (!flower || !petal || !commonConfig || !hiddenContext || hiddenContext.enabled !== true) {
+        return false;
+      }
+      const hiddenBand = hiddenContext.hiddenBand;
+      if (!hiddenBand || !Number.isFinite(hiddenBand.centerX)) {
+        return false;
+      }
+      if (flower.type === 'blue') {
+        const typeConfig = flower.typeConfig || {};
+        const pointDrawSizeBase = Number.isFinite(typeConfig.pointDrawSize)
+          ? Math.max(1, typeConfig.pointDrawSize)
+          : 18;
+        const growthScale = resolveFlowerGrowthScaleFactor(flower);
+        const growthPositionScale = resolveFlowerGrowthPositionScaleFactor(flower);
+        const pointDrawSize = pointDrawSizeBase * growthScale;
+        const spriteRadius = resolveSpriteCircleRadius(pointDrawSize, pointDrawSize);
+        const swayAroundPersonalOrigin = commonConfig.blueSwayRotateAroundPetalOrigin === true;
+        const jumpAroundPersonalOrigin = commonConfig.blueJumpRotateAroundPetalOrigin === true;
+        const baseAngle = petal.baseAngleRad || 0;
+        const swayOffset = resolvePetalSwayOffsetRad(flower, petal);
+        const jumpOffset = resolvePetalJumpOffsetRad(petal);
+        let orbitalAngle = baseAngle;
+        if (!swayAroundPersonalOrigin) {
+          orbitalAngle += swayOffset;
+        }
+        if (!jumpAroundPersonalOrigin) {
+          orbitalAngle += jumpOffset;
+        }
+        const radialDistance = (Number.isFinite(petal.radialDistance) ? petal.radialDistance : 0) * growthPositionScale;
+        const centerX = flower.x + Math.cos(orbitalAngle) * radialDistance;
+        const centerY = flower.y + Math.sin(orbitalAngle) * radialDistance;
+        return isSpriteCircleFullyHiddenInBand(
+          centerX,
+          centerY,
+          spriteRadius,
+          hiddenBand,
+          hiddenContext.hiddenPaddingPx,
+        );
+      }
+
+      const typeConfig = flower.typeConfig || {};
+      const spriteCellHeight = Number.isFinite(typeConfig.spriteCellHeight)
+        ? Math.max(1, typeConfig.spriteCellHeight)
+        : 45.819;
+      const drawSize = commonConfig.drawSize * resolveFlowerGrowthScaleFactor(flower);
+      const drawX = -drawSize * 0.5;
+      const drawY = -drawSize + ((2.2 / spriteCellHeight) * drawSize);
+      const spriteRadius = resolveSpriteCircleRadius(drawSize, drawSize);
+      const displacementSpace = typeConfig.displacementSpace === 'screen' ? 'screen' : 'flower';
+      const centerAngleRad = Number.isFinite(flower.centerAngleRad) ? flower.centerAngleRad : 0;
+      const cosCenter = Math.cos(centerAngleRad);
+      const sinCenter = Math.sin(centerAngleRad);
+      const petalOpenAmount = resolveFlowerPetalOpenAmountForInteraction(flower);
+      const motionOffsetRad = resolvePetalMotionOffsetRad(flower, petal);
+      const baseOpenAngle = petal.baseAngleRad || 0;
+      const openAngle = baseOpenAngle + motionOffsetRad;
+      const angle = centerAngleRad + (openAngle - centerAngleRad) * petalOpenAmount;
+      resolvePetalScreenOffsetsInto(petal, displacementSpace, cosCenter, sinCenter, offsetScratch);
+      const blendedOffsetX = offsetScratch.x * petalOpenAmount;
+      const blendedOffsetY = offsetScratch.y * petalOpenAmount;
+      resolveSpriteCircleCenterFromDrawTransformInto(
+        flower.x + blendedOffsetX,
+        flower.y + blendedOffsetY,
+        angle,
+        drawX,
+        drawY,
+        drawSize,
+        drawSize,
+        centerScratch,
+      );
+      return isSpriteCircleFullyHiddenInBand(
+        centerScratch.x,
+        centerScratch.y,
+        spriteRadius,
+        hiddenBand,
+        hiddenContext.hiddenPaddingPx,
+      );
+    }
 
     function setPixiSurfaces(surfaces) {
       const safe = isPlainObject(surfaces) ? surfaces : {};
@@ -3378,6 +3719,7 @@
       const jumpJitterRad = degToRad(commonConfig.jumpJitterDeg);
       const distanceExponent = commonConfig.jumpDistanceExponent;
       const offsetScratch = { x: 0, y: 0 };
+      const centerScratch = { x: 0, y: 0 };
       let affectedFlowers = 0;
 
       for (let i = 0; i < state.flowers.length; i += 1) {
@@ -3399,6 +3741,7 @@
         if (influence <= 0) {
           continue;
         }
+        const hiddenCullContext = resolveBackLayerHiddenSpriteCullContextForFlower(flower);
 
         const typeConfig = flower.typeConfig || {};
         const displacementSpace = typeConfig.displacementSpace === 'screen' ? 'screen' : 'flower';
@@ -3414,9 +3757,23 @@
           + ((2.2 / spriteCellHeight) * drawSize)
           + (drawSize * 0.5)
         );
+        let affectedPetalsForFlower = 0;
 
         for (let p = 0; p < flower.petals.length; p += 1) {
           const petal = flower.petals[p];
+          if (
+            hiddenCullContext
+            && isFlowerPetalCircleHiddenByContext(
+              flower,
+              petal,
+              commonConfig,
+              hiddenCullContext,
+              offsetScratch,
+              centerScratch,
+            )
+          ) {
+            continue;
+          }
           let renderedAngle = resolvePetalRenderedAngleRad(flower, petal);
           let petalWorldX = flower.x;
           let petalWorldY = flower.y;
@@ -3471,9 +3828,12 @@
             + directionalKickRad
             + jitterKickRad;
           petal.jumpTargetAngleOffsetRad = clamp(nextOffsetRad, -maxJumpRad, maxJumpRad);
+          affectedPetalsForFlower += 1;
         }
-        flower.hasJumpMotion = true;
-        affectedFlowers += 1;
+        if (affectedPetalsForFlower > 0) {
+          flower.hasJumpMotion = true;
+          affectedFlowers += 1;
+        }
       }
 
       return affectedFlowers;
@@ -3485,6 +3845,8 @@
       const jumpAttackSpeedRadPerSec = degToRad(commonConfig.jumpAttackSpeedDegPerSec);
       const jumpReturnSpeedRadPerSec = degToRad(commonConfig.jumpReturnSpeedDegPerSec);
       const jumpEpsilonRad = degToRad(commonConfig.jumpEpsilonDeg);
+      const hiddenOffsetScratch = { x: 0, y: 0 };
+      const hiddenCenterScratch = { x: 0, y: 0 };
 
       for (let i = 0; i < state.flowers.length; i += 1) {
         const flower = state.flowers[i];
@@ -3503,10 +3865,24 @@
 
         flower.isSwayActive = flower.hoverInfluence > 0 || flower.targetInfluence > 0;
         let hasJumpMotion = flower.hasJumpMotion === true;
+        const hiddenCullContext = resolveBackLayerHiddenSpriteCullContextForFlower(flower);
         if (hasJumpMotion && Array.isArray(flower.petals) && flower.petals.length > 0) {
           hasJumpMotion = false;
           for (let p = 0; p < flower.petals.length; p += 1) {
             const petal = flower.petals[p];
+            if (
+              hiddenCullContext
+              && isFlowerPetalCircleHiddenByContext(
+                flower,
+                petal,
+                commonConfig,
+                hiddenCullContext,
+                hiddenOffsetScratch,
+                hiddenCenterScratch,
+              )
+            ) {
+              continue;
+            }
             const currentJumpOffset = petal.jumpAngleOffsetRad || 0;
             const currentJumpTarget = petal.jumpTargetAngleOffsetRad || 0;
             const nextJumpTarget = moveToward(currentJumpTarget, 0, jumpReturnSpeedRadPerSec * dtSec);
@@ -3685,6 +4061,8 @@
         && commonConfig.influenceDynamicCap > 0;
       const dynamicCap = dynamicCapEnabled ? commonConfig.influenceDynamicCap : 0;
       const dynamicCandidates = [];
+      const hiddenOffsetScratch = { x: 0, y: 0 };
+      const hiddenCenterScratch = { x: 0, y: 0 };
 
       for (let i = 0; i < state.flowers.length; i += 1) {
         const flower = state.flowers[i];
@@ -3737,10 +4115,24 @@
 
         flower.isSwayActive = flower.hoverInfluence > 0 || flower.targetInfluence > 0;
         let hasJumpMotion = flower.hasJumpMotion === true;
+        const hiddenCullContext = resolveBackLayerHiddenSpriteCullContextForFlower(flower);
         if (hasJumpMotion && Array.isArray(flower.petals) && flower.petals.length > 0) {
           hasJumpMotion = false;
           for (let p = 0; p < flower.petals.length; p += 1) {
             const petal = flower.petals[p];
+            if (
+              hiddenCullContext
+              && isFlowerPetalCircleHiddenByContext(
+                flower,
+                petal,
+                commonConfig,
+                hiddenCullContext,
+                hiddenOffsetScratch,
+                hiddenCenterScratch,
+              )
+            ) {
+              continue;
+            }
             const currentJumpOffset = petal.jumpAngleOffsetRad || 0;
             const currentJumpTarget = petal.jumpTargetAngleOffsetRad || 0;
 
@@ -3816,7 +4208,7 @@
       return state.activeFlowerIndices.length;
     }
 
-    function drawFlowerRecord(ctx, flower, flowersConfig, commonConfig, runtimeState) {
+    function drawFlowerRecord(ctx, flower, flowersConfig, commonConfig, runtimeState, drawContext = null) {
       if (!ctx || !flower) {
         return false;
       }
@@ -3832,7 +4224,7 @@
       const typeName = FLOWER_TYPE_REGISTRY[flower.type] ? flower.type : 'lily';
       const entry = FLOWER_TYPE_REGISTRY[typeName] || FLOWER_TYPE_REGISTRY.lily;
       const typeConfig = flower.typeConfig || resolveTypeConfig(typeName, flowersConfig || {});
-      return entry.drawFlower(ctx, flower, typeConfig, commonConfig, runtimeState) === true;
+      return entry.drawFlower(ctx, flower, typeConfig, commonConfig, runtimeState, drawContext) === true;
     }
 
     function drawBakedFlower(ctx, flower, variant, commonConfig) {
@@ -3995,11 +4387,18 @@
       return true;
     }
 
-    function drawFlowerByIndex(ctx, index, flowersConfig, commonConfig, runtimeState) {
+    function drawFlowerByIndex(ctx, index, flowersConfig, commonConfig, runtimeState, drawContext = null) {
       if (!ctx || index < 0 || index >= state.flowers.length) {
         return false;
       }
-      return drawFlowerRecord(ctx, state.flowers[index], flowersConfig, commonConfig, runtimeState);
+      return drawFlowerRecord(
+        ctx,
+        state.flowers[index],
+        flowersConfig,
+        commonConfig,
+        runtimeState,
+        drawContext,
+      );
     }
 
     function getOutputScale(ctx) {
@@ -4278,7 +4677,15 @@
       return true;
     }
 
-    function drawPixiFlowerRecord(layerName, flower, commonConfig, runtimeState, layerMetrics, app) {
+    function drawPixiFlowerRecord(
+      layerName,
+      flower,
+      commonConfig,
+      runtimeState,
+      layerMetrics,
+      app,
+      hiddenSpriteCullContext = null,
+    ) {
       if (!flower) {
         return false;
       }
@@ -4305,6 +4712,7 @@
         const growthScale = resolveFlowerGrowthScaleFactor(flower);
         const growthPositionScale = resolveFlowerGrowthPositionScaleFactor(flower);
         const pointDrawSize = pointDrawSizeBase * growthScale;
+        const spriteRadius = resolveSpriteCircleRadius(pointDrawSize, pointDrawSize);
         const swayAroundPersonalOrigin = commonConfig.blueSwayRotateAroundPetalOrigin === true;
         const jumpAroundPersonalOrigin = commonConfig.blueJumpRotateAroundPetalOrigin === true;
         const orbitIsStatic = swayAroundPersonalOrigin && jumpAroundPersonalOrigin;
@@ -4363,6 +4771,21 @@
           if (jumpAroundPersonalOrigin) {
             spriteAngle += jumpOffset;
           }
+          if (
+            hiddenSpriteCullContext
+            && isSpriteCircleFullyHiddenInBand(
+              x,
+              y,
+              spriteRadius,
+              hiddenSpriteCullContext.hiddenBand,
+              hiddenSpriteCullContext.hiddenPaddingPx,
+            )
+          ) {
+            if (runtimeState && Number.isFinite(runtimeState.hiddenSpriteCulledCount)) {
+              runtimeState.hiddenSpriteCulledCount += 1;
+            }
+            continue;
+          }
           const sprite = acquirePixiSprite(layerName, texture, app);
           if (!sprite) {
             continue;
@@ -4397,6 +4820,9 @@
       const spriteCellHeight = Number.isFinite(typeConfig.spriteCellHeight)
         ? Math.max(1, typeConfig.spriteCellHeight)
         : 45.819;
+      const drawX = -drawSize * 0.5;
+      const drawY = -drawSize + ((2.2 / spriteCellHeight) * drawSize);
+      const spriteRadius = resolveSpriteCircleRadius(drawSize, drawSize);
       const displacementSpace = typeConfig.displacementSpace === 'screen' ? 'screen' : 'flower';
       const centerAngleRad = Number.isFinite(flower.centerAngleRad) ? flower.centerAngleRad : 0;
       const cosCenter = Math.cos(centerAngleRad);
@@ -4456,6 +4882,7 @@
       const spriteRows = Number.isFinite(typeConfig.spriteRows)
         ? Math.max(1, Math.floor(typeConfig.spriteRows))
         : 1;
+      const centerScratch = { x: 0, y: 0 };
 
       for (let i = startIndex; i !== endIndexExclusive; i += indexStep) {
         const petal = flower.petals[i];
@@ -4557,6 +4984,34 @@
         resolvePetalScreenOffsetsInto(petal, displacementSpace, cosCenter, sinCenter, offsetScratch);
         const blendedOffsetX = offsetScratch.x * petalOpenAmount;
         const blendedOffsetY = offsetScratch.y * petalOpenAmount;
+        const anchorWorldX = flower.x + blendedOffsetX;
+        const anchorWorldY = flower.y + blendedOffsetY;
+        if (hiddenSpriteCullContext) {
+          resolveSpriteCircleCenterFromDrawTransformInto(
+            anchorWorldX,
+            anchorWorldY,
+            angle,
+            drawX,
+            drawY,
+            drawSize,
+            drawSize,
+            centerScratch,
+          );
+          if (
+            isSpriteCircleFullyHiddenInBand(
+              centerScratch.x,
+              centerScratch.y,
+              spriteRadius,
+              hiddenSpriteCullContext.hiddenBand,
+              hiddenSpriteCullContext.hiddenPaddingPx,
+            )
+          ) {
+            if (runtimeState && Number.isFinite(runtimeState.hiddenSpriteCulledCount)) {
+              runtimeState.hiddenSpriteCulledCount += 1;
+            }
+            continue;
+          }
+        }
 
         const sprite = acquirePixiSprite(layerName, texture, app);
         if (!sprite) {
@@ -4572,8 +5027,8 @@
           sprite._swAnchorKey = anchorKey;
         }
         sprite.position.set(
-          (flower.x + blendedOffsetX) * scaleX,
-          (flower.y + blendedOffsetY) * scaleY,
+          anchorWorldX * scaleX,
+          anchorWorldY * scaleY,
         );
         sprite.rotation = angle;
         const textureW = Math.max(1e-8, sourceRect.sw);
@@ -4624,10 +5079,23 @@
       const hiddenBand = safeDrawOptions && safeDrawOptions.hiddenBand && typeof safeDrawOptions.hiddenBand === 'object'
         ? safeDrawOptions.hiddenBand
         : null;
+      const hiddenSpriteCullInnerPaddingPx = safeDrawOptions
+        && Number.isFinite(Number(safeDrawOptions.hiddenSpriteCullInnerPaddingPx))
+        ? Math.max(0, Number(safeDrawOptions.hiddenSpriteCullInnerPaddingPx))
+        : 0;
       const skipHiddenInBand = safeDrawOptions
         && safeDrawOptions.skipHiddenBackDrawEnabled === true
         && hiddenBand
         && Number.isFinite(hiddenBand.centerX);
+      const hiddenSpriteCullContext = skipHiddenInBand
+        ? {
+          hiddenBand,
+          hiddenPaddingPx: hiddenSpriteCullInnerPaddingPx,
+        }
+        : null;
+      if (runtimeState && Number.isFinite(runtimeState.hiddenSpriteCulledCount)) {
+        runtimeState.hiddenSpriteCulledCount = 0;
+      }
 
       beginPixiLayerFrame(layerName);
 
@@ -4671,15 +5139,29 @@
               flower,
               commonConfig,
               hiddenBand,
+              hiddenSpriteCullInnerPaddingPx,
             )
           ) {
             skippedHiddenCount += 1;
             continue;
           }
-          if (drawPixiFlowerRecord(layerName, flower, commonConfig, runtimeState, layerMetrics, app)) {
+          if (
+            drawPixiFlowerRecord(
+              layerName,
+              flower,
+              commonConfig,
+              runtimeState,
+              layerMetrics,
+              app,
+              hiddenSpriteCullContext,
+            )
+          ) {
             drawnCount += 1;
           }
         }
+      }
+      if (runtimeState && Number.isFinite(runtimeState.hiddenSpriteCulledCount)) {
+        skippedHiddenCount += runtimeState.hiddenSpriteCulledCount;
       }
       endPixiLayerFrame(layerName);
       if (layerName === 'back' && (!safeDrawOptions || safeDrawOptions.clearFront !== false)) {
@@ -4732,32 +5214,7 @@
       );
     }
 
-    function resolveOverlayBandBoundsAtY(hiddenBand, y) {
-      if (!hiddenBand || !Number.isFinite(hiddenBand.centerX)) {
-        return null;
-      }
-      const topHalfWidthPx = Number.isFinite(hiddenBand.topHalfWidthPx)
-        ? Math.max(0, hiddenBand.topHalfWidthPx)
-        : (
-          Number.isFinite(hiddenBand.halfWidthPx)
-            ? Math.max(0, hiddenBand.halfWidthPx)
-            : 0
-        );
-      const bottomHalfWidthPx = Number.isFinite(hiddenBand.bottomHalfWidthPx)
-        ? Math.max(0, hiddenBand.bottomHalfWidthPx)
-        : topHalfWidthPx;
-      const switchY = Number.isFinite(hiddenBand.switchY)
-        ? hiddenBand.switchY
-        : Number.POSITIVE_INFINITY;
-      const useBottom = Number.isFinite(y) && y >= switchY;
-      const halfWidthPx = useBottom ? bottomHalfWidthPx : topHalfWidthPx;
-      return {
-        leftX: hiddenBand.centerX - halfWidthPx,
-        rightX: hiddenBand.centerX + halfWidthPx,
-      };
-    }
-
-    function isFlowerFullyHiddenInOverlayBand(flower, commonConfig, hiddenBand) {
+    function isFlowerFullyHiddenInOverlayBand(flower, commonConfig, hiddenBand, paddingPx = 0) {
       if (!flower || !hiddenBand || !Number.isFinite(hiddenBand.centerX)) {
         return false;
       }
@@ -4765,21 +5222,18 @@
       if (!Number.isFinite(radiusCss) || radiusCss <= 0) {
         return false;
       }
-      const topY = flower.y - radiusCss;
-      const bottomY = flower.y + radiusCss;
-      const topBounds = resolveOverlayBandBoundsAtY(hiddenBand, topY);
-      const bottomBounds = resolveOverlayBandBoundsAtY(hiddenBand, bottomY);
-      if (!topBounds || !bottomBounds) {
-        return false;
-      }
-      const leftX = Math.max(topBounds.leftX, bottomBounds.leftX);
-      const rightX = Math.min(topBounds.rightX, bottomBounds.rightX);
-      if (!(leftX < rightX)) {
+      const innerBounds = resolveOverlayHiddenBandInnerBoundsForYRange(
+        hiddenBand,
+        flower.y - radiusCss,
+        flower.y + radiusCss,
+        paddingPx,
+      );
+      if (!innerBounds) {
         return false;
       }
       return (
-        (flower.x - radiusCss) >= leftX
-        && (flower.x + radiusCss) <= rightX
+        (flower.x - radiusCss) >= innerBounds.leftX
+        && (flower.x + radiusCss) <= innerBounds.rightX
       );
     }
 
@@ -4800,10 +5254,21 @@
       const hiddenBand = safeDrawOptions && safeDrawOptions.hiddenBand && typeof safeDrawOptions.hiddenBand === 'object'
         ? safeDrawOptions.hiddenBand
         : null;
+      const hiddenSpriteCullInnerPaddingPx = safeDrawOptions
+        && Number.isFinite(Number(safeDrawOptions.hiddenSpriteCullInnerPaddingPx))
+        ? Math.max(0, Number(safeDrawOptions.hiddenSpriteCullInnerPaddingPx))
+        : 0;
       const skipHiddenInBand = safeDrawOptions
         && safeDrawOptions.skipHiddenBackDrawEnabled === true
         && hiddenBand
         && Number.isFinite(hiddenBand.centerX);
+      const hiddenSpriteCullDrawContext = skipHiddenInBand
+        ? {
+          hiddenSpriteCullEnabled: true,
+          hiddenBand,
+          hiddenPaddingPx: hiddenSpriteCullInnerPaddingPx,
+        }
+        : null;
 
       const runtimeState = {
         getImage,
@@ -4821,6 +5286,7 @@
         getPetalToggleOpenBounceAmount,
         getPetalToggleOpenBounceOscillations,
         debugFrameIndex: Number.isFinite(state.debugFrameIndex) ? state.debugFrameIndex : 0,
+        hiddenSpriteCulledCount: 0,
       };
       state.debugFrameIndex = ((Number.isFinite(state.debugFrameIndex) ? state.debugFrameIndex : 0) + 1) % 1000000;
 
@@ -4885,6 +5351,7 @@
               flower,
               commonConfig,
               hiddenBand,
+              hiddenSpriteCullInnerPaddingPx,
             )
           ) {
             skippedHiddenCount += 1;
@@ -4918,9 +5385,19 @@
               continue;
             }
           }
-          drawFlowerByIndex(ctx, i, flowersConfig, commonConfig, runtimeState);
+          drawFlowerByIndex(
+            ctx,
+            i,
+            flowersConfig,
+            commonConfig,
+            runtimeState,
+            hiddenSpriteCullDrawContext,
+          );
           drawnCount += 1;
         }
+      }
+      if (Number.isFinite(runtimeState.hiddenSpriteCulledCount)) {
+        skippedHiddenCount += runtimeState.hiddenSpriteCulledCount;
       }
       return { drawnCount, culledCount, skippedHiddenCount };
     }
@@ -4931,6 +5408,7 @@
       const safeRenderOptions = renderOptions && typeof renderOptions === 'object'
         ? renderOptions
         : null;
+      updateBackLayerHiddenSpriteCullContext(safeRenderOptions);
       const skipUpdate = safeRenderOptions && safeRenderOptions.skipUpdate === true;
 
       let activeCount = state.activeFlowerIndices.length;

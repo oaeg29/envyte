@@ -118,6 +118,7 @@ const VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_STEP = 1;
 const VIEWPORT_PINCH_ZOOM_SCALE_EPSILON = 0.005;
 const VIEWPORT_POST_ZOOM_RESYNC_DELAY_MS = 220;
 const IOS_SAFARI_RUBBER_BAND_RESYNC_DELAY_MS = 850;
+const SWIPE_SECTIONS_EVENT_CHANGE = 'stemwarp:swipe-section-change';
 
 function normalizeHostedAssetPath(path) {
   if (typeof path !== 'string') {
@@ -2392,6 +2393,7 @@ applyLoadingScreenConfig(CONFIG.loadingScreen);
 CONFIG.animation = CONFIG.branchGrowth;
 // Backward compatibility alias.
 CONFIG.offshoots = CONFIG.offshoot;
+CONFIG.swipeSections = resolveSwipeSectionsConfig(CONFIG.swipeSections);
 
 // =========================
 // 3) Runtime State
@@ -2563,6 +2565,36 @@ const STATE = {
     videoWiggleRafId: null,
     videoWiggleDelayTimerId: null,
     videoWiggleActive: false,
+  },
+  swipeSections: {
+    activeSectionIndex: -1,
+    activeSectionId: '',
+    isTransitioning: false,
+    transitionRafId: null,
+    transitionFromFrame: 0,
+    transitionToFrame: 0,
+    transitionStartMs: 0,
+    transitionDurationMs: 0,
+    transitionFromSectionIndex: -1,
+    transitionToSectionIndex: -1,
+    transitionDirection: 0,
+    wheelAccumulatedDeltaY: 0,
+    wheelLastTriggerMs: 0,
+    touchTracking: {
+      active: false,
+      touchIdentifier: null,
+      startClientX: 0,
+      startClientY: 0,
+      startSceneX: 0,
+      startSceneY: 0,
+    },
+    centerOverlayImagePathOverride: '',
+    overlayOpacityMultiplier: 1,
+    overlayTransitionMode: 'none',
+    overlayTransitionSwapProgress: 0.85,
+    overlayTransitionFadeOutRatio: 0.3,
+    overlayTransitionFadeInStartProgress: 0.8,
+    overlayTransitionHasSwappedPath: false,
   },
 };
 
@@ -3722,6 +3754,14 @@ function requestOpenButtonArrowImageLoad(options = {}) {
 
 function resolveCenterOverlayImageConfig(configCandidate = CONFIG.centerOverlayImage) {
   const safeConfig = isPlainObjectLiteral(configCandidate) ? configCandidate : {};
+  const swipeState = STATE && STATE.swipeSections ? STATE.swipeSections : null;
+  const spritePathOverride = (
+    swipeState
+    && typeof swipeState.centerOverlayImagePathOverride === 'string'
+    && swipeState.centerOverlayImagePathOverride.trim().length > 0
+  )
+    ? swipeState.centerOverlayImagePathOverride.trim()
+    : '';
   const scaleMode = (
     safeConfig.scaleMode === 'videoSizeRatio'
     || safeConfig.scaleMode === 'multiplier'
@@ -3736,12 +3776,14 @@ function resolveCenterOverlayImageConfig(configCandidate = CONFIG.centerOverlayI
     : 'px';
   return {
     enabled: safeConfig.enabled !== false,
-    spritePath: (
-      typeof safeConfig.spritePath === 'string'
-      && safeConfig.spritePath.trim().length > 0
-    )
-      ? safeConfig.spritePath.trim()
-      : './test_page.png',
+    spritePath: spritePathOverride || (
+      (
+        typeof safeConfig.spritePath === 'string'
+        && safeConfig.spritePath.trim().length > 0
+      )
+        ? safeConfig.spritePath.trim()
+        : './test_page.png'
+    ),
     scale: Number.isFinite(Number(safeConfig.scale))
       ? Math.max(0, Number(safeConfig.scale))
       : 1,
@@ -3768,6 +3810,18 @@ function resolveCenterOverlayImageConfig(configCandidate = CONFIG.centerOverlayI
       ? Math.max(0, Number(safeConfig.fadeInDurationSec))
       : 0.45,
   };
+}
+
+function getSwipeSectionsOverlayOpacityMultiplier() {
+  const swipeState = STATE && STATE.swipeSections ? STATE.swipeSections : null;
+  if (!swipeState) {
+    return 1;
+  }
+  const opacityMultiplier = Number(swipeState.overlayOpacityMultiplier);
+  if (!Number.isFinite(opacityMultiplier)) {
+    return 1;
+  }
+  return clamp(opacityMultiplier, 0, 1);
 }
 
 function requestCenterOverlayImageLoad(options = {}) {
@@ -3917,6 +3971,7 @@ function syncCenterOverlayImageLayer(nowMs = performance.now(), currentFrame = n
     const fadeElapsedSec = Math.max(0, (nowMs - STATE.centerOverlayImageVisibleSinceMs) / 1000);
     opacity = overlayConfig.maxOpacity * clamp(fadeElapsedSec / overlayConfig.fadeInDurationSec, 0, 1);
   }
+  opacity *= getSwipeSectionsOverlayOpacityMultiplier();
   centerOverlayImageLayer.style.opacity = String(opacity);
   centerOverlayImageLayer.style.visibility = 'visible';
 }
@@ -4612,6 +4667,8 @@ function startHeroPlaybackGateFlow(options = null) {
     return;
   }
   cancelHeroPlaybackGateStartDelay();
+  cancelSwipeSectionTransition();
+  clearSwipeSectionsTouchTracking();
   // Set this immediately so pre-splash renders cannot auto-start branch growth.
   gateState.growthAnimationEnabledByConfig = CONFIG.branchGrowth.enabled === true;
   if (!isLoadingScreenGone()) {
@@ -4794,6 +4851,9 @@ function resolveOverlayWrapConfig() {
   const centerBandOverlayLineWidth = Number.isFinite(Number(safeConfig.centerBandOverlayLineWidth))
     ? Math.max(0.1, Number(safeConfig.centerBandOverlayLineWidth))
     : 1.5;
+  const spriteHiddenCullInnerPaddingPx = Number.isFinite(Number(safeConfig.spriteHiddenCullInnerPaddingPx))
+    ? Math.max(0, Number(safeConfig.spriteHiddenCullInnerPaddingPx))
+    : 0;
   return {
     enabled: safeConfig.enabled !== false,
     animationOnly: safeConfig.animationOnly !== false,
@@ -4806,6 +4866,7 @@ function resolveOverlayWrapConfig() {
     centerHalfWidthPxVideoHeightRatioBottom,
     centerHalfWidthSwitchYVideoHeightRatio,
     skipHiddenBackDrawEnabled: safeConfig.skipHiddenBackDrawEnabled !== false,
+    spriteHiddenCullInnerPaddingPx,
     showCenterBandOverlay: safeConfig.showCenterBandOverlay === true,
     centerBandOverlayFill: (typeof safeConfig.centerBandOverlayFill === 'string' && safeConfig.centerBandOverlayFill.length > 0)
       ? safeConfig.centerBandOverlayFill
@@ -4922,6 +4983,38 @@ function isAabbFullyInsideHiddenBand(minX, maxX, hiddenBand, minY = null, maxY =
   const leftX = hiddenBand.centerX - effectiveHalfWidthPx;
   const rightX = hiddenBand.centerX + effectiveHalfWidthPx;
   return minX >= leftX && maxX <= rightX;
+}
+
+function isSpriteCircleFullyInsideHiddenBand(centerX, centerY, radius, hiddenBand, innerPaddingPx = 0) {
+  if (
+    !hiddenBand
+    || !Number.isFinite(centerX)
+    || !Number.isFinite(centerY)
+    || !Number.isFinite(radius)
+    || !Number.isFinite(hiddenBand.centerX)
+  ) {
+    return false;
+  }
+  const safeRadius = Math.max(0, radius);
+  const safePadding = Number.isFinite(innerPaddingPx) ? Math.max(0, innerPaddingPx) : 0;
+  const effectiveHalfWidthPx = resolveHiddenBandEffectiveHalfWidthForYRange(
+    hiddenBand,
+    centerY - safeRadius,
+    centerY + safeRadius,
+  );
+  if (!Number.isFinite(effectiveHalfWidthPx)) {
+    return false;
+  }
+  const innerHalfWidthPx = effectiveHalfWidthPx - safePadding;
+  if (!(innerHalfWidthPx > 0)) {
+    return false;
+  }
+  const leftX = hiddenBand.centerX - innerHalfWidthPx;
+  const rightX = hiddenBand.centerX + innerHalfWidthPx;
+  return (
+    (centerX - safeRadius) >= leftX
+    && (centerX + safeRadius) <= rightX
+  );
 }
 
 function drawOverlayCenterBand(targetCtx, hiddenBand, overlayWrapConfig) {
@@ -10980,10 +11073,13 @@ function drawBranchLeaves(branch, leavesConfig, renderOptions = {}) {
   const hiddenBand = renderOptions.hiddenBand && typeof renderOptions.hiddenBand === 'object'
     ? renderOptions.hiddenBand
     : null;
+  const hiddenSpriteCullInnerPaddingPx = Number.isFinite(Number(renderOptions.hiddenSpriteCullInnerPaddingPx))
+    ? Math.max(0, Number(renderOptions.hiddenSpriteCullInnerPaddingPx))
+    : 0;
   const skipFullyHiddenInBand = renderOptions.skipFullyHiddenInBand === true
     && hiddenBand
     && Number.isFinite(hiddenBand.centerX)
-    && resolveHiddenBandEffectiveHalfWidthForYRange(hiddenBand, 0, STATE.viewportHeight) > 0;
+    && resolveHiddenBandEffectiveHalfWidthForYRange(hiddenBand, 0, STATE.viewportHeight) > hiddenSpriteCullInnerPaddingPx;
   const cullingEnabled = isLeafViewportCullingEnabled();
   const coarseBounds = leafCache && leafCache.bounds ? leafCache.bounds : null;
   if (cullingEnabled && coarseBounds) {
@@ -11017,20 +11113,6 @@ function drawBranchLeaves(branch, leavesConfig, renderOptions = {}) {
     const drawX = -drawSize * 0.5;
     const drawY = -drawSize + ((2.2 / leavesConfig.spriteCellHeight) * drawSize);
     const halfAabb = drawSize * 0.9;
-    if (skipFullyHiddenInBand) {
-      if (
-        isAabbFullyInsideHiddenBand(
-          leaf.x - halfAabb,
-          leaf.x + halfAabb,
-          hiddenBand,
-          leaf.y - halfAabb,
-          leaf.y + halfAabb,
-        )
-      ) {
-        skippedHidden += 1;
-        continue;
-      }
-    }
     if (cullingEnabled) {
       if (
         (leaf.x + halfAabb) < 0
@@ -11042,7 +11124,7 @@ function drawBranchLeaves(branch, leavesConfig, renderOptions = {}) {
         continue;
       }
     }
-    const sourceRect = getLeafSpriteSourceRect(leavesConfig, leaf.col, leaf.row);
+    const spriteRadius = Math.hypot(drawSize * 0.5, drawSize * 0.5);
     const swayInfluence = resolveLeafSwayInfluence(leaf, leavesConfig, nowMs);
     const swayOffsetRad = leavesConfig.swayEnabled
       ? (
@@ -11051,9 +11133,31 @@ function drawBranchLeaves(branch, leavesConfig, renderOptions = {}) {
         * swayInfluence
       )
       : 0;
+    const drawRotationRad = leaf.rotationRad + swayOffsetRad;
+    if (skipFullyHiddenInBand) {
+      const centerLocalX = drawX + (drawSize * 0.5);
+      const centerLocalY = drawY + (drawSize * 0.5);
+      const drawCos = Math.cos(drawRotationRad);
+      const drawSin = Math.sin(drawRotationRad);
+      const spriteCenterX = leaf.x + (centerLocalX * drawCos) - (centerLocalY * drawSin);
+      const spriteCenterY = leaf.y + (centerLocalX * drawSin) + (centerLocalY * drawCos);
+      if (
+        isSpriteCircleFullyInsideHiddenBand(
+          spriteCenterX,
+          spriteCenterY,
+          spriteRadius,
+          hiddenBand,
+          hiddenSpriteCullInnerPaddingPx,
+        )
+      ) {
+        skippedHidden += 1;
+        continue;
+      }
+    }
+    const sourceRect = getLeafSpriteSourceRect(leavesConfig, leaf.col, leaf.row);
     targetCtx.save();
     targetCtx.translate(leaf.x, leaf.y);
-    targetCtx.rotate(leaf.rotationRad + swayOffsetRad);
+    targetCtx.rotate(drawRotationRad);
     targetCtx.drawImage(
       STATE.leafImage,
       sourceRect.sx,
@@ -11833,6 +11937,166 @@ function applyFrameJumpHotkeysOptions(nextOptions) {
     nextOptions,
     CONFIG.frameJumpHotkeys,
   );
+}
+
+function sanitizeSwipeSectionTransitionTimingMode(value, fallback = 'matchFrameDelta') {
+  if (value === 'matchFrameDelta' || value === 'fixedDuration' || value === 'instant') {
+    return value;
+  }
+  if (fallback === 'matchFrameDelta' || fallback === 'fixedDuration' || fallback === 'instant') {
+    return fallback;
+  }
+  return 'matchFrameDelta';
+}
+
+function sanitizeSwipeSectionRapidMode(value, fallback = 'ignore') {
+  if (value === 'ignore' || value === 'retarget') {
+    return value;
+  }
+  if (fallback === 'ignore' || fallback === 'retarget') {
+    return fallback;
+  }
+  return 'ignore';
+}
+
+function sanitizeSwipeSectionOverlayTransitionMode(value, fallback = 'fade') {
+  if (value === 'fade' || value === 'none') {
+    return value;
+  }
+  if (fallback === 'fade' || fallback === 'none') {
+    return fallback;
+  }
+  return 'fade';
+}
+
+function resolveSwipeSectionsFallbackOverlayPath() {
+  const centerOverlayConfig = isPlainObjectLiteral(CONFIG.centerOverlayImage)
+    ? CONFIG.centerOverlayImage
+    : {};
+  if (
+    typeof centerOverlayConfig.spritePath === 'string'
+    && centerOverlayConfig.spritePath.trim().length > 0
+  ) {
+    return centerOverlayConfig.spritePath.trim();
+  }
+  return './test_page.png';
+}
+
+function resolveSwipeSectionsConfig(configCandidate = CONFIG.swipeSections) {
+  const safeConfig = isPlainObjectLiteral(configCandidate) ? configCandidate : {};
+  const gateConfig = resolveHeroPlaybackGateConfig(CONFIG.heroPlaybackGate);
+  const fallbackFrame = Number.isFinite(Number(gateConfig.postButtonPauseFrame))
+    ? Math.max(0, Math.floor(Number(gateConfig.postButtonPauseFrame)))
+    : 0;
+  const fallbackOverlayPath = resolveSwipeSectionsFallbackOverlayPath();
+  const sectionsRaw = Array.isArray(safeConfig.sections) ? safeConfig.sections : [];
+  const sections = [];
+  for (let i = 0; i < sectionsRaw.length; i += 1) {
+    const rawEntry = isPlainObjectLiteral(sectionsRaw[i]) ? sectionsRaw[i] : {};
+    const fallbackSectionFrame = sections.length > 0
+      ? sections[sections.length - 1].frame
+      : fallbackFrame;
+    const frameRaw = Number(rawEntry.frame);
+    const frame = Number.isFinite(frameRaw)
+      ? Math.max(0, Math.floor(frameRaw))
+      : fallbackSectionFrame;
+    const id = (
+      typeof rawEntry.id === 'string'
+      && rawEntry.id.trim().length > 0
+    )
+      ? rawEntry.id.trim()
+      : `section-${sections.length + 1}`;
+    const centerOverlayImagePath = (
+      typeof rawEntry.centerOverlayImagePath === 'string'
+      && rawEntry.centerOverlayImagePath.trim().length > 0
+    )
+      ? rawEntry.centerOverlayImagePath.trim()
+      : fallbackOverlayPath;
+    sections.push({
+      id,
+      frame,
+      centerOverlayImagePath,
+    });
+  }
+  if (sections.length <= 0) {
+    sections.push({
+      id: 'section-1',
+      frame: fallbackFrame,
+      centerOverlayImagePath: fallbackOverlayPath,
+    });
+  }
+
+  const inputConfig = isPlainObjectLiteral(safeConfig.input) ? safeConfig.input : {};
+  const transitionConfig = isPlainObjectLiteral(safeConfig.transition) ? safeConfig.transition : {};
+  const overlayTransitionConfig = isPlainObjectLiteral(safeConfig.overlayTransition)
+    ? safeConfig.overlayTransition
+    : {};
+  const initialSectionIndexRaw = Number(safeConfig.initialSectionIndex);
+  const initialSectionIndex = Number.isFinite(initialSectionIndexRaw)
+    ? clamp(Math.floor(initialSectionIndexRaw), 0, sections.length - 1)
+    : 0;
+
+  return {
+    enabled: safeConfig.enabled === true,
+    initialSectionIndex,
+    sections,
+    input: {
+      wheelEnabled: inputConfig.wheelEnabled !== false,
+      touchEnabled: inputConfig.touchEnabled !== false,
+      wheelDeltaThresholdPx: Number.isFinite(Number(inputConfig.wheelDeltaThresholdPx))
+        ? Math.max(1, Number(inputConfig.wheelDeltaThresholdPx))
+        : 95,
+      wheelCooldownMs: Number.isFinite(Number(inputConfig.wheelCooldownMs))
+        ? Math.max(0, Number(inputConfig.wheelCooldownMs))
+        : 340,
+      touchSwipeThresholdPx: Number.isFinite(Number(inputConfig.touchSwipeThresholdPx))
+        ? Math.max(1, Number(inputConfig.touchSwipeThresholdPx))
+        : 42,
+      touchAxisLockRatio: Number.isFinite(Number(inputConfig.touchAxisLockRatio))
+        ? Math.max(0.01, Number(inputConfig.touchAxisLockRatio))
+        : 1.2,
+      touchPreventDefault: inputConfig.touchPreventDefault !== false,
+      touchRequireOverlayWrapBandStart: inputConfig.touchRequireOverlayWrapBandStart !== false,
+      touchFallbackToFullscreenWhenOverlayWrapDisabled: (
+        inputConfig.touchFallbackToFullscreenWhenOverlayWrapDisabled !== false
+      ),
+    },
+    transition: {
+      timingMode: sanitizeSwipeSectionTransitionTimingMode(
+        transitionConfig.timingMode,
+        'matchFrameDelta',
+      ),
+      speedMultiplier: Number.isFinite(Number(transitionConfig.speedMultiplier))
+        ? Math.max(0.01, Number(transitionConfig.speedMultiplier))
+        : 1.15,
+      fixedDurationMs: Number.isFinite(Number(transitionConfig.fixedDurationMs))
+        ? Math.max(0, Number(transitionConfig.fixedDurationMs))
+        : 520,
+      minDurationMs: Number.isFinite(Number(transitionConfig.minDurationMs))
+        ? Math.max(0, Number(transitionConfig.minDurationMs))
+        : 220,
+      maxDurationMs: Number.isFinite(Number(transitionConfig.maxDurationMs))
+        ? Math.max(0, Number(transitionConfig.maxDurationMs))
+        : 900,
+      rapidSwipeMode: sanitizeSwipeSectionRapidMode(transitionConfig.rapidSwipeMode, 'ignore'),
+    },
+    overlayTransition: {
+      mode: sanitizeSwipeSectionOverlayTransitionMode(overlayTransitionConfig.mode, 'fade'),
+      fadeOutDurationMs: Number.isFinite(Number(overlayTransitionConfig.fadeOutDurationMs))
+        ? Math.max(0, Number(overlayTransitionConfig.fadeOutDurationMs))
+        : 170,
+      fadeInDurationMs: Number.isFinite(Number(overlayTransitionConfig.fadeInDurationMs))
+        ? Math.max(0, Number(overlayTransitionConfig.fadeInDurationMs))
+        : 230,
+      swapNearTargetProgress: clamp(
+        Number.isFinite(Number(overlayTransitionConfig.swapNearTargetProgress))
+          ? Number(overlayTransitionConfig.swapNearTargetProgress)
+          : 0.85,
+        0,
+        1,
+      ),
+    },
+  };
 }
 
 function isEditableEventTarget(target) {
@@ -13579,6 +13843,9 @@ function renderBranch(branch, renderOptions = {}) {
     ? renderOptions.hiddenBand
     : null;
   const skipFullyHiddenInBand = renderOptions.skipFullyHiddenInBand === true;
+  const hiddenSpriteCullInnerPaddingPx = Number.isFinite(Number(renderOptions.hiddenSpriteCullInnerPaddingPx))
+    ? Math.max(0, Number(renderOptions.hiddenSpriteCullInnerPaddingPx))
+    : 0;
   const branchTextures = renderOptions.branchTextures || getBranchStemTextures(branch, CONFIG.brush);
   if (!branchTextures || !branchTextures.defaultImage) {
     return { backSkippedStems: 0, backSkippedLeaves: 0 };
@@ -13611,6 +13878,7 @@ function renderBranch(branch, renderOptions = {}) {
     nowMs,
     hiddenBand,
     skipFullyHiddenInBand,
+    hiddenSpriteCullInnerPaddingPx,
   });
   if (perfStats) {
     if (leafStartMs > 0) {
@@ -13665,6 +13933,9 @@ function drawOverlayBranchRangeWithStemCache(options = {}) {
   const perfStats = options.perfStats || null;
   const hiddenBand = options.hiddenBand && typeof options.hiddenBand === 'object' ? options.hiddenBand : null;
   const skipFullyHiddenInBand = options.skipFullyHiddenInBand === true;
+  const hiddenSpriteCullInnerPaddingPx = Number.isFinite(Number(options.hiddenSpriteCullInnerPaddingPx))
+    ? Math.max(0, Number(options.hiddenSpriteCullInnerPaddingPx))
+    : 0;
   if (!branch || !branch.pathData || !branchTextures || !branchTextures.defaultImage || !targetCtx) {
     return;
   }
@@ -13759,6 +14030,7 @@ function drawOverlayBranchRangeWithStemCache(options = {}) {
     nowMs,
     hiddenBand,
     skipFullyHiddenInBand,
+    hiddenSpriteCullInnerPaddingPx,
   });
   if (perfStats) {
     if (leafStartMs > 0) {
@@ -14003,6 +14275,7 @@ function renderScene(options = {}) {
           perfStats,
           hiddenBand,
           skipFullyHiddenInBand: overlayWrapConfig.skipHiddenBackDrawEnabled === true,
+          hiddenSpriteCullInnerPaddingPx: overlayWrapConfig.spriteHiddenCullInnerPaddingPx,
         });
         drawOverlayBranchRangeWithStemCache({
           branch,
@@ -14031,6 +14304,7 @@ function renderScene(options = {}) {
           perfStats,
           hiddenBand,
           skipFullyHiddenInBand: overlayWrapConfig.skipHiddenBackDrawEnabled === true,
+          hiddenSpriteCullInnerPaddingPx: overlayWrapConfig.spriteHiddenCullInnerPaddingPx,
         });
         if (frontCtx) {
           renderBranch(branch, {
@@ -14191,6 +14465,7 @@ function renderScene(options = {}) {
           branchFilter: backBranchFilter,
           hiddenBand,
           skipHiddenBackDrawEnabled: overlayWrapConfig.skipHiddenBackDrawEnabled === true,
+          hiddenSpriteCullInnerPaddingPx: overlayWrapConfig.spriteHiddenCullInnerPaddingPx,
         },
         false,
       );
@@ -14290,6 +14565,715 @@ function renderScene(options = {}) {
 // =========================
 // 15) Events
 // =========================
+function syncSwipeSectionDomState(section, sectionIndex) {
+  if (!document || !document.body || !section) {
+    return;
+  }
+  const safeIndex = Number.isFinite(sectionIndex) ? Math.max(0, Math.floor(sectionIndex)) : 0;
+  document.body.dataset.swipeSectionIndex = String(safeIndex);
+  document.body.dataset.swipeSectionNumber = String(safeIndex + 1);
+  document.body.dataset.swipeSectionId = section.id || '';
+}
+
+function dispatchSwipeSectionChangeEvent(detail = {}) {
+  if (!window || typeof window.dispatchEvent !== 'function' || typeof CustomEvent !== 'function') {
+    return;
+  }
+  const payload = isPlainObjectLiteral(detail) ? detail : {};
+  window.dispatchEvent(new CustomEvent(SWIPE_SECTIONS_EVENT_CHANGE, { detail: payload }));
+}
+
+function setSwipeSectionOverlayPathOverride(path, options = {}) {
+  const swipeState = STATE.swipeSections;
+  if (!swipeState) {
+    return;
+  }
+  const safeOptions = isPlainObjectLiteral(options) ? options : {};
+  const forceLoad = safeOptions.forceLoad === true;
+  const nextPath = (
+    typeof path === 'string' && path.trim().length > 0
+  )
+    ? path.trim()
+    : '';
+  if (!forceLoad && swipeState.centerOverlayImagePathOverride === nextPath) {
+    return;
+  }
+  swipeState.centerOverlayImagePathOverride = nextPath;
+  requestCenterOverlayImageLoad({ force: true }).catch(() => {});
+}
+
+function clearSwipeSectionsTouchTracking() {
+  const swipeState = STATE.swipeSections;
+  if (!swipeState || !swipeState.touchTracking) {
+    return;
+  }
+  swipeState.touchTracking.active = false;
+  swipeState.touchTracking.touchIdentifier = null;
+  swipeState.touchTracking.startClientX = 0;
+  swipeState.touchTracking.startClientY = 0;
+  swipeState.touchTracking.startSceneX = 0;
+  swipeState.touchTracking.startSceneY = 0;
+}
+
+function cancelSwipeSectionTransition() {
+  const swipeState = STATE.swipeSections;
+  if (!swipeState) {
+    return;
+  }
+  if (Number.isFinite(swipeState.transitionRafId) && swipeState.transitionRafId !== null) {
+    cancelAnimationFrame(swipeState.transitionRafId);
+  }
+  swipeState.transitionRafId = null;
+  swipeState.isTransitioning = false;
+  swipeState.transitionFromFrame = 0;
+  swipeState.transitionToFrame = 0;
+  swipeState.transitionStartMs = 0;
+  swipeState.transitionDurationMs = 0;
+  swipeState.transitionFromSectionIndex = -1;
+  swipeState.transitionToSectionIndex = -1;
+  swipeState.transitionDirection = 0;
+  swipeState.overlayOpacityMultiplier = 1;
+  swipeState.overlayTransitionHasSwappedPath = false;
+}
+
+function findClosestSwipeSectionIndexToFrame(frame, swipeConfig = resolveSwipeSectionsConfig()) {
+  const sections = swipeConfig && Array.isArray(swipeConfig.sections) ? swipeConfig.sections : [];
+  if (sections.length <= 0) {
+    return 0;
+  }
+  const targetFrame = Number.isFinite(Number(frame))
+    ? Math.max(0, Number(frame))
+    : Number(sections[0].frame) || 0;
+  let closestIndex = 0;
+  let closestDistance = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < sections.length; i += 1) {
+    const sectionFrame = Number.isFinite(Number(sections[i].frame))
+      ? Math.max(0, Number(sections[i].frame))
+      : 0;
+    const distance = Math.abs(sectionFrame - targetFrame);
+    if (distance < closestDistance) {
+      closestDistance = distance;
+      closestIndex = i;
+    }
+  }
+  return closestIndex;
+}
+
+function resolveSwipeSectionIndexFromInput(indexOrId, swipeConfig = resolveSwipeSectionsConfig()) {
+  const sections = swipeConfig && Array.isArray(swipeConfig.sections) ? swipeConfig.sections : [];
+  if (sections.length <= 0) {
+    return -1;
+  }
+  if (typeof indexOrId === 'string') {
+    const normalizedId = indexOrId.trim();
+    if (normalizedId.length <= 0) {
+      return -1;
+    }
+    return sections.findIndex((section) => section.id === normalizedId);
+  }
+  if (!Number.isFinite(Number(indexOrId))) {
+    return -1;
+  }
+  const index = Math.floor(Number(indexOrId));
+  if (index < 0 || index >= sections.length) {
+    return -1;
+  }
+  return index;
+}
+
+function goToSwipeSection(indexOrId, options = {}) {
+  const safeOptions = isPlainObjectLiteral(options) ? options : {};
+  const force = safeOptions.force === true;
+  const swipeConfig = syncSwipeSectionsStateWithConfig();
+  const sections = swipeConfig && Array.isArray(swipeConfig.sections) ? swipeConfig.sections : [];
+  if (sections.length <= 0) {
+    return false;
+  }
+  const targetIndex = resolveSwipeSectionIndexFromInput(indexOrId, swipeConfig);
+  if (targetIndex < 0) {
+    return false;
+  }
+  if (!force && !isSwipeSectionsNavigationActive(swipeConfig)) {
+    return false;
+  }
+  const swipeState = STATE.swipeSections;
+  const currentIndex = (
+    swipeState
+    && Number.isFinite(swipeState.activeSectionIndex)
+    && swipeState.activeSectionIndex >= 0
+    && swipeState.activeSectionIndex < sections.length
+  )
+    ? swipeState.activeSectionIndex
+    : findClosestSwipeSectionIndexToFrame(getCurrentHeroVideoFrame(resolveHeroPlaybackGateConfig()), swipeConfig);
+  if (swipeState && swipeState.isTransitioning !== true && currentIndex === targetIndex) {
+    return true;
+  }
+  const direction = targetIndex > currentIndex ? 1 : (targetIndex < currentIndex ? -1 : 0);
+  return startSwipeSectionTransition(
+    targetIndex,
+    direction,
+    typeof safeOptions.reason === 'string' && safeOptions.reason.length > 0 ? safeOptions.reason : 'api',
+    swipeConfig,
+  );
+}
+
+function syncSwipeSectionsStateWithConfig(options = {}) {
+  const safeOptions = isPlainObjectLiteral(options) ? options : {};
+  const swipeState = STATE.swipeSections;
+  const swipeConfig = resolveSwipeSectionsConfig();
+  CONFIG.swipeSections = swipeConfig;
+  if (!swipeState || !Array.isArray(swipeConfig.sections) || swipeConfig.sections.length <= 0) {
+    return swipeConfig;
+  }
+  if (swipeConfig.enabled !== true) {
+    cancelSwipeSectionTransition();
+    if (swipeState.isTransitioning !== true) {
+      setSwipeSectionOverlayPathOverride('');
+      swipeState.overlayOpacityMultiplier = 1;
+      swipeState.overlayTransitionHasSwappedPath = false;
+    }
+    return swipeConfig;
+  }
+  let nextIndex = Number.isFinite(swipeState.activeSectionIndex)
+    ? Math.floor(swipeState.activeSectionIndex)
+    : -1;
+  const hasValidIndex = nextIndex >= 0 && nextIndex < swipeConfig.sections.length;
+  if (!hasValidIndex || safeOptions.forceRecalculate === true) {
+    if (typeof swipeState.activeSectionId === 'string' && swipeState.activeSectionId.length > 0) {
+      const idIndex = swipeConfig.sections.findIndex((section) => section.id === swipeState.activeSectionId);
+      if (idIndex >= 0) {
+        nextIndex = idIndex;
+      }
+    }
+  }
+  if (!(nextIndex >= 0 && nextIndex < swipeConfig.sections.length) || safeOptions.forceToClosestFrame === true) {
+    const currentFrame = getCurrentHeroVideoFrame(resolveHeroPlaybackGateConfig());
+    nextIndex = findClosestSwipeSectionIndexToFrame(currentFrame, swipeConfig);
+  }
+  nextIndex = clamp(nextIndex, 0, swipeConfig.sections.length - 1);
+  const nextSection = swipeConfig.sections[nextIndex];
+  const previousIndex = swipeState.activeSectionIndex;
+  swipeState.activeSectionIndex = nextIndex;
+  swipeState.activeSectionId = nextSection.id;
+  if (swipeState.isTransitioning !== true) {
+    setSwipeSectionOverlayPathOverride(nextSection.centerOverlayImagePath, { forceLoad: safeOptions.forceLoadOverlay });
+    swipeState.overlayOpacityMultiplier = 1;
+    swipeState.overlayTransitionHasSwappedPath = false;
+  }
+  syncSwipeSectionDomState(nextSection, nextIndex);
+  if (safeOptions.emitEvent === true && previousIndex !== nextIndex) {
+    dispatchSwipeSectionChangeEvent({
+      index: nextIndex,
+      sectionNumber: nextIndex + 1,
+      id: nextSection.id,
+      frame: nextSection.frame,
+      direction: 0,
+      reason: safeOptions.reason || 'sync',
+    });
+  }
+  return swipeConfig;
+}
+
+function isSwipeSectionsNavigationActive(swipeConfig = resolveSwipeSectionsConfig()) {
+  if (!swipeConfig || swipeConfig.enabled !== true) {
+    return false;
+  }
+  if (!Array.isArray(swipeConfig.sections) || swipeConfig.sections.length <= 0) {
+    return false;
+  }
+  if (!isLoadingScreenGone()) {
+    return false;
+  }
+  const gateConfig = resolveHeroPlaybackGateConfig();
+  if (!gateConfig || gateConfig.enabled !== true) {
+    return true;
+  }
+  const gateState = STATE.heroPlaybackGate;
+  return Boolean(gateState && gateState.stage === 'postOpenButtonPaused');
+}
+
+function resolveSwipeSectionTransitionDurationMs(
+  fromFrame,
+  toFrame,
+  swipeConfig = resolveSwipeSectionsConfig(),
+  gateConfig = resolveHeroPlaybackGateConfig(),
+) {
+  const transitionConfig = swipeConfig && swipeConfig.transition ? swipeConfig.transition : {};
+  const timingMode = sanitizeSwipeSectionTransitionTimingMode(transitionConfig.timingMode, 'matchFrameDelta');
+  if (timingMode === 'instant') {
+    return 0;
+  }
+  const minDurationMs = Number.isFinite(Number(transitionConfig.minDurationMs))
+    ? Math.max(0, Number(transitionConfig.minDurationMs))
+    : 0;
+  const maxDurationMs = Number.isFinite(Number(transitionConfig.maxDurationMs))
+    ? Math.max(0, Number(transitionConfig.maxDurationMs))
+    : Number.POSITIVE_INFINITY;
+  const durationClampMin = Math.min(minDurationMs, maxDurationMs);
+  const durationClampMax = Math.max(minDurationMs, maxDurationMs);
+  if (timingMode === 'fixedDuration') {
+    const fixedDurationMs = Number.isFinite(Number(transitionConfig.fixedDurationMs))
+      ? Math.max(0, Number(transitionConfig.fixedDurationMs))
+      : 0;
+    return clamp(fixedDurationMs, durationClampMin, durationClampMax);
+  }
+  const safeFromFrame = Number.isFinite(Number(fromFrame)) ? Math.max(0, Number(fromFrame)) : 0;
+  const safeToFrame = Number.isFinite(Number(toFrame)) ? Math.max(0, Number(toFrame)) : safeFromFrame;
+  const frameDistance = Math.abs(safeToFrame - safeFromFrame);
+  if (frameDistance <= 1e-6) {
+    return 0;
+  }
+  const frameRate = gateConfig && Number.isFinite(Number(gateConfig.frameRate))
+    ? Math.max(1, Number(gateConfig.frameRate))
+    : 30;
+  const speedMultiplier = Number.isFinite(Number(transitionConfig.speedMultiplier))
+    ? Math.max(0.01, Number(transitionConfig.speedMultiplier))
+    : 1;
+  const baseDurationMs = (frameDistance / frameRate) * 1000;
+  const adjustedDurationMs = baseDurationMs / speedMultiplier;
+  return clamp(adjustedDurationMs, durationClampMin, durationClampMax);
+}
+
+function prepareSwipeSectionOverlayTransitionForTargetSection(targetSection, durationMs, swipeConfig) {
+  const swipeState = STATE.swipeSections;
+  if (!swipeState) {
+    return;
+  }
+  const overlayTransitionConfig = (
+    swipeConfig
+    && swipeConfig.overlayTransition
+    && typeof swipeConfig.overlayTransition === 'object'
+  )
+    ? swipeConfig.overlayTransition
+    : {};
+  const mode = sanitizeSwipeSectionOverlayTransitionMode(overlayTransitionConfig.mode, 'fade');
+  const durationSafeMs = Math.max(1, Number.isFinite(durationMs) ? durationMs : 1);
+  const swapProgress = clamp(
+    Number.isFinite(Number(overlayTransitionConfig.swapNearTargetProgress))
+      ? Number(overlayTransitionConfig.swapNearTargetProgress)
+      : 0.85,
+    0,
+    1,
+  );
+  const fadeOutDurationMs = Number.isFinite(Number(overlayTransitionConfig.fadeOutDurationMs))
+    ? Math.max(0, Number(overlayTransitionConfig.fadeOutDurationMs))
+    : 170;
+  const fadeInDurationMs = Number.isFinite(Number(overlayTransitionConfig.fadeInDurationMs))
+    ? Math.max(0, Number(overlayTransitionConfig.fadeInDurationMs))
+    : 230;
+  const fadeOutRatio = clamp(fadeOutDurationMs / durationSafeMs, 0, 1);
+  const fadeInRatio = clamp(fadeInDurationMs / durationSafeMs, 0, 1);
+  const fadeInStartProgress = clamp(Math.max(swapProgress, 1 - fadeInRatio), 0, 1);
+  swipeState.overlayTransitionMode = mode;
+  swipeState.overlayTransitionSwapProgress = swapProgress;
+  swipeState.overlayTransitionFadeOutRatio = fadeOutRatio;
+  swipeState.overlayTransitionFadeInStartProgress = fadeInStartProgress;
+  swipeState.overlayTransitionHasSwappedPath = false;
+  swipeState.overlayOpacityMultiplier = 1;
+  if (mode === 'none' && targetSection) {
+    setSwipeSectionOverlayPathOverride(targetSection.centerOverlayImagePath, { forceLoad: true });
+    swipeState.overlayTransitionHasSwappedPath = true;
+  }
+}
+
+function updateSwipeSectionOverlayTransitionProgress(progress, targetSection) {
+  const swipeState = STATE.swipeSections;
+  if (!swipeState || !targetSection) {
+    return;
+  }
+  const clampedProgress = clamp(Number.isFinite(progress) ? progress : 0, 0, 1);
+  const mode = sanitizeSwipeSectionOverlayTransitionMode(swipeState.overlayTransitionMode, 'fade');
+  if (
+    swipeState.overlayTransitionHasSwappedPath !== true
+    && clampedProgress >= swipeState.overlayTransitionSwapProgress
+  ) {
+    setSwipeSectionOverlayPathOverride(targetSection.centerOverlayImagePath, { forceLoad: true });
+    swipeState.overlayTransitionHasSwappedPath = true;
+  }
+  if (mode === 'none') {
+    swipeState.overlayOpacityMultiplier = 1;
+    return;
+  }
+  const fadeOutRatio = clamp(Number(swipeState.overlayTransitionFadeOutRatio), 0, 1);
+  const fadeInStartProgress = clamp(Number(swipeState.overlayTransitionFadeInStartProgress), 0, 1);
+  let opacity = 1;
+  if (fadeOutRatio > 1e-6 && clampedProgress <= fadeOutRatio) {
+    opacity = 1 - (clampedProgress / fadeOutRatio);
+  } else if (clampedProgress < fadeInStartProgress) {
+    opacity = 0;
+  } else if (fadeInStartProgress >= 1 - 1e-6) {
+    opacity = 1;
+  } else {
+    const fadeInProgress = (clampedProgress - fadeInStartProgress) / (1 - fadeInStartProgress);
+    opacity = clamp(fadeInProgress, 0, 1);
+  }
+  swipeState.overlayOpacityMultiplier = clamp(opacity, 0, 1);
+}
+
+function finalizeSwipeSectionTransition(targetIndex, direction, reason, swipeConfig = resolveSwipeSectionsConfig()) {
+  const swipeState = STATE.swipeSections;
+  if (!swipeState || !Array.isArray(swipeConfig.sections) || swipeConfig.sections.length <= 0) {
+    return;
+  }
+  const safeTargetIndex = clamp(
+    Number.isFinite(targetIndex) ? Math.floor(targetIndex) : 0,
+    0,
+    swipeConfig.sections.length - 1,
+  );
+  const targetSection = swipeConfig.sections[safeTargetIndex];
+  const previousIndex = swipeState.activeSectionIndex;
+  const gateConfig = resolveHeroPlaybackGateConfig();
+  lockHeroVideoToFrame(targetSection.frame, gateConfig);
+  cancelSwipeSectionTransition();
+  swipeState.activeSectionIndex = safeTargetIndex;
+  swipeState.activeSectionId = targetSection.id;
+  setSwipeSectionOverlayPathOverride(targetSection.centerOverlayImagePath, { forceLoad: true });
+  syncSwipeSectionDomState(targetSection, safeTargetIndex);
+  if (previousIndex !== safeTargetIndex) {
+    dispatchSwipeSectionChangeEvent({
+      index: safeTargetIndex,
+      sectionNumber: safeTargetIndex + 1,
+      id: targetSection.id,
+      frame: targetSection.frame,
+      direction: direction > 0 ? 1 : (direction < 0 ? -1 : 0),
+      reason: typeof reason === 'string' && reason.length > 0 ? reason : 'swipe',
+    });
+  }
+  renderScene({ skipAutoStart: true });
+}
+
+function startSwipeSectionTransition(targetIndex, direction, reason, swipeConfig = resolveSwipeSectionsConfig()) {
+  const swipeState = STATE.swipeSections;
+  if (!swipeState || !Array.isArray(swipeConfig.sections) || swipeConfig.sections.length <= 0) {
+    return false;
+  }
+  const safeTargetIndex = clamp(
+    Number.isFinite(targetIndex) ? Math.floor(targetIndex) : 0,
+    0,
+    swipeConfig.sections.length - 1,
+  );
+  const targetSection = swipeConfig.sections[safeTargetIndex];
+  if (!targetSection) {
+    return false;
+  }
+  const gateConfig = resolveHeroPlaybackGateConfig();
+  const fromFrame = getCurrentHeroVideoFrame(gateConfig);
+  const toFrame = Number.isFinite(Number(targetSection.frame))
+    ? Math.max(0, Number(targetSection.frame))
+    : fromFrame;
+  const durationMs = resolveSwipeSectionTransitionDurationMs(fromFrame, toFrame, swipeConfig, gateConfig);
+  const currentIndex = (
+    Number.isFinite(swipeState.activeSectionIndex)
+    && swipeState.activeSectionIndex >= 0
+    && swipeState.activeSectionIndex < swipeConfig.sections.length
+  )
+    ? swipeState.activeSectionIndex
+    : findClosestSwipeSectionIndexToFrame(fromFrame, swipeConfig);
+
+  if (Number.isFinite(swipeState.transitionRafId) && swipeState.transitionRafId !== null) {
+    cancelAnimationFrame(swipeState.transitionRafId);
+    swipeState.transitionRafId = null;
+  }
+  try {
+    video.pause();
+  } catch (_error) {
+    // Keep transition logic resilient if pause throws.
+  }
+  swipeState.isTransitioning = true;
+  swipeState.transitionFromFrame = fromFrame;
+  swipeState.transitionToFrame = toFrame;
+  swipeState.transitionStartMs = performance.now();
+  swipeState.transitionDurationMs = durationMs;
+  swipeState.transitionFromSectionIndex = currentIndex;
+  swipeState.transitionToSectionIndex = safeTargetIndex;
+  swipeState.transitionDirection = direction > 0 ? 1 : (direction < 0 ? -1 : 0);
+  prepareSwipeSectionOverlayTransitionForTargetSection(targetSection, durationMs, swipeConfig);
+
+  if (!(durationMs > 1e-6) || Math.abs(toFrame - fromFrame) <= 0.2) {
+    finalizeSwipeSectionTransition(safeTargetIndex, direction, reason, swipeConfig);
+    return true;
+  }
+
+  const step = (nowMs) => {
+    if (!swipeState.isTransitioning) {
+      return;
+    }
+    const elapsedMs = Math.max(0, nowMs - swipeState.transitionStartMs);
+    const progress = clamp(elapsedMs / swipeState.transitionDurationMs, 0, 1);
+    const frame = swipeState.transitionFromFrame
+      + ((swipeState.transitionToFrame - swipeState.transitionFromFrame) * progress);
+    lockHeroVideoToFrame(frame, gateConfig);
+    updateSwipeSectionOverlayTransitionProgress(progress, targetSection);
+    renderScene({ skipAutoStart: true });
+    if (progress >= 1 - 1e-6) {
+      swipeState.transitionRafId = null;
+      finalizeSwipeSectionTransition(safeTargetIndex, direction, reason, swipeConfig);
+      return;
+    }
+    swipeState.transitionRafId = requestAnimationFrame(step);
+  };
+
+  swipeState.transitionRafId = requestAnimationFrame(step);
+  return true;
+}
+
+function tryNavigateSwipeSectionDirection(direction, reason, event = null) {
+  const swipeConfig = syncSwipeSectionsStateWithConfig();
+  if (!isSwipeSectionsNavigationActive(swipeConfig)) {
+    return false;
+  }
+  const normalizedDirection = direction > 0 ? 1 : (direction < 0 ? -1 : 0);
+  if (normalizedDirection === 0) {
+    return false;
+  }
+  if (event && isEditableEventTarget(event.target)) {
+    return false;
+  }
+  const swipeState = STATE.swipeSections;
+  const sections = swipeConfig.sections;
+  if (!swipeState || !Array.isArray(sections) || sections.length <= 0) {
+    return false;
+  }
+  let currentIndex = (
+    Number.isFinite(swipeState.activeSectionIndex)
+    && swipeState.activeSectionIndex >= 0
+    && swipeState.activeSectionIndex < sections.length
+  )
+    ? swipeState.activeSectionIndex
+    : findClosestSwipeSectionIndexToFrame(getCurrentHeroVideoFrame(resolveHeroPlaybackGateConfig()), swipeConfig);
+  currentIndex = clamp(currentIndex, 0, sections.length - 1);
+  if (swipeState.isTransitioning === true) {
+    const rapidMode = sanitizeSwipeSectionRapidMode(
+      swipeConfig.transition && swipeConfig.transition.rapidSwipeMode,
+      'ignore',
+    );
+    if (rapidMode !== 'retarget') {
+      return false;
+    }
+    const baseIndex = (
+      Number.isFinite(swipeState.transitionToSectionIndex)
+      && swipeState.transitionToSectionIndex >= 0
+      && swipeState.transitionToSectionIndex < sections.length
+    )
+      ? swipeState.transitionToSectionIndex
+      : currentIndex;
+    const retargetIndex = clamp(baseIndex + normalizedDirection, 0, sections.length - 1);
+    if (retargetIndex === baseIndex) {
+      return false;
+    }
+    return startSwipeSectionTransition(retargetIndex, normalizedDirection, reason, swipeConfig);
+  }
+  const targetIndex = clamp(currentIndex + normalizedDirection, 0, sections.length - 1);
+  if (targetIndex === currentIndex) {
+    return false;
+  }
+  return startSwipeSectionTransition(targetIndex, normalizedDirection, reason, swipeConfig);
+}
+
+function getCanvasPointerPositionFromClientPoint(clientX, clientY) {
+  if (!canvas || !Number.isFinite(clientX) || !Number.isFinite(clientY)) {
+    return null;
+  }
+  const rect = canvas.getBoundingClientRect();
+  if (!rect || rect.width <= 0 || rect.height <= 0) {
+    return null;
+  }
+  const scaleX = STATE.viewportWidth > 0 ? (STATE.viewportWidth / rect.width) : 1;
+  const scaleY = STATE.viewportHeight > 0 ? (STATE.viewportHeight / rect.height) : 1;
+  return {
+    x: (clientX - rect.left) * scaleX,
+    y: (clientY - rect.top) * scaleY,
+  };
+}
+
+function isScenePointInsideOverlayWrapBand(sceneX, sceneY, overlayWrapConfig = resolveOverlayWrapConfig()) {
+  if (!Number.isFinite(sceneX) || !Number.isFinite(sceneY)) {
+    return false;
+  }
+  if (!overlayWrapConfig || overlayWrapConfig.enabled !== true) {
+    return false;
+  }
+  const hiddenBand = getOverlayHiddenBand(overlayWrapConfig);
+  const bandBounds = resolveOverlayHiddenBandBoundsAtY(hiddenBand, sceneY);
+  if (!bandBounds) {
+    return false;
+  }
+  return sceneX >= bandBounds.leftX && sceneX <= bandBounds.rightX;
+}
+
+function shouldAcceptTouchSwipeStart(clientX, clientY, swipeConfig = resolveSwipeSectionsConfig()) {
+  if (
+    !swipeConfig
+    || !swipeConfig.input
+    || swipeConfig.input.touchRequireOverlayWrapBandStart !== true
+  ) {
+    return true;
+  }
+  const overlayWrapConfig = resolveOverlayWrapConfig();
+  if (!overlayWrapConfig || overlayWrapConfig.enabled !== true) {
+    return swipeConfig.input.touchFallbackToFullscreenWhenOverlayWrapDisabled === true;
+  }
+  const scenePos = getCanvasPointerPositionFromClientPoint(clientX, clientY);
+  if (!scenePos) {
+    return false;
+  }
+  return isScenePointInsideOverlayWrapBand(scenePos.x, scenePos.y, overlayWrapConfig);
+}
+
+function findTouchByIdentifier(touchList, identifier) {
+  if (!touchList || touchList.length <= 0) {
+    return null;
+  }
+  if (!Number.isFinite(identifier)) {
+    return touchList[0];
+  }
+  for (let i = 0; i < touchList.length; i += 1) {
+    const touch = touchList[i];
+    if (touch && Number.isFinite(touch.identifier) && touch.identifier === identifier) {
+      return touch;
+    }
+  }
+  return null;
+}
+
+function onSwipeSectionsWheel(event) {
+  const swipeConfig = syncSwipeSectionsStateWithConfig();
+  if (!swipeConfig || !swipeConfig.input || swipeConfig.input.wheelEnabled !== true) {
+    return;
+  }
+  if (!isSwipeSectionsNavigationActive(swipeConfig)) {
+    return;
+  }
+  if (isEditableEventTarget(event && event.target)) {
+    return;
+  }
+  const swipeState = STATE.swipeSections;
+  if (!swipeState) {
+    return;
+  }
+  const deltaY = Number.isFinite(Number(event.deltaY)) ? Number(event.deltaY) : 0;
+  if (Math.abs(deltaY) <= 1e-6) {
+    return;
+  }
+  swipeState.wheelAccumulatedDeltaY += deltaY;
+  const threshold = Math.max(1, Number(swipeConfig.input.wheelDeltaThresholdPx) || 95);
+  if (Math.abs(swipeState.wheelAccumulatedDeltaY) < threshold) {
+    if (event && event.cancelable === true) {
+      event.preventDefault();
+    }
+    return;
+  }
+  const nowMs = performance.now();
+  const cooldownMs = Math.max(0, Number(swipeConfig.input.wheelCooldownMs) || 0);
+  if (nowMs - swipeState.wheelLastTriggerMs < cooldownMs) {
+    swipeState.wheelAccumulatedDeltaY = 0;
+    if (event && event.cancelable === true) {
+      event.preventDefault();
+    }
+    return;
+  }
+  const direction = swipeState.wheelAccumulatedDeltaY > 0 ? 1 : -1;
+  swipeState.wheelAccumulatedDeltaY = 0;
+  const triggered = tryNavigateSwipeSectionDirection(direction, 'wheel', event);
+  if (triggered) {
+    swipeState.wheelLastTriggerMs = nowMs;
+  }
+  if (event && event.cancelable === true) {
+    event.preventDefault();
+  }
+}
+
+function onSwipeSectionsTouchStart(event) {
+  const swipeConfig = syncSwipeSectionsStateWithConfig();
+  if (
+    !swipeConfig
+    || !swipeConfig.input
+    || swipeConfig.input.touchEnabled !== true
+    || !isSwipeSectionsNavigationActive(swipeConfig)
+  ) {
+    clearSwipeSectionsTouchTracking();
+    return;
+  }
+  if (isEditableEventTarget(event && event.target)) {
+    clearSwipeSectionsTouchTracking();
+    return;
+  }
+  const changedTouches = event && event.changedTouches ? event.changedTouches : null;
+  if (!changedTouches || changedTouches.length <= 0) {
+    clearSwipeSectionsTouchTracking();
+    return;
+  }
+  const touch = changedTouches[0];
+  if (!touch || !Number.isFinite(touch.clientX) || !Number.isFinite(touch.clientY)) {
+    clearSwipeSectionsTouchTracking();
+    return;
+  }
+  if (!shouldAcceptTouchSwipeStart(touch.clientX, touch.clientY, swipeConfig)) {
+    clearSwipeSectionsTouchTracking();
+    return;
+  }
+  const scenePos = getCanvasPointerPositionFromClientPoint(touch.clientX, touch.clientY);
+  if (!scenePos) {
+    clearSwipeSectionsTouchTracking();
+    return;
+  }
+  const swipeState = STATE.swipeSections;
+  swipeState.touchTracking.active = true;
+  swipeState.touchTracking.touchIdentifier = Number.isFinite(touch.identifier) ? touch.identifier : null;
+  swipeState.touchTracking.startClientX = touch.clientX;
+  swipeState.touchTracking.startClientY = touch.clientY;
+  swipeState.touchTracking.startSceneX = scenePos.x;
+  swipeState.touchTracking.startSceneY = scenePos.y;
+  if (swipeConfig.input.touchPreventDefault === true && event && event.cancelable === true) {
+    event.preventDefault();
+  }
+}
+
+function onSwipeSectionsTouchMove(event) {
+  const swipeState = STATE.swipeSections;
+  if (!swipeState || !swipeState.touchTracking || swipeState.touchTracking.active !== true) {
+    return;
+  }
+  const swipeConfig = resolveSwipeSectionsConfig();
+  if (swipeConfig.input && swipeConfig.input.touchPreventDefault === true && event && event.cancelable === true) {
+    event.preventDefault();
+  }
+}
+
+function onSwipeSectionsTouchEnd(event) {
+  const swipeState = STATE.swipeSections;
+  if (!swipeState || !swipeState.touchTracking || swipeState.touchTracking.active !== true) {
+    clearSwipeSectionsTouchTracking();
+    return;
+  }
+  const changedTouches = event && event.changedTouches ? event.changedTouches : null;
+  const trackedTouch = findTouchByIdentifier(changedTouches, swipeState.touchTracking.touchIdentifier);
+  if (!trackedTouch || !Number.isFinite(trackedTouch.clientX) || !Number.isFinite(trackedTouch.clientY)) {
+    clearSwipeSectionsTouchTracking();
+    return;
+  }
+  const swipeConfig = resolveSwipeSectionsConfig();
+  const dx = trackedTouch.clientX - swipeState.touchTracking.startClientX;
+  const dy = trackedTouch.clientY - swipeState.touchTracking.startClientY;
+  const absDx = Math.abs(dx);
+  const absDy = Math.abs(dy);
+  const threshold = Math.max(1, Number(swipeConfig.input.touchSwipeThresholdPx) || 42);
+  const axisLockRatio = Math.max(0.01, Number(swipeConfig.input.touchAxisLockRatio) || 1.2);
+  let triggered = false;
+  if (absDy >= threshold && absDy > (absDx * axisLockRatio)) {
+    const direction = dy < 0 ? 1 : -1;
+    triggered = tryNavigateSwipeSectionDirection(direction, 'touch', event);
+  }
+  clearSwipeSectionsTouchTracking();
+  if (triggered && swipeConfig.input.touchPreventDefault === true && event && event.cancelable === true) {
+    event.preventDefault();
+  }
+}
+
+function onSwipeSectionsTouchCancel() {
+  clearSwipeSectionsTouchTracking();
+}
+
 function onResize() {
   if (isViewportPinchZoomActive()) {
     viewportPinchZoomWasActive = true;
@@ -14577,6 +15561,11 @@ function setupEventHandlers() {
   window.addEventListener('load', onWindowLoadViewportLayoutStabilization);
   window.addEventListener('pageshow', onWindowPageShowViewportLayoutStabilization);
   window.addEventListener('keydown', onKeydown);
+  window.addEventListener('wheel', onSwipeSectionsWheel, { passive: false });
+  window.addEventListener('touchstart', onSwipeSectionsTouchStart, { passive: false });
+  window.addEventListener('touchmove', onSwipeSectionsTouchMove, { passive: false });
+  window.addEventListener('touchend', onSwipeSectionsTouchEnd, { passive: false });
+  window.addEventListener('touchcancel', onSwipeSectionsTouchCancel, { passive: false });
   window.addEventListener('mousemove', onMouseMove);
   window.addEventListener('mouseout', onMouseOut);
   window.addEventListener('click', onMouseClick);
@@ -14807,13 +15796,54 @@ function applyCenterOverlayImageOptions(nextOptions) {
   if (!isPlainObjectLiteral(nextOptions)) {
     return;
   }
-  const currentConfig = resolveCenterOverlayImageConfig();
+  const currentConfig = isPlainObjectLiteral(CONFIG.centerOverlayImage)
+    ? CONFIG.centerOverlayImage
+    : resolveCenterOverlayImageConfig();
   const mergedConfig = {
     ...currentConfig,
     ...nextOptions,
   };
   CONFIG.centerOverlayImage = resolveCenterOverlayImageConfig(mergedConfig);
   requestCenterOverlayImageLoad({ force: true }).catch(() => {});
+  renderScene({ skipAutoStart: true });
+}
+
+function applySwipeSectionsOptions(nextOptions) {
+  if (!isPlainObjectLiteral(nextOptions)) {
+    return;
+  }
+  const currentConfig = resolveSwipeSectionsConfig();
+  const nextInputPatch = isPlainObjectLiteral(nextOptions.input) ? nextOptions.input : {};
+  const nextTransitionPatch = isPlainObjectLiteral(nextOptions.transition) ? nextOptions.transition : {};
+  const nextOverlayTransitionPatch = isPlainObjectLiteral(nextOptions.overlayTransition)
+    ? nextOptions.overlayTransition
+    : {};
+  const mergedConfig = {
+    ...currentConfig,
+    ...nextOptions,
+    sections: Array.isArray(nextOptions.sections) ? nextOptions.sections : currentConfig.sections,
+    input: {
+      ...currentConfig.input,
+      ...nextInputPatch,
+    },
+    transition: {
+      ...currentConfig.transition,
+      ...nextTransitionPatch,
+    },
+    overlayTransition: {
+      ...currentConfig.overlayTransition,
+      ...nextOverlayTransitionPatch,
+    },
+  };
+  CONFIG.swipeSections = resolveSwipeSectionsConfig(mergedConfig);
+  cancelSwipeSectionTransition();
+  syncSwipeSectionsStateWithConfig({
+    forceRecalculate: true,
+    forceToClosestFrame: true,
+    forceLoadOverlay: true,
+    emitEvent: false,
+    reason: 'config',
+  });
   renderScene({ skipAutoStart: true });
 }
 
@@ -15806,6 +16836,39 @@ function exposeDevToolsApi() {
       applyCenterOverlayImageOptions(nextOptions);
     },
 
+    setSwipeSectionsOptions(nextOptions) {
+      applySwipeSectionsOptions(nextOptions);
+    },
+
+    getSwipeSectionState() {
+      const swipeConfig = resolveSwipeSectionsConfig();
+      const swipeState = STATE.swipeSections;
+      const sections = Array.isArray(swipeConfig.sections) ? swipeConfig.sections : [];
+      const activeIndex = (
+        swipeState
+        && Number.isFinite(swipeState.activeSectionIndex)
+        && swipeState.activeSectionIndex >= 0
+        && swipeState.activeSectionIndex < sections.length
+      )
+        ? swipeState.activeSectionIndex
+        : -1;
+      const activeSection = activeIndex >= 0 ? sections[activeIndex] : null;
+      return {
+        enabled: swipeConfig.enabled === true,
+        isActive: isSwipeSectionsNavigationActive(swipeConfig),
+        isTransitioning: Boolean(swipeState && swipeState.isTransitioning === true),
+        activeIndex,
+        activeSectionNumber: activeIndex >= 0 ? activeIndex + 1 : null,
+        activeId: activeSection ? activeSection.id : '',
+        activeFrame: activeSection ? activeSection.frame : null,
+        sectionCount: sections.length,
+      };
+    },
+
+    goToSwipeSection(indexOrId, options = {}) {
+      return goToSwipeSection(indexOrId, options);
+    },
+
     setFrameJumpHotkeysOptions(nextOptions) {
       applyFrameJumpHotkeysOptions(nextOptions);
     },
@@ -15987,6 +17050,13 @@ async function bootstrap() {
   if (CONFIG.performance.enabled) {
     resetPerformanceCounters();
   }
+  syncSwipeSectionsStateWithConfig({
+    forceRecalculate: true,
+    forceToClosestFrame: true,
+    forceLoadOverlay: true,
+    emitEvent: false,
+    reason: 'bootstrap',
+  });
   startHeroPlaybackGateFlow();
   renderScene();
   applyViewportScrollNudgeIfNeeded();
