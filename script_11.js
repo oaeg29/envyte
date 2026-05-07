@@ -4854,6 +4854,18 @@ function resolveOverlayWrapConfig() {
   const spriteHiddenCullInnerPaddingPx = Number.isFinite(Number(safeConfig.spriteHiddenCullInnerPaddingPx))
     ? Math.max(0, Number(safeConfig.spriteHiddenCullInnerPaddingPx))
     : 0;
+  const spriteHiddenCullRadiusScale = Number.isFinite(Number(safeConfig.spriteHiddenCullRadiusScale))
+    ? clamp(Number(safeConfig.spriteHiddenCullRadiusScale), 0.05, 1)
+    : 0.6;
+  const debugHiddenSpriteCullCirclesMode = safeConfig.debugHiddenSpriteCullCirclesMode === 'all'
+    ? 'all'
+    : 'culled';
+  const debugHiddenSpriteCullCirclesMaxPerFrame = Number.isFinite(Number(safeConfig.debugHiddenSpriteCullCirclesMaxPerFrame))
+    ? clamp(Math.floor(Number(safeConfig.debugHiddenSpriteCullCirclesMaxPerFrame)), 1, 10000)
+    : 400;
+  const debugHiddenSpriteCullCircleLineWidth = Number.isFinite(Number(safeConfig.debugHiddenSpriteCullCircleLineWidth))
+    ? clamp(Number(safeConfig.debugHiddenSpriteCullCircleLineWidth), 0.25, 8)
+    : 1;
   return {
     enabled: safeConfig.enabled !== false,
     animationOnly: safeConfig.animationOnly !== false,
@@ -4867,6 +4879,23 @@ function resolveOverlayWrapConfig() {
     centerHalfWidthSwitchYVideoHeightRatio,
     skipHiddenBackDrawEnabled: safeConfig.skipHiddenBackDrawEnabled !== false,
     spriteHiddenCullInnerPaddingPx,
+    spriteHiddenCullRadiusScale,
+    debugHiddenSpriteCullCirclesEnabled: safeConfig.debugHiddenSpriteCullCirclesEnabled === true,
+    debugHiddenSpriteCullCirclesMode,
+    debugHiddenSpriteCullCirclesMaxPerFrame,
+    debugHiddenSpriteCullCircleStrokeVisible: (
+      typeof safeConfig.debugHiddenSpriteCullCircleStrokeVisible === 'string'
+      && safeConfig.debugHiddenSpriteCullCircleStrokeVisible.trim().length > 0
+    )
+      ? safeConfig.debugHiddenSpriteCullCircleStrokeVisible.trim()
+      : 'rgba(90, 220, 120, 0.55)',
+    debugHiddenSpriteCullCircleStrokeCulled: (
+      typeof safeConfig.debugHiddenSpriteCullCircleStrokeCulled === 'string'
+      && safeConfig.debugHiddenSpriteCullCircleStrokeCulled.trim().length > 0
+    )
+      ? safeConfig.debugHiddenSpriteCullCircleStrokeCulled.trim()
+      : 'rgba(255, 80, 80, 0.65)',
+    debugHiddenSpriteCullCircleLineWidth,
     showCenterBandOverlay: safeConfig.showCenterBandOverlay === true,
     centerBandOverlayFill: (typeof safeConfig.centerBandOverlayFill === 'string' && safeConfig.centerBandOverlayFill.length > 0)
       ? safeConfig.centerBandOverlayFill
@@ -5015,6 +5044,50 @@ function isSpriteCircleFullyInsideHiddenBand(centerX, centerY, radius, hiddenBan
     (centerX - safeRadius) >= leftX
     && (centerX + safeRadius) <= rightX
   );
+}
+
+function drawHiddenSpriteCullDebugCircle(
+  targetCtx,
+  centerX,
+  centerY,
+  radius,
+  isHidden,
+  debugOptions = null,
+  debugBudget = null,
+) {
+  if (!targetCtx || !debugOptions || debugOptions.enabled !== true) {
+    return false;
+  }
+  const mode = debugOptions.mode === 'all' ? 'all' : 'culled';
+  if (mode !== 'all' && isHidden !== true) {
+    return false;
+  }
+  const maxPerFrame = Number.isFinite(Number(debugOptions.maxPerFrame))
+    ? Math.max(1, Math.floor(Number(debugOptions.maxPerFrame)))
+    : 400;
+  const budget = debugBudget && typeof debugBudget === 'object' ? debugBudget : null;
+  if (budget) {
+    const drawnCount = Number.isFinite(budget.drawnCount) ? budget.drawnCount : 0;
+    if (drawnCount >= maxPerFrame) {
+      return false;
+    }
+    budget.drawnCount = drawnCount + 1;
+  }
+  const safeRadius = Number.isFinite(radius) ? Math.max(0.5, radius) : 0.5;
+  const strokeStyle = isHidden
+    ? (debugOptions.strokeCulled || 'rgba(255, 80, 80, 0.65)')
+    : (debugOptions.strokeVisible || 'rgba(90, 220, 120, 0.55)');
+  const lineWidth = Number.isFinite(Number(debugOptions.lineWidth))
+    ? Math.max(0.25, Number(debugOptions.lineWidth))
+    : 1;
+  targetCtx.save();
+  targetCtx.strokeStyle = strokeStyle;
+  targetCtx.lineWidth = lineWidth;
+  targetCtx.beginPath();
+  targetCtx.arc(centerX, centerY, safeRadius, 0, Math.PI * 2);
+  targetCtx.stroke();
+  targetCtx.restore();
+  return true;
 }
 
 function drawOverlayCenterBand(targetCtx, hiddenBand, overlayWrapConfig) {
@@ -11076,6 +11149,21 @@ function drawBranchLeaves(branch, leavesConfig, renderOptions = {}) {
   const hiddenSpriteCullInnerPaddingPx = Number.isFinite(Number(renderOptions.hiddenSpriteCullInnerPaddingPx))
     ? Math.max(0, Number(renderOptions.hiddenSpriteCullInnerPaddingPx))
     : 0;
+  const hiddenSpriteCullRadiusScale = Number.isFinite(Number(renderOptions.hiddenSpriteCullRadiusScale))
+    ? clamp(Number(renderOptions.hiddenSpriteCullRadiusScale), 0.05, 1)
+    : 1;
+  const hiddenSpriteCullDebug = (
+    renderOptions.hiddenSpriteCullDebug
+    && typeof renderOptions.hiddenSpriteCullDebug === 'object'
+  )
+    ? renderOptions.hiddenSpriteCullDebug
+    : null;
+  const hiddenSpriteCullDebugBudget = (
+    renderOptions.hiddenSpriteCullDebugBudget
+    && typeof renderOptions.hiddenSpriteCullDebugBudget === 'object'
+  )
+    ? renderOptions.hiddenSpriteCullDebugBudget
+    : null;
   const skipFullyHiddenInBand = renderOptions.skipFullyHiddenInBand === true
     && hiddenBand
     && Number.isFinite(hiddenBand.centerX)
@@ -11124,7 +11212,7 @@ function drawBranchLeaves(branch, leavesConfig, renderOptions = {}) {
         continue;
       }
     }
-    const spriteRadius = Math.hypot(drawSize * 0.5, drawSize * 0.5);
+    const spriteRadius = Math.hypot(drawSize * 0.5, drawSize * 0.5) * hiddenSpriteCullRadiusScale;
     const swayInfluence = resolveLeafSwayInfluence(leaf, leavesConfig, nowMs);
     const swayOffsetRad = leavesConfig.swayEnabled
       ? (
@@ -11134,6 +11222,7 @@ function drawBranchLeaves(branch, leavesConfig, renderOptions = {}) {
       )
       : 0;
     const drawRotationRad = leaf.rotationRad + swayOffsetRad;
+    let hiddenByOverlayBand = false;
     if (skipFullyHiddenInBand) {
       const centerLocalX = drawX + (drawSize * 0.5);
       const centerLocalY = drawY + (drawSize * 0.5);
@@ -11141,15 +11230,23 @@ function drawBranchLeaves(branch, leavesConfig, renderOptions = {}) {
       const drawSin = Math.sin(drawRotationRad);
       const spriteCenterX = leaf.x + (centerLocalX * drawCos) - (centerLocalY * drawSin);
       const spriteCenterY = leaf.y + (centerLocalX * drawSin) + (centerLocalY * drawCos);
-      if (
-        isSpriteCircleFullyInsideHiddenBand(
-          spriteCenterX,
-          spriteCenterY,
-          spriteRadius,
-          hiddenBand,
-          hiddenSpriteCullInnerPaddingPx,
-        )
-      ) {
+      hiddenByOverlayBand = isSpriteCircleFullyInsideHiddenBand(
+        spriteCenterX,
+        spriteCenterY,
+        spriteRadius,
+        hiddenBand,
+        hiddenSpriteCullInnerPaddingPx,
+      );
+      drawHiddenSpriteCullDebugCircle(
+        targetCtx,
+        spriteCenterX,
+        spriteCenterY,
+        spriteRadius,
+        hiddenByOverlayBand,
+        hiddenSpriteCullDebug,
+        hiddenSpriteCullDebugBudget,
+      );
+      if (hiddenByOverlayBand) {
         skippedHidden += 1;
         continue;
       }
@@ -13846,6 +13943,21 @@ function renderBranch(branch, renderOptions = {}) {
   const hiddenSpriteCullInnerPaddingPx = Number.isFinite(Number(renderOptions.hiddenSpriteCullInnerPaddingPx))
     ? Math.max(0, Number(renderOptions.hiddenSpriteCullInnerPaddingPx))
     : 0;
+  const hiddenSpriteCullRadiusScale = Number.isFinite(Number(renderOptions.hiddenSpriteCullRadiusScale))
+    ? clamp(Number(renderOptions.hiddenSpriteCullRadiusScale), 0.05, 1)
+    : 1;
+  const hiddenSpriteCullDebug = (
+    renderOptions.hiddenSpriteCullDebug
+    && typeof renderOptions.hiddenSpriteCullDebug === 'object'
+  )
+    ? renderOptions.hiddenSpriteCullDebug
+    : null;
+  const hiddenSpriteCullDebugBudget = (
+    renderOptions.hiddenSpriteCullDebugBudget
+    && typeof renderOptions.hiddenSpriteCullDebugBudget === 'object'
+  )
+    ? renderOptions.hiddenSpriteCullDebugBudget
+    : null;
   const branchTextures = renderOptions.branchTextures || getBranchStemTextures(branch, CONFIG.brush);
   if (!branchTextures || !branchTextures.defaultImage) {
     return { backSkippedStems: 0, backSkippedLeaves: 0 };
@@ -13879,6 +13991,9 @@ function renderBranch(branch, renderOptions = {}) {
     hiddenBand,
     skipFullyHiddenInBand,
     hiddenSpriteCullInnerPaddingPx,
+    hiddenSpriteCullRadiusScale,
+    hiddenSpriteCullDebug,
+    hiddenSpriteCullDebugBudget,
   });
   if (perfStats) {
     if (leafStartMs > 0) {
@@ -13936,6 +14051,21 @@ function drawOverlayBranchRangeWithStemCache(options = {}) {
   const hiddenSpriteCullInnerPaddingPx = Number.isFinite(Number(options.hiddenSpriteCullInnerPaddingPx))
     ? Math.max(0, Number(options.hiddenSpriteCullInnerPaddingPx))
     : 0;
+  const hiddenSpriteCullRadiusScale = Number.isFinite(Number(options.hiddenSpriteCullRadiusScale))
+    ? clamp(Number(options.hiddenSpriteCullRadiusScale), 0.05, 1)
+    : 1;
+  const hiddenSpriteCullDebug = (
+    options.hiddenSpriteCullDebug
+    && typeof options.hiddenSpriteCullDebug === 'object'
+  )
+    ? options.hiddenSpriteCullDebug
+    : null;
+  const hiddenSpriteCullDebugBudget = (
+    options.hiddenSpriteCullDebugBudget
+    && typeof options.hiddenSpriteCullDebugBudget === 'object'
+  )
+    ? options.hiddenSpriteCullDebugBudget
+    : null;
   if (!branch || !branch.pathData || !branchTextures || !branchTextures.defaultImage || !targetCtx) {
     return;
   }
@@ -14031,6 +14161,9 @@ function drawOverlayBranchRangeWithStemCache(options = {}) {
     hiddenBand,
     skipFullyHiddenInBand,
     hiddenSpriteCullInnerPaddingPx,
+    hiddenSpriteCullRadiusScale,
+    hiddenSpriteCullDebug,
+    hiddenSpriteCullDebugBudget,
   });
   if (perfStats) {
     if (leafStartMs > 0) {
@@ -14088,6 +14221,17 @@ function renderScene(options = {}) {
   const overlayWrapActive = isOverlayWrapActive(overlayWrapConfig, useAnimation)
     && Boolean(frontCanvas && frontCtx);
   const hiddenBand = overlayWrapActive ? getOverlayHiddenBand(overlayWrapConfig) : null;
+  const hiddenSpriteCullDebug = (overlayWrapActive && overlayWrapConfig.debugHiddenSpriteCullCirclesEnabled === true)
+    ? {
+      enabled: true,
+      mode: overlayWrapConfig.debugHiddenSpriteCullCirclesMode,
+      maxPerFrame: overlayWrapConfig.debugHiddenSpriteCullCirclesMaxPerFrame,
+      strokeVisible: overlayWrapConfig.debugHiddenSpriteCullCircleStrokeVisible,
+      strokeCulled: overlayWrapConfig.debugHiddenSpriteCullCircleStrokeCulled,
+      lineWidth: overlayWrapConfig.debugHiddenSpriteCullCircleLineWidth,
+    }
+    : null;
+  const hiddenSpriteCullDebugBudget = hiddenSpriteCullDebug ? { drawnCount: 0 } : null;
   const canUseCompletedLayer = (
     true
     && CONFIG.branchGrowth.useOffscreenLayerCache !== false
@@ -14276,6 +14420,9 @@ function renderScene(options = {}) {
           hiddenBand,
           skipFullyHiddenInBand: overlayWrapConfig.skipHiddenBackDrawEnabled === true,
           hiddenSpriteCullInnerPaddingPx: overlayWrapConfig.spriteHiddenCullInnerPaddingPx,
+          hiddenSpriteCullRadiusScale: overlayWrapConfig.spriteHiddenCullRadiusScale,
+          hiddenSpriteCullDebug,
+          hiddenSpriteCullDebugBudget,
         });
         drawOverlayBranchRangeWithStemCache({
           branch,
@@ -14305,6 +14452,9 @@ function renderScene(options = {}) {
           hiddenBand,
           skipFullyHiddenInBand: overlayWrapConfig.skipHiddenBackDrawEnabled === true,
           hiddenSpriteCullInnerPaddingPx: overlayWrapConfig.spriteHiddenCullInnerPaddingPx,
+          hiddenSpriteCullRadiusScale: overlayWrapConfig.spriteHiddenCullRadiusScale,
+          hiddenSpriteCullDebug,
+          hiddenSpriteCullDebugBudget,
         });
         if (frontCtx) {
           renderBranch(branch, {
@@ -14466,6 +14616,8 @@ function renderScene(options = {}) {
           hiddenBand,
           skipHiddenBackDrawEnabled: overlayWrapConfig.skipHiddenBackDrawEnabled === true,
           hiddenSpriteCullInnerPaddingPx: overlayWrapConfig.spriteHiddenCullInnerPaddingPx,
+          hiddenSpriteCullRadiusScale: overlayWrapConfig.spriteHiddenCullRadiusScale,
+          hiddenSpriteCullDebug,
         },
         false,
       );

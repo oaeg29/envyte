@@ -522,6 +522,13 @@
     centerHalfWidthPx: 50, // fallback when video size is unavailable
     skipHiddenBackDrawEnabled: true,
     spriteHiddenCullInnerPaddingPx: 0,
+    spriteHiddenCullRadiusScale: 0.3, // 0.05..1 scales the hidden-cull test circle radius
+    debugHiddenSpriteCullCirclesEnabled: true,
+    debugHiddenSpriteCullCirclesMode: 'culled', // culled | all
+    debugHiddenSpriteCullCirclesMaxPerFrame: 400,
+    debugHiddenSpriteCullCircleStrokeVisible: 'rgba(90, 220, 120, 0.55)',
+    debugHiddenSpriteCullCircleStrokeCulled: 'rgba(255, 80, 80, 0.65)',
+    debugHiddenSpriteCullCircleLineWidth: 1,
     showCenterBandOverlay: true,
     centerBandOverlayFill: 'rgba(255, 95, 95, 0.16)',
     centerBandOverlayStroke: 'rgba(255, 95, 95, 0.85)',

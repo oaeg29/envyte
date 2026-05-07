@@ -283,10 +283,104 @@
     return target;
   }
 
-  function resolveSpriteCircleRadius(drawWidth, drawHeight) {
+  function sanitizeHiddenSpriteCullRadiusScale(value, fallback = 1) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) {
+      return clamp(Number.isFinite(fallback) ? fallback : 1, 0.05, 1);
+    }
+    return clamp(numeric, 0.05, 1);
+  }
+
+  function resolveSpriteCircleRadius(drawWidth, drawHeight, radiusScale = 1) {
     const safeWidth = Number.isFinite(drawWidth) ? Math.max(0, drawWidth) : 0;
     const safeHeight = Number.isFinite(drawHeight) ? Math.max(0, drawHeight) : 0;
-    return Math.hypot(safeWidth * 0.5, safeHeight * 0.5);
+    return Math.hypot(safeWidth * 0.5, safeHeight * 0.5) * sanitizeHiddenSpriteCullRadiusScale(radiusScale, 1);
+  }
+
+  function sanitizeHiddenSpriteCullDebugMode(value) {
+    return value === 'all' ? 'all' : 'culled';
+  }
+
+  function drawCanvasHiddenSpriteCullDebugCircle(
+    ctx,
+    hiddenSpriteCullContext,
+    centerX,
+    centerY,
+    radius,
+    isCulled,
+  ) {
+    if (!ctx || !hiddenSpriteCullContext || hiddenSpriteCullContext.debugEnabled !== true) {
+      return false;
+    }
+    if (sanitizeHiddenSpriteCullDebugMode(hiddenSpriteCullContext.debugMode) !== 'all' && isCulled !== true) {
+      return false;
+    }
+    const maxPerFrame = Number.isFinite(hiddenSpriteCullContext.debugMaxPerFrame)
+      ? Math.max(1, Math.floor(hiddenSpriteCullContext.debugMaxPerFrame))
+      : 400;
+    const drawnSoFar = Number.isFinite(hiddenSpriteCullContext.debugDrawnCount)
+      ? hiddenSpriteCullContext.debugDrawnCount
+      : 0;
+    if (drawnSoFar >= maxPerFrame) {
+      return false;
+    }
+    hiddenSpriteCullContext.debugDrawnCount = drawnSoFar + 1;
+    const strokeStyle = isCulled
+      ? (hiddenSpriteCullContext.debugStrokeCulled || 'rgba(255, 80, 80, 0.65)')
+      : (hiddenSpriteCullContext.debugStrokeVisible || 'rgba(90, 220, 120, 0.55)');
+    const lineWidth = Number.isFinite(hiddenSpriteCullContext.debugLineWidth)
+      ? Math.max(0.25, hiddenSpriteCullContext.debugLineWidth)
+      : 1;
+    const safeRadius = Number.isFinite(radius) ? Math.max(0.5, radius) : 0.5;
+    ctx.save();
+    ctx.strokeStyle = strokeStyle;
+    ctx.lineWidth = lineWidth;
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, safeRadius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+    return true;
+  }
+
+  function resolveColorToRgbaObject(colorValue, fallback) {
+    const fallbackColor = fallback && typeof fallback === 'object'
+      ? fallback
+      : { r: 255, g: 80, b: 80, a: 0.65 };
+    if (typeof colorValue !== 'string') {
+      return fallbackColor;
+    }
+    const raw = colorValue.trim();
+    if (raw.length <= 0) {
+      return fallbackColor;
+    }
+    const hexMatch = raw.match(/^#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i);
+    if (hexMatch) {
+      const hex = hexMatch[1];
+      if (hex.length === 3 || hex.length === 4) {
+        const r = parseInt(`${hex[0]}${hex[0]}`, 16);
+        const g = parseInt(`${hex[1]}${hex[1]}`, 16);
+        const b = parseInt(`${hex[2]}${hex[2]}`, 16);
+        const a = hex.length === 4 ? (parseInt(`${hex[3]}${hex[3]}`, 16) / 255) : 1;
+        return { r, g, b, a };
+      }
+      const r = parseInt(hex.slice(0, 2), 16);
+      const g = parseInt(hex.slice(2, 4), 16);
+      const b = parseInt(hex.slice(4, 6), 16);
+      const a = hex.length === 8 ? (parseInt(hex.slice(6, 8), 16) / 255) : 1;
+      return { r, g, b, a };
+    }
+    const rgbMatch = raw.match(/^rgba?\(([^)]+)\)$/i);
+    if (rgbMatch) {
+      const parts = rgbMatch[1].split(',').map((part) => part.trim());
+      if (parts.length >= 3) {
+        const r = clamp(Math.round(Number(parts[0]) || 0), 0, 255);
+        const g = clamp(Math.round(Number(parts[1]) || 0), 0, 255);
+        const b = clamp(Math.round(Number(parts[2]) || 0), 0, 255);
+        const a = parts.length >= 4 ? clamp(Number(parts[3]) || 0, 0, 1) : 1;
+        return { r, g, b, a };
+      }
+    }
+    return fallbackColor;
   }
 
   function hashSeed(value) {
@@ -1526,7 +1620,6 @@
       : 1;
     const drawX = -drawSize * 0.5;
     const drawY = -drawSize + ((2.2 / spriteCellHeight) * drawSize);
-    const spriteRadius = resolveSpriteCircleRadius(drawSize, drawSize);
     const hiddenSpriteCullContext = (
       drawContext
       && drawContext.hiddenSpriteCullEnabled === true
@@ -1535,6 +1628,10 @@
     )
       ? drawContext
       : null;
+    const hiddenRadiusScale = hiddenSpriteCullContext
+      ? sanitizeHiddenSpriteCullRadiusScale(hiddenSpriteCullContext.hiddenRadiusScale, 1)
+      : 1;
+    const spriteRadius = resolveSpriteCircleRadius(drawSize, drawSize, hiddenRadiusScale);
     const centerScratch = { x: 0, y: 0 };
     const canUseFastPath = (
       useFastPath
@@ -1571,15 +1668,22 @@
             drawSize,
             centerScratch,
           );
-          if (
-            isSpriteCircleFullyHiddenInBand(
-              centerScratch.x,
-              centerScratch.y,
-              spriteRadius,
-              hiddenSpriteCullContext.hiddenBand,
-              hiddenSpriteCullContext.hiddenPaddingPx,
-            )
-          ) {
+          const petalHiddenByBand = isSpriteCircleFullyHiddenInBand(
+            centerScratch.x,
+            centerScratch.y,
+            spriteRadius,
+            hiddenSpriteCullContext.hiddenBand,
+            hiddenSpriteCullContext.hiddenPaddingPx,
+          );
+          drawCanvasHiddenSpriteCullDebugCircle(
+            ctx,
+            hiddenSpriteCullContext,
+            centerScratch.x,
+            centerScratch.y,
+            spriteRadius,
+            petalHiddenByBand,
+          );
+          if (petalHiddenByBand) {
             if (runtimeState && Number.isFinite(runtimeState.hiddenSpriteCulledCount)) {
               runtimeState.hiddenSpriteCulledCount += 1;
             }
@@ -1720,15 +1824,22 @@
           drawSize,
           centerScratch,
         );
-        if (
-          isSpriteCircleFullyHiddenInBand(
-            centerScratch.x,
-            centerScratch.y,
-            spriteRadius,
-            hiddenSpriteCullContext.hiddenBand,
-            hiddenSpriteCullContext.hiddenPaddingPx,
-          )
-        ) {
+        const petalHiddenByBand = isSpriteCircleFullyHiddenInBand(
+          centerScratch.x,
+          centerScratch.y,
+          spriteRadius,
+          hiddenSpriteCullContext.hiddenBand,
+          hiddenSpriteCullContext.hiddenPaddingPx,
+        );
+        drawCanvasHiddenSpriteCullDebugCircle(
+          ctx,
+          hiddenSpriteCullContext,
+          centerScratch.x,
+          centerScratch.y,
+          spriteRadius,
+          petalHiddenByBand,
+        );
+        if (petalHiddenByBand) {
           if (runtimeState && Number.isFinite(runtimeState.hiddenSpriteCulledCount)) {
             runtimeState.hiddenSpriteCulledCount += 1;
           }
@@ -1839,7 +1950,18 @@
       : 18;
     const pointDrawSize = pointDrawSizeBase * resolveFlowerGrowthScaleFactor(flower);
     const halfPointSize = pointDrawSize * 0.5;
-    const spriteRadius = resolveSpriteCircleRadius(pointDrawSize, pointDrawSize);
+    const hiddenSpriteCullContext = (
+      drawContext
+      && drawContext.hiddenSpriteCullEnabled === true
+      && drawContext.hiddenBand
+      && Number.isFinite(drawContext.hiddenBand.centerX)
+    )
+      ? drawContext
+      : null;
+    const hiddenRadiusScale = hiddenSpriteCullContext
+      ? sanitizeHiddenSpriteCullRadiusScale(hiddenSpriteCullContext.hiddenRadiusScale, 1)
+      : 1;
+    const spriteRadius = resolveSpriteCircleRadius(pointDrawSize, pointDrawSize, hiddenRadiusScale);
     const growthPositionScale = resolveFlowerGrowthPositionScaleFactor(flower);
     const swayAroundPersonalOrigin = commonConfig.blueSwayRotateAroundPetalOrigin === true;
     const jumpAroundPersonalOrigin = commonConfig.blueJumpRotateAroundPetalOrigin === true;
@@ -1853,14 +1975,6 @@
     const spriteRows = Number.isFinite(typeConfig.spriteRows)
       ? Math.max(1, Math.floor(typeConfig.spriteRows))
       : 1;
-    const hiddenSpriteCullContext = (
-      drawContext
-      && drawContext.hiddenSpriteCullEnabled === true
-      && drawContext.hiddenBand
-      && Number.isFinite(drawContext.hiddenBand.centerX)
-    )
-      ? drawContext
-      : null;
     const orbitIsStatic = swayAroundPersonalOrigin && jumpAroundPersonalOrigin;
     const orbitUsesCombinedRotation = !swayAroundPersonalOrigin && !jumpAroundPersonalOrigin;
 
@@ -1916,20 +2030,28 @@
         spriteAngle += jumpOffset;
       }
 
-      if (
-        hiddenSpriteCullContext
-        && isSpriteCircleFullyHiddenInBand(
+      if (hiddenSpriteCullContext) {
+        const petalHiddenByBand = isSpriteCircleFullyHiddenInBand(
           x,
           y,
           spriteRadius,
           hiddenSpriteCullContext.hiddenBand,
           hiddenSpriteCullContext.hiddenPaddingPx,
-        )
-      ) {
-        if (runtimeState && Number.isFinite(runtimeState.hiddenSpriteCulledCount)) {
-          runtimeState.hiddenSpriteCulledCount += 1;
+        );
+        drawCanvasHiddenSpriteCullDebugCircle(
+          ctx,
+          hiddenSpriteCullContext,
+          x,
+          y,
+          spriteRadius,
+          petalHiddenByBand,
+        );
+        if (petalHiddenByBand) {
+          if (runtimeState && Number.isFinite(runtimeState.hiddenSpriteCulledCount)) {
+            runtimeState.hiddenSpriteCulledCount += 1;
+          }
+          continue;
         }
-        continue;
       }
 
       if (Math.abs(spriteAngle) > 1e-8) {
@@ -2083,6 +2205,7 @@
         enabled: false,
         hiddenBand: null,
         hiddenPaddingPx: 0,
+        hiddenRadiusScale: 1,
         branchFilter: null,
       },
       lastUpdateMs: 0,
@@ -2158,6 +2281,8 @@
         frontSpritePool: [],
         backPoolCursor: 0,
         frontPoolCursor: 0,
+        backHiddenCullDebugGraphics: null,
+        frontHiddenCullDebugGraphics: null,
         lastSizeKeyBack: '',
         lastSizeKeyFront: '',
         pendingResizeBack: false,
@@ -2197,6 +2322,110 @@
       return Math.max(0, numeric);
     }
 
+    function resolveHiddenSpriteCullDebugConfig(rawConfig) {
+      const safe = isPlainObject(rawConfig) ? rawConfig : {};
+      const mode = sanitizeHiddenSpriteCullDebugMode(safe.mode);
+      const maxPerFrame = Number.isFinite(Number(safe.maxPerFrame))
+        ? clamp(Math.floor(Number(safe.maxPerFrame)), 1, 10000)
+        : 400;
+      const lineWidth = Number.isFinite(Number(safe.lineWidth))
+        ? clamp(Number(safe.lineWidth), 0.25, 8)
+        : 1;
+      return {
+        enabled: safe.enabled === true,
+        mode,
+        maxPerFrame,
+        lineWidth,
+        strokeVisible: (typeof safe.strokeVisible === 'string' && safe.strokeVisible.trim().length > 0)
+          ? safe.strokeVisible.trim()
+          : 'rgba(90, 220, 120, 0.55)',
+        strokeCulled: (typeof safe.strokeCulled === 'string' && safe.strokeCulled.trim().length > 0)
+          ? safe.strokeCulled.trim()
+          : 'rgba(255, 80, 80, 0.65)',
+      };
+    }
+
+    function resolvePixiDebugStroke(colorValue, fallbackRgba) {
+      const rgba = resolveColorToRgbaObject(colorValue, fallbackRgba);
+      return {
+        color: ((rgba.r << 16) | (rgba.g << 8) | rgba.b) >>> 0,
+        alpha: clamp(rgba.a, 0, 1),
+      };
+    }
+
+    function ensurePixiHiddenCullDebugGraphics(layerName, appInstance = null) {
+      const app = appInstance || ensurePixiAppForLayer(layerName);
+      if (!app) {
+        return null;
+      }
+      const key = layerName === 'front' ? 'frontHiddenCullDebugGraphics' : 'backHiddenCullDebugGraphics';
+      let graphics = state.pixi[key];
+      if (!graphics) {
+        const PIXI = getPixiLibrary();
+        if (!PIXI || typeof PIXI.Graphics !== 'function') {
+          return null;
+        }
+        graphics = new PIXI.Graphics();
+        graphics.eventMode = 'none';
+        graphics.interactiveChildren = false;
+        state.pixi[key] = graphics;
+        app.stage.addChild(graphics);
+      } else if (graphics.parent !== app.stage) {
+        app.stage.addChild(graphics);
+      }
+      graphics.visible = true;
+      return graphics;
+    }
+
+    function clearPixiHiddenCullDebugGraphics(layerName) {
+      const key = layerName === 'front' ? 'frontHiddenCullDebugGraphics' : 'backHiddenCullDebugGraphics';
+      const graphics = state.pixi[key];
+      if (graphics && typeof graphics.clear === 'function') {
+        graphics.clear();
+        graphics.visible = false;
+      }
+    }
+
+    function drawPixiHiddenSpriteCullDebugCircle(
+      hiddenSpriteCullContext,
+      centerX,
+      centerY,
+      radius,
+      isCulled,
+      scaleX,
+      scaleY,
+    ) {
+      if (!hiddenSpriteCullContext || hiddenSpriteCullContext.debugEnabled !== true) {
+        return false;
+      }
+      const debugMode = sanitizeHiddenSpriteCullDebugMode(hiddenSpriteCullContext.debugMode);
+      if (debugMode !== 'all' && isCulled !== true) {
+        return false;
+      }
+      const maxPerFrame = Number.isFinite(hiddenSpriteCullContext.debugMaxPerFrame)
+        ? Math.max(1, Math.floor(hiddenSpriteCullContext.debugMaxPerFrame))
+        : 400;
+      const drawnSoFar = Number.isFinite(hiddenSpriteCullContext.debugDrawnCount)
+        ? hiddenSpriteCullContext.debugDrawnCount
+        : 0;
+      if (drawnSoFar >= maxPerFrame) {
+        return false;
+      }
+      const graphics = hiddenSpriteCullContext.pixiDebugGraphics;
+      if (!graphics || typeof graphics.drawCircle !== 'function') {
+        return false;
+      }
+      hiddenSpriteCullContext.debugDrawnCount = drawnSoFar + 1;
+      const avgScale = Math.max(1e-8, (Math.abs(scaleX) + Math.abs(scaleY)) * 0.5);
+      const stroke = isCulled
+        ? hiddenSpriteCullContext.pixiDebugStrokeCulled
+        : hiddenSpriteCullContext.pixiDebugStrokeVisible;
+      const lineWidthPx = Math.max(0.25, (Number(hiddenSpriteCullContext.debugLineWidth) || 1) * avgScale);
+      graphics.lineStyle(lineWidthPx, stroke.color, stroke.alpha);
+      graphics.drawCircle(centerX * scaleX, centerY * scaleY, Math.max(0.5 * avgScale, radius * avgScale));
+      return true;
+    }
+
     function updateBackLayerHiddenSpriteCullContext(renderOptions) {
       const safeOptions = isPlainObject(renderOptions) ? renderOptions : null;
       const layerName = safeOptions && safeOptions.layerName === 'front' ? 'front' : 'back';
@@ -2218,6 +2447,9 @@
       context.hiddenPaddingPx = context.enabled
         ? sanitizeHiddenSpriteCullPaddingPx(safeOptions.hiddenSpriteCullInnerPaddingPx)
         : 0;
+      context.hiddenRadiusScale = context.enabled
+        ? sanitizeHiddenSpriteCullRadiusScale(safeOptions.hiddenSpriteCullRadiusScale, 1)
+        : 1;
       context.branchFilter = (
         context.enabled
         && typeof safeOptions.branchFilter === 'function'
@@ -2269,7 +2501,8 @@
         const growthScale = resolveFlowerGrowthScaleFactor(flower);
         const growthPositionScale = resolveFlowerGrowthPositionScaleFactor(flower);
         const pointDrawSize = pointDrawSizeBase * growthScale;
-        const spriteRadius = resolveSpriteCircleRadius(pointDrawSize, pointDrawSize);
+        const hiddenRadiusScale = sanitizeHiddenSpriteCullRadiusScale(hiddenContext.hiddenRadiusScale, 1);
+        const spriteRadius = resolveSpriteCircleRadius(pointDrawSize, pointDrawSize, hiddenRadiusScale);
         const swayAroundPersonalOrigin = commonConfig.blueSwayRotateAroundPetalOrigin === true;
         const jumpAroundPersonalOrigin = commonConfig.blueJumpRotateAroundPetalOrigin === true;
         const baseAngle = petal.baseAngleRad || 0;
@@ -2301,7 +2534,8 @@
       const drawSize = commonConfig.drawSize * resolveFlowerGrowthScaleFactor(flower);
       const drawX = -drawSize * 0.5;
       const drawY = -drawSize + ((2.2 / spriteCellHeight) * drawSize);
-      const spriteRadius = resolveSpriteCircleRadius(drawSize, drawSize);
+      const hiddenRadiusScale = sanitizeHiddenSpriteCullRadiusScale(hiddenContext.hiddenRadiusScale, 1);
+      const spriteRadius = resolveSpriteCircleRadius(drawSize, drawSize, hiddenRadiusScale);
       const displacementSpace = typeConfig.displacementSpace === 'screen' ? 'screen' : 'flower';
       const centerAngleRad = Number.isFinite(flower.centerAngleRad) ? flower.centerAngleRad : 0;
       const cosCenter = Math.cos(centerAngleRad);
@@ -4712,7 +4946,10 @@
         const growthScale = resolveFlowerGrowthScaleFactor(flower);
         const growthPositionScale = resolveFlowerGrowthPositionScaleFactor(flower);
         const pointDrawSize = pointDrawSizeBase * growthScale;
-        const spriteRadius = resolveSpriteCircleRadius(pointDrawSize, pointDrawSize);
+        const hiddenRadiusScale = hiddenSpriteCullContext
+          ? sanitizeHiddenSpriteCullRadiusScale(hiddenSpriteCullContext.hiddenRadiusScale, 1)
+          : 1;
+        const spriteRadius = resolveSpriteCircleRadius(pointDrawSize, pointDrawSize, hiddenRadiusScale);
         const swayAroundPersonalOrigin = commonConfig.blueSwayRotateAroundPetalOrigin === true;
         const jumpAroundPersonalOrigin = commonConfig.blueJumpRotateAroundPetalOrigin === true;
         const orbitIsStatic = swayAroundPersonalOrigin && jumpAroundPersonalOrigin;
@@ -4771,20 +5008,29 @@
           if (jumpAroundPersonalOrigin) {
             spriteAngle += jumpOffset;
           }
-          if (
-            hiddenSpriteCullContext
-            && isSpriteCircleFullyHiddenInBand(
+          if (hiddenSpriteCullContext) {
+            const petalHiddenByBand = isSpriteCircleFullyHiddenInBand(
               x,
               y,
               spriteRadius,
               hiddenSpriteCullContext.hiddenBand,
               hiddenSpriteCullContext.hiddenPaddingPx,
-            )
-          ) {
-            if (runtimeState && Number.isFinite(runtimeState.hiddenSpriteCulledCount)) {
-              runtimeState.hiddenSpriteCulledCount += 1;
+            );
+            drawPixiHiddenSpriteCullDebugCircle(
+              hiddenSpriteCullContext,
+              x,
+              y,
+              spriteRadius,
+              petalHiddenByBand,
+              scaleX,
+              scaleY,
+            );
+            if (petalHiddenByBand) {
+              if (runtimeState && Number.isFinite(runtimeState.hiddenSpriteCulledCount)) {
+                runtimeState.hiddenSpriteCulledCount += 1;
+              }
+              continue;
             }
-            continue;
           }
           const sprite = acquirePixiSprite(layerName, texture, app);
           if (!sprite) {
@@ -4822,7 +5068,10 @@
         : 45.819;
       const drawX = -drawSize * 0.5;
       const drawY = -drawSize + ((2.2 / spriteCellHeight) * drawSize);
-      const spriteRadius = resolveSpriteCircleRadius(drawSize, drawSize);
+      const hiddenRadiusScale = hiddenSpriteCullContext
+        ? sanitizeHiddenSpriteCullRadiusScale(hiddenSpriteCullContext.hiddenRadiusScale, 1)
+        : 1;
+      const spriteRadius = resolveSpriteCircleRadius(drawSize, drawSize, hiddenRadiusScale);
       const displacementSpace = typeConfig.displacementSpace === 'screen' ? 'screen' : 'flower';
       const centerAngleRad = Number.isFinite(flower.centerAngleRad) ? flower.centerAngleRad : 0;
       const cosCenter = Math.cos(centerAngleRad);
@@ -4997,15 +5246,23 @@
             drawSize,
             centerScratch,
           );
-          if (
-            isSpriteCircleFullyHiddenInBand(
-              centerScratch.x,
-              centerScratch.y,
-              spriteRadius,
-              hiddenSpriteCullContext.hiddenBand,
-              hiddenSpriteCullContext.hiddenPaddingPx,
-            )
-          ) {
+          const petalHiddenByBand = isSpriteCircleFullyHiddenInBand(
+            centerScratch.x,
+            centerScratch.y,
+            spriteRadius,
+            hiddenSpriteCullContext.hiddenBand,
+            hiddenSpriteCullContext.hiddenPaddingPx,
+          );
+          drawPixiHiddenSpriteCullDebugCircle(
+            hiddenSpriteCullContext,
+            centerScratch.x,
+            centerScratch.y,
+            spriteRadius,
+            petalHiddenByBand,
+            scaleX,
+            scaleY,
+          );
+          if (petalHiddenByBand) {
             if (runtimeState && Number.isFinite(runtimeState.hiddenSpriteCulledCount)) {
               runtimeState.hiddenSpriteCulledCount += 1;
             }
@@ -5083,16 +5340,56 @@
         && Number.isFinite(Number(safeDrawOptions.hiddenSpriteCullInnerPaddingPx))
         ? Math.max(0, Number(safeDrawOptions.hiddenSpriteCullInnerPaddingPx))
         : 0;
+      const hiddenSpriteCullRadiusScale = safeDrawOptions
+        ? sanitizeHiddenSpriteCullRadiusScale(safeDrawOptions.hiddenSpriteCullRadiusScale, 1)
+        : 1;
       const skipHiddenInBand = safeDrawOptions
         && safeDrawOptions.skipHiddenBackDrawEnabled === true
         && hiddenBand
         && Number.isFinite(hiddenBand.centerX);
+      const hiddenSpriteCullDebugConfig = resolveHiddenSpriteCullDebugConfig(
+        safeDrawOptions ? safeDrawOptions.hiddenSpriteCullDebug : null,
+      );
       const hiddenSpriteCullContext = skipHiddenInBand
         ? {
           hiddenBand,
           hiddenPaddingPx: hiddenSpriteCullInnerPaddingPx,
+          hiddenRadiusScale: hiddenSpriteCullRadiusScale,
+          debugEnabled: false,
+          debugMode: 'culled',
+          debugMaxPerFrame: 0,
+          debugLineWidth: 1,
+          debugDrawnCount: 0,
+          debugStrokeVisible: '',
+          debugStrokeCulled: '',
+          pixiDebugGraphics: null,
+          pixiDebugStrokeVisible: { color: 0x5adc78, alpha: 0.55 },
+          pixiDebugStrokeCulled: { color: 0xff5050, alpha: 0.65 },
         }
         : null;
+      if (hiddenSpriteCullContext && hiddenSpriteCullDebugConfig.enabled) {
+        const debugGraphics = ensurePixiHiddenCullDebugGraphics(layerName, app);
+        if (debugGraphics && typeof debugGraphics.clear === 'function') {
+          debugGraphics.clear();
+          hiddenSpriteCullContext.debugEnabled = true;
+          hiddenSpriteCullContext.debugMode = hiddenSpriteCullDebugConfig.mode;
+          hiddenSpriteCullContext.debugMaxPerFrame = hiddenSpriteCullDebugConfig.maxPerFrame;
+          hiddenSpriteCullContext.debugLineWidth = hiddenSpriteCullDebugConfig.lineWidth;
+          hiddenSpriteCullContext.debugStrokeVisible = hiddenSpriteCullDebugConfig.strokeVisible;
+          hiddenSpriteCullContext.debugStrokeCulled = hiddenSpriteCullDebugConfig.strokeCulled;
+          hiddenSpriteCullContext.pixiDebugGraphics = debugGraphics;
+          hiddenSpriteCullContext.pixiDebugStrokeVisible = resolvePixiDebugStroke(
+            hiddenSpriteCullDebugConfig.strokeVisible,
+            { r: 90, g: 220, b: 120, a: 0.55 },
+          );
+          hiddenSpriteCullContext.pixiDebugStrokeCulled = resolvePixiDebugStroke(
+            hiddenSpriteCullDebugConfig.strokeCulled,
+            { r: 255, g: 80, b: 80, a: 0.65 },
+          );
+        }
+      } else {
+        clearPixiHiddenCullDebugGraphics(layerName);
+      }
       if (runtimeState && Number.isFinite(runtimeState.hiddenSpriteCulledCount)) {
         runtimeState.hiddenSpriteCulledCount = 0;
       }
@@ -5258,15 +5555,29 @@
         && Number.isFinite(Number(safeDrawOptions.hiddenSpriteCullInnerPaddingPx))
         ? Math.max(0, Number(safeDrawOptions.hiddenSpriteCullInnerPaddingPx))
         : 0;
+      const hiddenSpriteCullRadiusScale = safeDrawOptions
+        ? sanitizeHiddenSpriteCullRadiusScale(safeDrawOptions.hiddenSpriteCullRadiusScale, 1)
+        : 1;
       const skipHiddenInBand = safeDrawOptions
         && safeDrawOptions.skipHiddenBackDrawEnabled === true
         && hiddenBand
         && Number.isFinite(hiddenBand.centerX);
+      const hiddenSpriteCullDebugConfig = resolveHiddenSpriteCullDebugConfig(
+        safeDrawOptions ? safeDrawOptions.hiddenSpriteCullDebug : null,
+      );
       const hiddenSpriteCullDrawContext = skipHiddenInBand
         ? {
           hiddenSpriteCullEnabled: true,
           hiddenBand,
           hiddenPaddingPx: hiddenSpriteCullInnerPaddingPx,
+          hiddenRadiusScale: hiddenSpriteCullRadiusScale,
+          debugEnabled: hiddenSpriteCullDebugConfig.enabled,
+          debugMode: hiddenSpriteCullDebugConfig.mode,
+          debugMaxPerFrame: hiddenSpriteCullDebugConfig.maxPerFrame,
+          debugLineWidth: hiddenSpriteCullDebugConfig.lineWidth,
+          debugStrokeVisible: hiddenSpriteCullDebugConfig.strokeVisible,
+          debugStrokeCulled: hiddenSpriteCullDebugConfig.strokeCulled,
+          debugDrawnCount: 0,
         }
         : null;
 
