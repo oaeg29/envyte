@@ -193,10 +193,10 @@
   },
 
   branchGrowth: {
-    enabled: true,
+    enabled: false,
     mode: 'linearBySeedY', // simultaneous | linearBySeedY
     linearSweepDirection: 'up', // down (top->bottom) | up (bottom->top)
-    linearSweepDurationSec: 13, // sweep time across root seed Y range
+    linearSweepDurationSec: 6, // sweep time across root seed Y range
     speedMode: 'rate', // duration | rate
     totalDurationSec: 1.5,
     pixelsPerSecond: 50,
@@ -476,7 +476,7 @@
 
   centerOverlayImage: {
     enabled: true,
-    spritePath: './test_page.png',
+    spritePath: './test_page2.png', // fallback/default page path; section pageIndex controls active page when swipeSections is enabled
     scale: 0.4, // interpreted by scaleMode
     scaleMode: 'videoSizeRatio', // multiplier | videoSizeRatio
     offsetXPx: 0,
@@ -490,12 +490,18 @@
 
   swipeSections: {
     enabled: true,
+    // Ordered page list used by section.pageIndex (1-based).
+    pages: [
+      './test_page2.png',
+      './page_2.png',
+      './page_3.png',
+    ],
     // Section count is derived from this array length.
     sections: [
       {
         id: 'section-1',
         frame: 261,
-        centerOverlayImagePath: './test_page2.png',
+        pageIndex: 1, // 1-based index into swipeSections.pages
         // Optional per-section Y placement override for centerOverlayImage.
         // Ratio uses the same video-size basis as centerOverlayImage.offsetYMode='videoSizeRatio'.
         centerOverlayOffsetYVideoHeightRatio: -0.0520833333,
@@ -503,19 +509,19 @@
       {
         id: 'section-2',
         frame: 280,
-        centerOverlayImagePath: './page_2.png',
-        centerOverlayOffsetYVideoHeightRatio: -0.0520833333,
+        pageIndex: 2,
+        centerOverlayOffsetYVideoHeightRatio: -0.0520833333 + -0.095, // example of a per-section Y offset tweak
       },
       {
         id: 'section-3',
         frame: 304,
-        centerOverlayImagePath: './page_2.png',
+        pageIndex: 3,
         centerOverlayOffsetYVideoHeightRatio: -0.0520833333,
       },
       {
         id: 'section-4',
         frame: 330,
-        centerOverlayImagePath: './test_page2.png',
+        pageIndex: 1,
         centerOverlayOffsetYVideoHeightRatio: -0.0520833333,
       },
     ],
@@ -537,10 +543,10 @@
     },
     transition: {
       timingMode: 'matchFrameDelta', // matchFrameDelta | fixedDuration | instant
-      speedMultiplier: 1.15, // >1 is faster
+      speedMultiplier: 1, // >1 is faster
       fixedDurationMs: 520, // used only by timingMode=fixedDuration
       minDurationMs: 220,
-      maxDurationMs: 900,
+      maxDurationMs: 6000,
       rapidSwipeMode: 'ignore', // canonical toggle: ignore | retarget
     },
     overlayTransition: {
@@ -548,6 +554,61 @@
       fadeOutDurationMs: 170,
       fadeInDurationMs: 230,
       swapNearTargetProgress: 0.85, // 0..1; when the target image path swaps during section travel
+    },
+    rsvp: {
+      enabled: true,
+      sectionId: 'section-3',
+      initialState: {
+        name: '',
+        response: null, // yes | no | null
+      },
+      nameField: {
+        offsetXVideoHeightRatio: 0,
+        offsetYVideoHeightRatio: -0.11,
+        widthVideoHeightRatio: 0.36,
+        heightVideoHeightRatio: 0.078,
+        fontFamily: 'ZeinaRsvpScript',
+        fontSourcePath: '', // local path to font file, e.g. './fonts/ZeinaRsvpScript.woff2'
+        fontWeight: 500,
+        fontStyle: 'normal',
+        fontSizeVideoHeightRatio: 0.028,
+        textColor: '#1f1b17',
+        textAlign: 'left',
+        maxLength: 120,
+      },
+      debug: {
+        enabled: true, // set true to render RSVP layout debug rectangles
+        showNameFieldRect: true,
+        showButtonRects: true,
+        strokeColor: 'rgba(255, 120, 120, 0.95)',
+        lineWidthPx: 2,
+      },
+      buttons: {
+        spritePath: './yes&no.png', // sprite-sheet path (2x2 default mapping: yes row0, no row1; unselected col0, selected col1)
+        spriteCellWidth: 44,
+        spriteCellHeight: 44,
+        spriteScale: 8.3295454546,
+        spriteCols: 2,
+        spriteRows: 2,
+        yes: {
+          offsetXVideoHeightRatio: -0.081,
+          offsetYVideoHeightRatio: 0.098,
+          widthVideoHeightRatio: 0.11,
+          heightVideoHeightRatio: 0.11,
+        },
+        no: {
+          offsetXVideoHeightRatio: 0.081,
+          offsetYVideoHeightRatio: 0.098,
+          widthVideoHeightRatio: 0.11,
+          heightVideoHeightRatio: 0.11,
+        },
+        animation: {
+          hoverScale: 1.06,
+          selectedScale: 1.14, // post-click persistent enlargement
+          transitionDurationMs: 180,
+          transitionEasing: 'cubic-bezier(0.16, 1, 0.3, 1)',
+        },
+      },
     },
   },
 
@@ -654,7 +715,7 @@
     mixRatios: {
 
       lily: 1,
-      blue: 2,
+      blue: 1,
     },
     endpointDirectionTailLengthPx: 26,
     endpointDirectionSampleCount: 5,
@@ -730,7 +791,7 @@
           enabled: true,
           tipLeadFraction: 0.4, // 0..1, show flower this far before branch tip reaches final endpoint
           sizeMinScale: 0.05, // 0..1 fraction of final lily draw size
-          sizeDurationSec: 2, // time from minScale to full size
+          sizeDurationSec: 4, // time from minScale to full size
           sizeEase: 'easeInOut', // linear | easeIn | easeOut | easeInOut
           sizeEasePower: 4, // easing curve strength
           openAutoEnabled: true, // when false, lilies remain closed after growth
@@ -796,13 +857,13 @@
           enabled: true,
           tipLeadFraction: 0.4, // 0..1, show flower this far before branch tip reaches final endpoint
           sizeMinScale: 0.09, // 0..1 fraction of final blue point sprite size
-          sizeDurationSec: 4.5, // time for blue point sprite size growth
+          sizeDurationSec: 3.5, // time for blue point sprite size growth
           sizeEase: 'easeIn', // linear | easeIn | easeOut | easeInOut
           sizeEasePower: 4, // easing curve strength for blue point sprite size growth
           sizeEaseInPower: 4.5, // used by easeIn/easeInOut entry-half; defaults to sizeEasePower
           sizeEaseOutPower: 4, // used by easeOut/easeInOut exit-half; defaults to sizeEasePower
           positionMinScale: 0.05, // 0..1 radial spread from center at spawn time
-          positionDurationSec: 6, // time for blue radial spread growth
+          positionDurationSec: 5, // time for blue radial spread growth
           positionEase: 'easeInOut', // linear | easeIn | easeOut | easeInOut
           positionEasePower: 4, // easing curve strength for blue radial spread growth
           positionEaseInPower: 3, // used by easeIn/easeInOut entry-half; defaults to positionEasePower

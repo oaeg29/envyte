@@ -34,6 +34,17 @@ if (!flowersFrontCanvas) {
 }
 const video = document.createElement('video');
 const centerOverlayImageLayer = document.createElement('img');
+const centerOverlayImageLayerAlt = document.createElement('img');
+const centerOverlayImageLayers = [centerOverlayImageLayer, centerOverlayImageLayerAlt];
+const rsvpLayer = document.createElement('div');
+const rsvpNameInput = document.createElement('input');
+const rsvpYesButton = document.createElement('button');
+const rsvpNoButton = document.createElement('button');
+const rsvpYesButtonImage = document.createElement('img');
+const rsvpNoButtonImage = document.createElement('img');
+const rsvpNameDebugRect = document.createElement('div');
+const rsvpYesDebugRect = document.createElement('div');
+const rsvpNoDebugRect = document.createElement('div');
 const wash1Layer = document.createElement('div');
 const wash2Layer = document.createElement('div');
 
@@ -119,6 +130,7 @@ const VIEWPORT_PINCH_ZOOM_SCALE_EPSILON = 0.005;
 const VIEWPORT_POST_ZOOM_RESYNC_DELAY_MS = 220;
 const IOS_SAFARI_RUBBER_BAND_RESYNC_DELAY_MS = 850;
 const SWIPE_SECTIONS_EVENT_CHANGE = 'stemwarp:swipe-section-change';
+const SWIPE_SECTIONS_EVENT_RSVP_CHANGE = 'stemwarp:rsvp-change';
 
 function normalizeHostedAssetPath(path) {
   if (typeof path !== 'string') {
@@ -2234,6 +2246,48 @@ configureHeroVideoElement();
 centerOverlayImageLayer.id = 'centerOverlayImage';
 centerOverlayImageLayer.alt = '';
 centerOverlayImageLayer.draggable = false;
+centerOverlayImageLayerAlt.id = 'centerOverlayImageAlt';
+centerOverlayImageLayerAlt.alt = '';
+centerOverlayImageLayerAlt.draggable = false;
+rsvpLayer.id = 'rsvpLayer';
+rsvpLayer.setAttribute('aria-hidden', 'true');
+rsvpNameInput.id = 'rsvpNameInput';
+rsvpNameInput.type = 'text';
+rsvpNameInput.autocomplete = 'name';
+rsvpNameInput.autocapitalize = 'words';
+rsvpNameInput.spellcheck = false;
+rsvpNameInput.setAttribute('aria-label', 'RSVP name');
+rsvpNameInput.setAttribute('data-rsvp-control', 'name');
+rsvpYesButton.id = 'rsvpYesButton';
+rsvpYesButton.type = 'button';
+rsvpYesButton.setAttribute('aria-label', 'RSVP yes');
+rsvpYesButton.setAttribute('data-rsvp-control', 'yes');
+rsvpYesButton.dataset.rsvpResponse = 'yes';
+rsvpNoButton.id = 'rsvpNoButton';
+rsvpNoButton.type = 'button';
+rsvpNoButton.setAttribute('aria-label', 'RSVP no');
+rsvpNoButton.setAttribute('data-rsvp-control', 'no');
+rsvpNoButton.dataset.rsvpResponse = 'no';
+rsvpYesButtonImage.id = 'rsvpYesButtonImage';
+rsvpYesButtonImage.alt = '';
+rsvpYesButtonImage.draggable = false;
+rsvpNoButtonImage.id = 'rsvpNoButtonImage';
+rsvpNoButtonImage.alt = '';
+rsvpNoButtonImage.draggable = false;
+rsvpNameDebugRect.id = 'rsvpNameDebugRect';
+rsvpNameDebugRect.className = 'rsvpDebugRect';
+rsvpYesDebugRect.id = 'rsvpYesDebugRect';
+rsvpYesDebugRect.className = 'rsvpDebugRect';
+rsvpNoDebugRect.id = 'rsvpNoDebugRect';
+rsvpNoDebugRect.className = 'rsvpDebugRect';
+rsvpYesButton.appendChild(rsvpYesButtonImage);
+rsvpNoButton.appendChild(rsvpNoButtonImage);
+rsvpLayer.appendChild(rsvpNameDebugRect);
+rsvpLayer.appendChild(rsvpYesDebugRect);
+rsvpLayer.appendChild(rsvpNoDebugRect);
+rsvpLayer.appendChild(rsvpNameInput);
+rsvpLayer.appendChild(rsvpYesButton);
+rsvpLayer.appendChild(rsvpNoButton);
 wash1Layer.id = 'wash1Layer';
 wash2Layer.id = 'wash2Layer';
 // video.height = window.innerHeight;   // Set height in pixels
@@ -2243,9 +2297,12 @@ document.body.appendChild(wash1Layer);
 document.body.appendChild(wash2Layer);
 document.body.appendChild(video);  // Adds it to the page
 document.body.appendChild(centerOverlayImageLayer);
+document.body.appendChild(centerOverlayImageLayerAlt);
+document.body.appendChild(rsvpLayer);
 // Keep front overlay canvas in root stacking context so it can render above the video.
 document.body.appendChild(frontCanvas);
 document.body.appendChild(flowersFrontCanvas);
+setupRsvpLayerEventHandlers();
 wash1Layer.addEventListener('animationend', (event) => {
   if (event && event.animationName === 'wash1Pulse') {
     wash1Layer.classList.remove('is-active');
@@ -2426,6 +2483,8 @@ const STATE = {
   centerOverlayImageFailedPath: '',
   centerOverlayImageVisibleSinceMs: 0,
   centerOverlayImageLastShouldBeVisible: false,
+  centerOverlayImageLayerVisibleSinceMs: [0, 0],
+  centerOverlayImageLayerLastShouldBeVisible: [false, false],
   wash1LastFrame: Number.NaN,
   wash1LoopCounter: 0,
   wash1LastTriggeredLoopCounter: -1,
@@ -2604,11 +2663,33 @@ const STATE = {
     },
     centerOverlayImagePathOverride: '',
     overlayOpacityMultiplier: 1,
+    overlayOutgoingOpacityMultiplier: 0,
     overlayTransitionMode: 'none',
     overlayTransitionSwapProgress: 0.85,
     overlayTransitionFadeOutRatio: 0.3,
     overlayTransitionFadeInStartProgress: 0.8,
     overlayTransitionHasSwappedPath: false,
+    rsvp: {
+      initialized: false,
+      visible: false,
+      sectionId: 'section-3',
+      name: '',
+      response: null,
+      updatedAtMs: 0,
+      hoverResponse: '',
+      activeFontKey: '',
+      fontLoadPromise: null,
+      fontLoadEntries: new Map(),
+      spriteSheetKey: '',
+      spriteLoadPromise: null,
+      spriteLoadStatus: 'idle',
+      spriteFrameSources: {
+        yesDefault: '',
+        yesSelected: '',
+        noDefault: '',
+        noSelected: '',
+      },
+    },
   },
 };
 
@@ -4082,6 +4163,7 @@ function ensureCenterOverlayImagePreload(path, options = {}) {
       nextEntry.image = image;
       nextEntry.promise = null;
       nextEntry.errorMessage = '';
+      renderScene({ skipAutoStart: true });
       return image;
     })
     .catch((error) => {
@@ -4097,10 +4179,17 @@ function ensureCenterOverlayImagePreload(path, options = {}) {
 
 function preloadSwipeSectionsOverlayImages(swipeConfig = resolveSwipeSectionsConfig()) {
   const sections = swipeConfig && Array.isArray(swipeConfig.sections) ? swipeConfig.sections : [];
-  if (sections.length <= 0) {
+  const pages = swipeConfig && Array.isArray(swipeConfig.pages) ? swipeConfig.pages : [];
+  if (sections.length <= 0 && pages.length <= 0) {
     return;
   }
   const uniquePaths = new Set();
+  for (let i = 0; i < pages.length; i += 1) {
+    const pagePath = normalizeCenterOverlayImagePath(pages[i]);
+    if (pagePath.length > 0) {
+      uniquePaths.add(pagePath);
+    }
+  }
   for (let i = 0; i < sections.length; i += 1) {
     const section = sections[i];
     const path = normalizeCenterOverlayImagePath(section && section.centerOverlayImagePath);
@@ -4245,6 +4334,9 @@ function requestCenterOverlayImageLoad(options = {}) {
 function syncCenterOverlayImageLayer(nowMs = performance.now(), currentFrame = null) {
   const overlayConfig = resolveCenterOverlayImageConfig();
   const swipeConfig = resolveSwipeSectionsConfig();
+  const swipeState = STATE && STATE.swipeSections ? STATE.swipeSections : null;
+  const sections = swipeConfig && Array.isArray(swipeConfig.sections) ? swipeConfig.sections : [];
+  const pages = swipeConfig && Array.isArray(swipeConfig.pages) ? swipeConfig.pages : [];
   const videoRect = getHeroVideoRenderedRect();
   const videoSizePx = (
     videoRect
@@ -4259,76 +4351,978 @@ function syncCenterOverlayImageLayer(nowMs = performance.now(), currentFrame = n
         ? STATE.viewportHeight
         : (Number.isFinite(window.innerHeight) ? Math.max(0, window.innerHeight) : 0)
     );
-
-  const sectionOffsetYRatio = resolveSwipeSectionCenterOverlayOffsetYVideoHeightRatio(swipeConfig);
-  const resolvedOffsetYPx = Number.isFinite(sectionOffsetYRatio)
-    ? (sectionOffsetYRatio * videoSizePx)
-    : (
-      overlayConfig.offsetYMode === 'videoSizeRatio'
-        ? (overlayConfig.offsetYPx * videoSizePx)
-        : overlayConfig.offsetYPx
-    );
-
-  centerOverlayImageLayer.style.left = `calc(50% + ${overlayConfig.offsetXPx}px)`;
-  centerOverlayImageLayer.style.top = `calc(50% + ${resolvedOffsetYPx}px)`;
-  if (overlayConfig.scaleMode === 'videoSizeRatio') {
-    const resolvedWidthPx = Math.max(0, overlayConfig.scale * videoSizePx);
-    centerOverlayImageLayer.style.width = resolvedWidthPx > 0 ? `${resolvedWidthPx}px` : '0px';
-    centerOverlayImageLayer.style.height = 'auto';
-    centerOverlayImageLayer.style.transform = 'translate(-50%, -50%)';
-  } else {
-    centerOverlayImageLayer.style.width = '';
-    centerOverlayImageLayer.style.height = '';
-    centerOverlayImageLayer.style.transform = `translate(-50%, -50%) scale(${overlayConfig.scale})`;
-  }
-
-  if (overlayConfig.enabled !== true) {
-    centerOverlayImageLayer.style.display = 'none';
-    centerOverlayImageLayer.style.opacity = '0';
-    centerOverlayImageLayer.style.visibility = 'hidden';
-    STATE.centerOverlayImageVisibleSinceMs = 0;
-    STATE.centerOverlayImageLastShouldBeVisible = false;
-    return;
-  }
-
-  requestCenterOverlayImageLoad().catch(() => {});
-
-  if (STATE.centerOverlayImageIsLoaded !== true) {
-    centerOverlayImageLayer.style.display = 'none';
-    centerOverlayImageLayer.style.opacity = '0';
-    centerOverlayImageLayer.style.visibility = 'hidden';
-    STATE.centerOverlayImageVisibleSinceMs = 0;
-    STATE.centerOverlayImageLastShouldBeVisible = false;
-    return;
-  }
-
-  centerOverlayImageLayer.style.display = 'block';
   const frameToUse = Number.isFinite(currentFrame)
     ? currentFrame
     : getCurrentHeroVideoFrame(resolveHeroPlaybackGateConfig());
-  const shouldBeVisible = frameToUse >= overlayConfig.displayAfterFrame;
+  const shouldBeVisibleByFrame = frameToUse >= overlayConfig.displayAfterFrame;
 
-  if (!shouldBeVisible) {
-    centerOverlayImageLayer.style.opacity = '0';
-    centerOverlayImageLayer.style.visibility = 'hidden';
+  if (!Array.isArray(STATE.centerOverlayImageLayerVisibleSinceMs) || STATE.centerOverlayImageLayerVisibleSinceMs.length < 2) {
+    STATE.centerOverlayImageLayerVisibleSinceMs = [0, 0];
+  }
+  if (!Array.isArray(STATE.centerOverlayImageLayerLastShouldBeVisible) || STATE.centerOverlayImageLayerLastShouldBeVisible.length < 2) {
+    STATE.centerOverlayImageLayerLastShouldBeVisible = [false, false];
+  }
+
+  const hideLayerAtIndex = (layerIndex) => {
+    const layer = centerOverlayImageLayers[layerIndex];
+    if (!layer) {
+      return;
+    }
+    layer.style.display = 'none';
+    layer.style.opacity = '0';
+    layer.style.visibility = 'hidden';
+    STATE.centerOverlayImageLayerVisibleSinceMs[layerIndex] = 0;
+    STATE.centerOverlayImageLayerLastShouldBeVisible[layerIndex] = false;
+  };
+
+  const resolveLayerPathFromSection = (section) => {
+    if (!section || typeof section !== 'object') {
+      return normalizeCenterOverlayImagePath(overlayConfig.spritePath);
+    }
+    const pageIndex = Number(section.centerOverlayPageIndex);
+    if (Number.isFinite(pageIndex) && pageIndex >= 1 && pageIndex <= pages.length) {
+      const pagePath = normalizeCenterOverlayImagePath(pages[Math.floor(pageIndex) - 1]);
+      if (pagePath.length > 0) {
+        return pagePath;
+      }
+    }
+    const sectionPath = normalizeCenterOverlayImagePath(section.centerOverlayImagePath);
+    if (sectionPath.length > 0) {
+      return sectionPath;
+    }
+    return normalizeCenterOverlayImagePath(overlayConfig.spritePath);
+  };
+
+  const resolveLayerOffsetYPx = (section) => {
+    const sectionOffsetRatio = Number(section && section.centerOverlayOffsetYVideoHeightRatio);
+    if (Number.isFinite(sectionOffsetRatio)) {
+      return sectionOffsetRatio * videoSizePx;
+    }
+    return overlayConfig.offsetYMode === 'videoSizeRatio'
+      ? (overlayConfig.offsetYPx * videoSizePx)
+      : overlayConfig.offsetYPx;
+  };
+
+  const applyLayerAtIndex = (layerIndex, section, opacityMultiplier) => {
+    const layer = centerOverlayImageLayers[layerIndex];
+    if (!layer || !section) {
+      hideLayerAtIndex(layerIndex);
+      return false;
+    }
+    const safeOpacityMultiplier = clamp(Number.isFinite(opacityMultiplier) ? opacityMultiplier : 0, 0, 1);
+    if (safeOpacityMultiplier <= 1e-6) {
+      hideLayerAtIndex(layerIndex);
+      return false;
+    }
+    const spritePath = resolveLayerPathFromSection(section);
+    if (spritePath.length <= 0) {
+      hideLayerAtIndex(layerIndex);
+      return false;
+    }
+    const preloadEntry = getCenterOverlayImagePreloadEntry(spritePath);
+    if (!preloadEntry || preloadEntry.status !== 'loaded' || !preloadEntry.image) {
+      ensureCenterOverlayImagePreload(spritePath).catch(() => {});
+      hideLayerAtIndex(layerIndex);
+      return false;
+    }
+    if (layer.dataset.centerOverlayPath !== spritePath || layer.src !== preloadEntry.image.src) {
+      layer.src = preloadEntry.image.src;
+      layer.dataset.centerOverlayPath = spritePath;
+    }
+
+    const resolvedOffsetYPx = resolveLayerOffsetYPx(section);
+    layer.style.left = `calc(50% + ${overlayConfig.offsetXPx}px)`;
+    layer.style.top = `calc(50% + ${resolvedOffsetYPx}px)`;
+    if (overlayConfig.scaleMode === 'videoSizeRatio') {
+      const resolvedWidthPx = Math.max(0, overlayConfig.scale * videoSizePx);
+      layer.style.width = resolvedWidthPx > 0 ? `${resolvedWidthPx}px` : '0px';
+      layer.style.height = 'auto';
+      layer.style.transform = 'translate(-50%, -50%)';
+    } else {
+      layer.style.width = '';
+      layer.style.height = '';
+      layer.style.transform = `translate(-50%, -50%) scale(${overlayConfig.scale})`;
+    }
+
+    layer.style.display = 'block';
+    if (
+      STATE.centerOverlayImageLayerLastShouldBeVisible[layerIndex] !== true
+      || STATE.centerOverlayImageLayerVisibleSinceMs[layerIndex] <= 0
+    ) {
+      STATE.centerOverlayImageLayerVisibleSinceMs[layerIndex] = Number.isFinite(nowMs) ? nowMs : performance.now();
+    }
+    STATE.centerOverlayImageLayerLastShouldBeVisible[layerIndex] = true;
+
+    let opacity = overlayConfig.maxOpacity;
+    if (overlayConfig.fadeInEnabled && overlayConfig.fadeInDurationSec > 1e-6) {
+      const fadeElapsedSec = Math.max(
+        0,
+        (nowMs - STATE.centerOverlayImageLayerVisibleSinceMs[layerIndex]) / 1000,
+      );
+      opacity = overlayConfig.maxOpacity * clamp(fadeElapsedSec / overlayConfig.fadeInDurationSec, 0, 1);
+    }
+    opacity *= safeOpacityMultiplier;
+    layer.style.opacity = String(opacity);
+    layer.style.visibility = opacity > 1e-6 ? 'visible' : 'hidden';
+    return true;
+  };
+
+  if (overlayConfig.enabled !== true || !shouldBeVisibleByFrame) {
+    hideLayerAtIndex(0);
+    hideLayerAtIndex(1);
+    STATE.centerOverlayImageIsLoaded = false;
     STATE.centerOverlayImageVisibleSinceMs = 0;
     STATE.centerOverlayImageLastShouldBeVisible = false;
     return;
   }
 
-  if (STATE.centerOverlayImageLastShouldBeVisible !== true || STATE.centerOverlayImageVisibleSinceMs <= 0) {
-    STATE.centerOverlayImageVisibleSinceMs = Number.isFinite(nowMs) ? nowMs : performance.now();
+  let activeSectionIndex = (
+    swipeState
+    && Number.isFinite(swipeState.activeSectionIndex)
+    && swipeState.activeSectionIndex >= 0
+    && swipeState.activeSectionIndex < sections.length
+  )
+    ? swipeState.activeSectionIndex
+    : -1;
+  if (activeSectionIndex < 0 && sections.length > 0) {
+    activeSectionIndex = findClosestSwipeSectionIndexToFrame(frameToUse, swipeConfig);
   }
-  STATE.centerOverlayImageLastShouldBeVisible = true;
 
-  let opacity = overlayConfig.maxOpacity;
-  if (overlayConfig.fadeInEnabled && overlayConfig.fadeInDurationSec > 1e-6) {
-    const fadeElapsedSec = Math.max(0, (nowMs - STATE.centerOverlayImageVisibleSinceMs) / 1000);
-    opacity = overlayConfig.maxOpacity * clamp(fadeElapsedSec / overlayConfig.fadeInDurationSec, 0, 1);
+  const defaultSection = {
+    centerOverlayPageIndex: 1,
+    centerOverlayImagePath: normalizeCenterOverlayImagePath(overlayConfig.spritePath),
+    centerOverlayOffsetYVideoHeightRatio: null,
+  };
+  const activeSection = (
+    activeSectionIndex >= 0
+    && activeSectionIndex < sections.length
+  )
+    ? sections[activeSectionIndex]
+    : defaultSection;
+
+  let hasPrimaryLayerVisible = false;
+  let hasAnyLayerVisible = false;
+  if (
+    swipeState
+    && swipeState.isTransitioning === true
+    && Number.isFinite(swipeState.transitionFromSectionIndex)
+    && Number.isFinite(swipeState.transitionToSectionIndex)
+    && swipeState.transitionFromSectionIndex >= 0
+    && swipeState.transitionFromSectionIndex < sections.length
+    && swipeState.transitionToSectionIndex >= 0
+    && swipeState.transitionToSectionIndex < sections.length
+  ) {
+    const outgoingSection = sections[swipeState.transitionFromSectionIndex];
+    const incomingSection = sections[swipeState.transitionToSectionIndex];
+    const outgoingOpacity = clamp(
+      Number(swipeState.overlayOutgoingOpacityMultiplier),
+      0,
+      1,
+    );
+    const incomingOpacity = clamp(
+      Number(swipeState.overlayOpacityMultiplier),
+      0,
+      1,
+    );
+    hasPrimaryLayerVisible = applyLayerAtIndex(0, outgoingSection, outgoingOpacity);
+    const hasIncomingLayerVisible = applyLayerAtIndex(1, incomingSection, incomingOpacity);
+    hasAnyLayerVisible = hasPrimaryLayerVisible || hasIncomingLayerVisible;
+  } else {
+    hasPrimaryLayerVisible = applyLayerAtIndex(0, activeSection, 1);
+    hideLayerAtIndex(1);
+    hasAnyLayerVisible = hasPrimaryLayerVisible;
   }
-  opacity *= getSwipeSectionsOverlayOpacityMultiplier();
-  centerOverlayImageLayer.style.opacity = String(opacity);
-  centerOverlayImageLayer.style.visibility = 'visible';
+
+  STATE.centerOverlayImageIsLoaded = hasAnyLayerVisible;
+  STATE.centerOverlayImageVisibleSinceMs = hasPrimaryLayerVisible
+    ? STATE.centerOverlayImageLayerVisibleSinceMs[0]
+    : 0;
+  STATE.centerOverlayImageLastShouldBeVisible = hasPrimaryLayerVisible;
+}
+
+function getSwipeSectionsRsvpRuntimeState() {
+  const swipeState = STATE && STATE.swipeSections ? STATE.swipeSections : null;
+  if (!swipeState || typeof swipeState !== 'object') {
+    return null;
+  }
+  if (!swipeState.rsvp || typeof swipeState.rsvp !== 'object') {
+    swipeState.rsvp = {};
+  }
+  if (!(swipeState.rsvp.fontLoadEntries instanceof Map)) {
+    swipeState.rsvp.fontLoadEntries = new Map();
+  }
+  if (!swipeState.rsvp.spriteFrameSources || typeof swipeState.rsvp.spriteFrameSources !== 'object') {
+    swipeState.rsvp.spriteFrameSources = {
+      yesDefault: '',
+      yesSelected: '',
+      noDefault: '',
+      noSelected: '',
+    };
+  }
+  if (
+    swipeState.rsvp.spriteLoadStatus !== 'idle'
+    && swipeState.rsvp.spriteLoadStatus !== 'loading'
+    && swipeState.rsvp.spriteLoadStatus !== 'loaded'
+    && swipeState.rsvp.spriteLoadStatus !== 'failed'
+  ) {
+    swipeState.rsvp.spriteLoadStatus = 'idle';
+  }
+  if (!Number.isFinite(Number(swipeState.rsvp.updatedAtMs))) {
+    swipeState.rsvp.updatedAtMs = 0;
+  }
+  if (typeof swipeState.rsvp.name !== 'string') {
+    swipeState.rsvp.name = '';
+  }
+  swipeState.rsvp.response = sanitizeRsvpResponseValue(swipeState.rsvp.response, null);
+  swipeState.rsvp.sectionId = (
+    typeof swipeState.rsvp.sectionId === 'string'
+    && swipeState.rsvp.sectionId.trim().length > 0
+  )
+    ? swipeState.rsvp.sectionId.trim()
+    : 'section-3';
+  if (typeof swipeState.rsvp.hoverResponse !== 'string') {
+    swipeState.rsvp.hoverResponse = '';
+  }
+  return swipeState.rsvp;
+}
+
+function getRsvpStateSnapshot(runtimeState = getSwipeSectionsRsvpRuntimeState()) {
+  const runtime = runtimeState || getSwipeSectionsRsvpRuntimeState();
+  return {
+    name: runtime && typeof runtime.name === 'string' ? runtime.name : '',
+    response: runtime ? sanitizeRsvpResponseValue(runtime.response, null) : null,
+    sectionId: runtime && typeof runtime.sectionId === 'string' ? runtime.sectionId : '',
+    updatedAtMs: runtime && Number.isFinite(Number(runtime.updatedAtMs))
+      ? Number(runtime.updatedAtMs)
+      : 0,
+  };
+}
+
+function dispatchRsvpStateChangeEvent(snapshot) {
+  if (!window || typeof window.dispatchEvent !== 'function' || typeof CustomEvent !== 'function') {
+    return;
+  }
+  const detail = snapshot && typeof snapshot === 'object'
+    ? snapshot
+    : getRsvpStateSnapshot();
+  window.dispatchEvent(new CustomEvent(SWIPE_SECTIONS_EVENT_RSVP_CHANGE, { detail }));
+}
+
+function normalizeRsvpNameValue(value, maxLength = 120) {
+  const asString = typeof value === 'string' ? value : String(value || '');
+  const limit = Number.isFinite(Number(maxLength))
+    ? Math.max(1, Math.floor(Number(maxLength)))
+    : 120;
+  return asString.slice(0, limit);
+}
+
+function setRsvpStatePatch(patch = {}, options = {}) {
+  const runtime = getSwipeSectionsRsvpRuntimeState();
+  if (!runtime) {
+    return getRsvpStateSnapshot();
+  }
+  const safePatch = isPlainObjectLiteral(patch) ? patch : {};
+  const safeOptions = isPlainObjectLiteral(options) ? options : {};
+  const swipeConfig = resolveSwipeSectionsConfig();
+  const rsvpConfig = swipeConfig && swipeConfig.rsvp ? swipeConfig.rsvp : resolveSwipeSectionsRsvpConfig({}, swipeConfig.sections || []);
+  const maxLength = rsvpConfig && rsvpConfig.nameField ? rsvpConfig.nameField.maxLength : 120;
+  let changed = false;
+
+  if (Object.prototype.hasOwnProperty.call(safePatch, 'name')) {
+    const nextName = normalizeRsvpNameValue(safePatch.name, maxLength);
+    if (nextName !== runtime.name) {
+      runtime.name = nextName;
+      changed = true;
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(safePatch, 'response')) {
+    const nextResponse = sanitizeRsvpResponseValue(safePatch.response, null);
+    if (nextResponse !== runtime.response) {
+      runtime.response = nextResponse;
+      changed = true;
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(safePatch, 'sectionId')) {
+    const nextSectionId = (
+      typeof safePatch.sectionId === 'string' && safePatch.sectionId.trim().length > 0
+    )
+      ? safePatch.sectionId.trim()
+      : runtime.sectionId;
+    if (nextSectionId !== runtime.sectionId) {
+      runtime.sectionId = nextSectionId;
+      changed = true;
+    }
+  }
+
+  if (!changed && safeOptions.forceEvent !== true) {
+    return getRsvpStateSnapshot(runtime);
+  }
+
+  runtime.updatedAtMs = Number.isFinite(Number(safeOptions.updatedAtMs))
+    ? Number(safeOptions.updatedAtMs)
+    : Date.now();
+  if (typeof rsvpNameInput.value === 'string' && rsvpNameInput.value !== runtime.name) {
+    rsvpNameInput.value = runtime.name;
+  }
+  const snapshot = getRsvpStateSnapshot(runtime);
+  syncRsvpButtonVisualState(rsvpConfig, runtime);
+  if (safeOptions.emitEvent !== false) {
+    dispatchRsvpStateChangeEvent(snapshot);
+  }
+  return snapshot;
+}
+
+function clearRsvpState(options = {}) {
+  return setRsvpStatePatch({ name: '', response: null }, options);
+}
+
+function resolveRsvpActiveSectionId(swipeConfig = resolveSwipeSectionsConfig()) {
+  const swipeState = STATE && STATE.swipeSections ? STATE.swipeSections : null;
+  const sections = swipeConfig && Array.isArray(swipeConfig.sections) ? swipeConfig.sections : [];
+  if (!swipeState || sections.length <= 0) {
+    return '';
+  }
+  if (swipeState.isTransitioning === true) {
+    return '';
+  }
+  let activeIndex = (
+    Number.isFinite(swipeState.activeSectionIndex)
+    ? Math.floor(swipeState.activeSectionIndex)
+    : -1
+  );
+  if (!(activeIndex >= 0 && activeIndex < sections.length)) {
+    const currentFrame = getCurrentHeroVideoFrame(resolveHeroPlaybackGateConfig());
+    activeIndex = findClosestSwipeSectionIndexToFrame(currentFrame, swipeConfig);
+  }
+  if (!(activeIndex >= 0 && activeIndex < sections.length)) {
+    return '';
+  }
+  const section = sections[activeIndex];
+  return section && typeof section.id === 'string' ? section.id : '';
+}
+
+function extractRsvpSpriteFrameDataUrl(spriteImage, sourceRect) {
+  if (!spriteImage || !sourceRect) {
+    return '';
+  }
+  const sx = Math.max(0, Math.floor(sourceRect.sx));
+  const sy = Math.max(0, Math.floor(sourceRect.sy));
+  const sw = Math.max(1, Math.floor(sourceRect.sw));
+  const sh = Math.max(1, Math.floor(sourceRect.sh));
+  if (sx >= spriteImage.width || sy >= spriteImage.height) {
+    return '';
+  }
+  const actualWidth = Math.min(sw, Math.max(1, spriteImage.width - sx));
+  const actualHeight = Math.min(sh, Math.max(1, spriteImage.height - sy));
+  const extractionCanvas = document.createElement('canvas');
+  extractionCanvas.width = actualWidth;
+  extractionCanvas.height = actualHeight;
+  const extractionCtx = extractionCanvas.getContext('2d');
+  if (!extractionCtx) {
+    return '';
+  }
+  extractionCtx.clearRect(0, 0, actualWidth, actualHeight);
+  extractionCtx.drawImage(
+    spriteImage,
+    sx,
+    sy,
+    actualWidth,
+    actualHeight,
+    0,
+    0,
+    actualWidth,
+    actualHeight,
+  );
+  return extractionCanvas.toDataURL();
+}
+
+function buildRsvpSpriteFrameSources(spriteImage, rsvpButtonsConfig) {
+  const fallback = {
+    yesDefault: '',
+    yesSelected: '',
+    noDefault: '',
+    noSelected: '',
+  };
+  if (!spriteImage || !rsvpButtonsConfig) {
+    return fallback;
+  }
+  const cellWidth = Math.max(
+    1,
+    Math.floor(Number(rsvpButtonsConfig.spriteCellWidth) * Number(rsvpButtonsConfig.spriteScale)),
+  );
+  const cellHeight = Math.max(
+    1,
+    Math.floor(Number(rsvpButtonsConfig.spriteCellHeight) * Number(rsvpButtonsConfig.spriteScale)),
+  );
+  const cols = Math.max(1, Math.floor(Number(rsvpButtonsConfig.spriteCols)));
+  const rows = Math.max(1, Math.floor(Number(rsvpButtonsConfig.spriteRows)));
+  const frameMap = rsvpButtonsConfig.frameMap || {};
+  const yesRow = clamp(Math.floor(Number(frameMap.yesRow) || 0), 0, rows - 1);
+  const noRow = clamp(Math.floor(Number(frameMap.noRow) || 0), 0, rows - 1);
+  const unselectedCol = clamp(Math.floor(Number(frameMap.unselectedCol) || 0), 0, cols - 1);
+  const selectedCol = clamp(Math.floor(Number(frameMap.selectedCol) || 1), 0, cols - 1);
+
+  const resolveFrameRect = (rowIndex, colIndex) => ({
+    sx: colIndex * cellWidth,
+    sy: rowIndex * cellHeight,
+    sw: cellWidth,
+    sh: cellHeight,
+  });
+
+  return {
+    yesDefault: extractRsvpSpriteFrameDataUrl(spriteImage, resolveFrameRect(yesRow, unselectedCol)),
+    yesSelected: extractRsvpSpriteFrameDataUrl(spriteImage, resolveFrameRect(yesRow, selectedCol)),
+    noDefault: extractRsvpSpriteFrameDataUrl(spriteImage, resolveFrameRect(noRow, unselectedCol)),
+    noSelected: extractRsvpSpriteFrameDataUrl(spriteImage, resolveFrameRect(noRow, selectedCol)),
+  };
+}
+
+function getRsvpSpriteSheetSignature(buttonsConfig) {
+  if (!buttonsConfig) {
+    return '';
+  }
+  const frameMap = buttonsConfig.frameMap || {};
+  const spritePath = normalizeCenterOverlayImagePath(buttonsConfig.spritePath);
+  return [
+    spritePath,
+    Number(buttonsConfig.spriteCellWidth) || 0,
+    Number(buttonsConfig.spriteCellHeight) || 0,
+    Number(buttonsConfig.spriteScale) || 0,
+    Number(buttonsConfig.spriteCols) || 0,
+    Number(buttonsConfig.spriteRows) || 0,
+    Number(frameMap.yesRow) || 0,
+    Number(frameMap.noRow) || 0,
+    Number(frameMap.unselectedCol) || 0,
+    Number(frameMap.selectedCol) || 0,
+  ].join('|');
+}
+
+function ensureRsvpButtonSpriteFramesLoaded(rsvpConfig) {
+  const runtime = getSwipeSectionsRsvpRuntimeState();
+  if (!runtime) {
+    return Promise.resolve(null);
+  }
+  const safeConfig = rsvpConfig || resolveSwipeSectionsConfig().rsvp;
+  const buttonsConfig = safeConfig && safeConfig.buttons ? safeConfig.buttons : null;
+  if (!safeConfig || safeConfig.enabled !== true || !buttonsConfig) {
+    runtime.spriteSheetKey = '';
+    runtime.spriteFrameSources = {
+      yesDefault: '',
+      yesSelected: '',
+      noDefault: '',
+      noSelected: '',
+    };
+    runtime.spriteLoadPromise = null;
+    runtime.spriteLoadStatus = 'idle';
+    return Promise.resolve(null);
+  }
+
+  const spritePath = normalizeCenterOverlayImagePath(buttonsConfig.spritePath);
+  if (spritePath.length <= 0) {
+    runtime.spriteSheetKey = '';
+    runtime.spriteFrameSources = {
+      yesDefault: '',
+      yesSelected: '',
+      noDefault: '',
+      noSelected: '',
+    };
+    runtime.spriteLoadPromise = null;
+    runtime.spriteLoadStatus = 'idle';
+    return Promise.resolve(null);
+  }
+
+  const signature = getRsvpSpriteSheetSignature(buttonsConfig);
+  if (
+    runtime.spriteSheetKey === signature
+    && runtime.spriteFrameSources
+    && runtime.spriteFrameSources.yesDefault
+    && runtime.spriteFrameSources.yesSelected
+    && runtime.spriteFrameSources.noDefault
+    && runtime.spriteFrameSources.noSelected
+  ) {
+    return Promise.resolve(runtime.spriteFrameSources);
+  }
+  if (runtime.spriteSheetKey === signature && runtime.spriteLoadStatus === 'failed') {
+    return Promise.resolve(null);
+  }
+  if (runtime.spriteSheetKey === signature && runtime.spriteLoadPromise) {
+    return runtime.spriteLoadPromise;
+  }
+
+  runtime.spriteSheetKey = signature;
+  runtime.spriteLoadStatus = 'loading';
+  const loadPromise = loadImage(spritePath)
+    .then((spriteImage) => {
+      if (runtime.spriteSheetKey !== signature) {
+        return null;
+      }
+      runtime.spriteFrameSources = buildRsvpSpriteFrameSources(spriteImage, buttonsConfig);
+      runtime.spriteLoadPromise = null;
+      runtime.spriteLoadStatus = 'loaded';
+      syncRsvpButtonVisualState(safeConfig, runtime);
+      renderScene({ skipAutoStart: true });
+      return runtime.spriteFrameSources;
+    })
+    .catch((error) => {
+      if (runtime.spriteSheetKey !== signature) {
+        return null;
+      }
+      runtime.spriteFrameSources = {
+        yesDefault: '',
+        yesSelected: '',
+        noDefault: '',
+        noSelected: '',
+      };
+      runtime.spriteLoadPromise = null;
+      runtime.spriteLoadStatus = 'failed';
+      console.warn(error && error.message ? error.message : 'Failed to load RSVP sprite sheet.');
+      return null;
+    });
+  runtime.spriteLoadPromise = loadPromise;
+  return loadPromise;
+}
+
+function getRsvpButtonImageSourceForResponse(
+  response,
+  isSelected,
+  spriteFrameSources,
+) {
+  const safeFrames = spriteFrameSources || {};
+  if (response === 'yes') {
+    return isSelected
+      ? (safeFrames.yesSelected || safeFrames.yesDefault || '')
+      : (safeFrames.yesDefault || safeFrames.yesSelected || '');
+  }
+  return isSelected
+    ? (safeFrames.noSelected || safeFrames.noDefault || '')
+    : (safeFrames.noDefault || safeFrames.noSelected || '');
+}
+
+function syncRsvpButtonVisualState(
+  rsvpConfig = resolveSwipeSectionsConfig().rsvp,
+  runtimeState = getSwipeSectionsRsvpRuntimeState(),
+) {
+  const runtime = runtimeState || getSwipeSectionsRsvpRuntimeState();
+  if (!runtime) {
+    return;
+  }
+  const buttonsConfig = rsvpConfig && rsvpConfig.buttons ? rsvpConfig.buttons : null;
+  const animationConfig = buttonsConfig && buttonsConfig.animation ? buttonsConfig.animation : {};
+  const transitionDurationMs = Math.max(0, Number(animationConfig.transitionDurationMs) || 0);
+  const transitionEasing = (
+    typeof animationConfig.transitionEasing === 'string'
+    && animationConfig.transitionEasing.trim().length > 0
+  )
+    ? animationConfig.transitionEasing.trim()
+    : 'ease-out';
+  const hoverScale = Math.max(0.01, Number(animationConfig.hoverScale) || 1);
+  const selectedScale = Math.max(0.01, Number(animationConfig.selectedScale) || 1);
+  const isYesSelected = runtime.response === 'yes';
+  const isNoSelected = runtime.response === 'no';
+  const isYesHovered = runtime.hoverResponse === 'yes';
+  const isNoHovered = runtime.hoverResponse === 'no';
+  const yesScale = (isYesSelected ? selectedScale : 1) * (isYesHovered ? hoverScale : 1);
+  const noScale = (isNoSelected ? selectedScale : 1) * (isNoHovered ? hoverScale : 1);
+  const frames = runtime.spriteFrameSources || {};
+  const yesSrc = getRsvpButtonImageSourceForResponse('yes', isYesSelected, frames);
+  const noSrc = getRsvpButtonImageSourceForResponse('no', isNoSelected, frames);
+
+  if (yesSrc && rsvpYesButtonImage.src !== yesSrc) {
+    rsvpYesButtonImage.src = yesSrc;
+  } else if (!yesSrc && rsvpYesButtonImage.hasAttribute('src')) {
+    rsvpYesButtonImage.removeAttribute('src');
+  }
+  if (noSrc && rsvpNoButtonImage.src !== noSrc) {
+    rsvpNoButtonImage.src = noSrc;
+  } else if (!noSrc && rsvpNoButtonImage.hasAttribute('src')) {
+    rsvpNoButtonImage.removeAttribute('src');
+  }
+  rsvpYesButton.style.transform = `translate(-50%, -50%) scale(${yesScale})`;
+  rsvpNoButton.style.transform = `translate(-50%, -50%) scale(${noScale})`;
+  rsvpYesButton.style.transition = `transform ${transitionDurationMs}ms ${transitionEasing}`;
+  rsvpNoButton.style.transition = `transform ${transitionDurationMs}ms ${transitionEasing}`;
+  rsvpYesButton.setAttribute('aria-pressed', isYesSelected ? 'true' : 'false');
+  rsvpNoButton.setAttribute('aria-pressed', isNoSelected ? 'true' : 'false');
+  rsvpYesButton.dataset.selected = isYesSelected ? '1' : '0';
+  rsvpNoButton.dataset.selected = isNoSelected ? '1' : '0';
+}
+
+function ensureRsvpFontLoaded(rsvpConfig) {
+  const runtime = getSwipeSectionsRsvpRuntimeState();
+  if (!runtime) {
+    return Promise.resolve(false);
+  }
+  const nameFieldConfig = rsvpConfig && rsvpConfig.nameField ? rsvpConfig.nameField : {};
+  const fontSourcePath = normalizeHostedAssetPath(
+    typeof nameFieldConfig.fontSourcePath === 'string' ? nameFieldConfig.fontSourcePath.trim() : '',
+  );
+  const fontFamily = (
+    typeof nameFieldConfig.fontFamily === 'string' && nameFieldConfig.fontFamily.trim().length > 0
+  )
+    ? nameFieldConfig.fontFamily.trim()
+    : '';
+  if (fontSourcePath.length <= 0 || fontFamily.length <= 0 || typeof FontFace !== 'function' || !document.fonts) {
+    runtime.activeFontKey = '';
+    runtime.fontLoadPromise = null;
+    return Promise.resolve(false);
+  }
+  const fontWeight = (
+    typeof nameFieldConfig.fontWeight === 'string'
+    || Number.isFinite(Number(nameFieldConfig.fontWeight))
+  )
+    ? String(nameFieldConfig.fontWeight)
+    : 'normal';
+  const fontStyle = (
+    typeof nameFieldConfig.fontStyle === 'string' && nameFieldConfig.fontStyle.trim().length > 0
+  )
+    ? nameFieldConfig.fontStyle.trim()
+    : 'normal';
+  const fontKey = `${fontFamily}|${fontSourcePath}|${fontWeight}|${fontStyle}`;
+  runtime.activeFontKey = fontKey;
+  const fontEntries = runtime.fontLoadEntries instanceof Map
+    ? runtime.fontLoadEntries
+    : new Map();
+  runtime.fontLoadEntries = fontEntries;
+  const existing = fontEntries.get(fontKey);
+  if (existing && existing.status === 'loaded') {
+    return Promise.resolve(true);
+  }
+  if (existing && existing.status === 'failed') {
+    return Promise.resolve(false);
+  }
+  if (existing && existing.status === 'loading' && existing.promise) {
+    runtime.fontLoadPromise = existing.promise;
+    return existing.promise;
+  }
+  const entry = {
+    status: 'loading',
+    promise: null,
+  };
+  fontEntries.set(fontKey, entry);
+  const loadPromise = new FontFace(fontFamily, `url("${fontSourcePath}")`, {
+    weight: fontWeight,
+    style: fontStyle,
+  })
+    .load()
+    .then((loadedFontFace) => {
+      if (runtime.activeFontKey !== fontKey) {
+        return false;
+      }
+      document.fonts.add(loadedFontFace);
+      entry.status = 'loaded';
+      entry.promise = null;
+      runtime.fontLoadPromise = null;
+      renderScene({ skipAutoStart: true });
+      return true;
+    })
+    .catch(() => {
+      if (runtime.activeFontKey !== fontKey) {
+        return false;
+      }
+      entry.status = 'failed';
+      entry.promise = null;
+      runtime.fontLoadPromise = null;
+      return false;
+    });
+  entry.promise = loadPromise;
+  runtime.fontLoadPromise = loadPromise;
+  return loadPromise;
+}
+
+function initializeRsvpStateIfNeeded(swipeConfig = resolveSwipeSectionsConfig()) {
+  const runtime = getSwipeSectionsRsvpRuntimeState();
+  if (!runtime) {
+    return;
+  }
+  const rsvpConfig = swipeConfig && swipeConfig.rsvp ? swipeConfig.rsvp : null;
+  if (!rsvpConfig) {
+    return;
+  }
+  if (runtime.initialized === true) {
+    return;
+  }
+  runtime.initialized = true;
+  runtime.sectionId = rsvpConfig.sectionId;
+  setRsvpStatePatch(
+    {
+      name: rsvpConfig.initialState ? rsvpConfig.initialState.name : '',
+      response: rsvpConfig.initialState ? rsvpConfig.initialState.response : null,
+      sectionId: rsvpConfig.sectionId,
+    },
+    {
+      emitEvent: false,
+      forceEvent: true,
+    },
+  );
+}
+
+function hideRsvpDebugRects() {
+  const debugRects = [rsvpNameDebugRect, rsvpYesDebugRect, rsvpNoDebugRect];
+  for (let i = 0; i < debugRects.length; i += 1) {
+    const rectEl = debugRects[i];
+    if (!rectEl) {
+      continue;
+    }
+    rectEl.style.display = 'none';
+    rectEl.style.visibility = 'hidden';
+  }
+}
+
+function syncRsvpDebugRect(
+  rectEl,
+  centerX,
+  centerY,
+  widthPx,
+  heightPx,
+  shouldShow,
+  strokeColor,
+  lineWidthPx,
+) {
+  if (!rectEl) {
+    return;
+  }
+  if (!shouldShow || !(widthPx > 0) || !(heightPx > 0)) {
+    rectEl.style.display = 'none';
+    rectEl.style.visibility = 'hidden';
+    return;
+  }
+  rectEl.style.left = `${centerX}px`;
+  rectEl.style.top = `${centerY}px`;
+  rectEl.style.width = `${widthPx}px`;
+  rectEl.style.height = `${heightPx}px`;
+  rectEl.style.borderColor = strokeColor;
+  rectEl.style.borderWidth = `${lineWidthPx}px`;
+  rectEl.style.display = 'block';
+  rectEl.style.visibility = 'visible';
+}
+
+function hideRsvpLayer() {
+  const runtime = getSwipeSectionsRsvpRuntimeState();
+  if (runtime) {
+    runtime.visible = false;
+    runtime.hoverResponse = '';
+  }
+  hideRsvpDebugRects();
+  rsvpLayer.style.display = 'none';
+  rsvpLayer.style.visibility = 'hidden';
+  rsvpLayer.style.pointerEvents = 'none';
+  rsvpLayer.setAttribute('aria-hidden', 'true');
+}
+
+function syncRsvpLayer(nowMs = performance.now()) {
+  const swipeConfig = resolveSwipeSectionsConfig();
+  const rsvpConfig = swipeConfig && swipeConfig.rsvp ? swipeConfig.rsvp : null;
+  const runtime = getSwipeSectionsRsvpRuntimeState();
+  if (!runtime || !rsvpConfig || rsvpConfig.enabled !== true || swipeConfig.enabled !== true) {
+    hideRsvpLayer();
+    return;
+  }
+  if (!isSwipeSectionsNavigationActive(swipeConfig)) {
+    hideRsvpLayer();
+    return;
+  }
+  runtime.sectionId = rsvpConfig.sectionId;
+  ensureRsvpButtonSpriteFramesLoaded(rsvpConfig).catch(() => {});
+  ensureRsvpFontLoaded(rsvpConfig).catch(() => {});
+
+  const activeSectionId = resolveRsvpActiveSectionId(swipeConfig);
+  const shouldShow = activeSectionId.length > 0 && activeSectionId === rsvpConfig.sectionId;
+  if (!shouldShow) {
+    hideRsvpLayer();
+    return;
+  }
+
+  const videoRect = getHeroVideoRenderedRect();
+  const videoHeight = (
+    videoRect
+    && Number.isFinite(videoRect.height)
+    && videoRect.height > 0
+  )
+    ? videoRect.height
+    : resolveHeroVideoRenderedHeightPx();
+  if (!(videoHeight > 0)) {
+    hideRsvpLayer();
+    return;
+  }
+  const centerX = (
+    videoRect
+    && Number.isFinite(videoRect.left)
+    && Number.isFinite(videoRect.width)
+  )
+    ? (videoRect.left + (videoRect.width * 0.5))
+    : (
+      Number.isFinite(STATE.viewportWidth) && STATE.viewportWidth > 0
+        ? STATE.viewportWidth * 0.5
+        : (Number.isFinite(window.innerWidth) ? window.innerWidth * 0.5 : 0)
+    );
+  const centerY = (
+    videoRect
+    && Number.isFinite(videoRect.top)
+    && Number.isFinite(videoRect.height)
+  )
+    ? (videoRect.top + (videoRect.height * 0.5))
+    : (
+      Number.isFinite(STATE.viewportHeight) && STATE.viewportHeight > 0
+        ? STATE.viewportHeight * 0.5
+        : (Number.isFinite(window.innerHeight) ? window.innerHeight * 0.5 : 0)
+    );
+
+  const nameFieldConfig = rsvpConfig.nameField || {};
+  const buttonsConfig = rsvpConfig.buttons || {};
+  const debugConfig = rsvpConfig.debug || {};
+  const nameCenterX = centerX + (Number(nameFieldConfig.offsetXVideoHeightRatio) || 0) * videoHeight;
+  const nameCenterY = centerY + (Number(nameFieldConfig.offsetYVideoHeightRatio) || 0) * videoHeight;
+  const nameWidth = Math.max(0, (Number(nameFieldConfig.widthVideoHeightRatio) || 0) * videoHeight);
+  const nameHeight = Math.max(0, (Number(nameFieldConfig.heightVideoHeightRatio) || 0) * videoHeight);
+  const nameFontSize = Math.max(0, (Number(nameFieldConfig.fontSizeVideoHeightRatio) || 0) * videoHeight);
+
+  rsvpLayer.style.display = 'block';
+  rsvpLayer.style.visibility = 'visible';
+  rsvpLayer.style.pointerEvents = 'none';
+  rsvpLayer.setAttribute('aria-hidden', 'false');
+  runtime.visible = true;
+  runtime.sectionId = rsvpConfig.sectionId;
+
+  rsvpNameInput.style.left = `${nameCenterX}px`;
+  rsvpNameInput.style.top = `${nameCenterY}px`;
+  rsvpNameInput.style.width = `${nameWidth}px`;
+  rsvpNameInput.style.height = `${nameHeight}px`;
+  rsvpNameInput.style.fontFamily = nameFieldConfig.fontFamily || '';
+  rsvpNameInput.style.fontWeight = String(nameFieldConfig.fontWeight || 'normal');
+  rsvpNameInput.style.fontStyle = nameFieldConfig.fontStyle || 'normal';
+  rsvpNameInput.style.fontSize = `${nameFontSize}px`;
+  rsvpNameInput.style.color = nameFieldConfig.textColor || '#101010';
+  rsvpNameInput.style.textAlign = sanitizeRsvpTextAlign(nameFieldConfig.textAlign, 'left');
+  rsvpNameInput.style.lineHeight = nameHeight > 0 ? `${nameHeight}px` : '';
+  rsvpNameInput.maxLength = Number.isFinite(Number(nameFieldConfig.maxLength))
+    ? Math.max(1, Math.floor(Number(nameFieldConfig.maxLength)))
+    : 120;
+  if (rsvpNameInput.value !== runtime.name) {
+    rsvpNameInput.value = runtime.name;
+  }
+
+  const yesConfig = buttonsConfig.yes || {};
+  const noConfig = buttonsConfig.no || {};
+  const yesCenterX = centerX + (Number(yesConfig.offsetXVideoHeightRatio) || 0) * videoHeight;
+  const yesCenterY = centerY + (Number(yesConfig.offsetYVideoHeightRatio) || 0) * videoHeight;
+  const yesWidth = Math.max(0, (Number(yesConfig.widthVideoHeightRatio) || 0) * videoHeight);
+  const yesHeight = Math.max(0, (Number(yesConfig.heightVideoHeightRatio) || 0) * videoHeight);
+  const noCenterX = centerX + (Number(noConfig.offsetXVideoHeightRatio) || 0) * videoHeight;
+  const noCenterY = centerY + (Number(noConfig.offsetYVideoHeightRatio) || 0) * videoHeight;
+  const noWidth = Math.max(0, (Number(noConfig.widthVideoHeightRatio) || 0) * videoHeight);
+  const noHeight = Math.max(0, (Number(noConfig.heightVideoHeightRatio) || 0) * videoHeight);
+  const debugEnabled = debugConfig.enabled === true;
+  const debugStrokeColor = (
+    typeof debugConfig.strokeColor === 'string' && debugConfig.strokeColor.trim().length > 0
+  )
+    ? debugConfig.strokeColor.trim()
+    : 'rgba(255, 120, 120, 0.95)';
+  const debugLineWidthPx = Number.isFinite(Number(debugConfig.lineWidthPx))
+    ? Math.max(1, Number(debugConfig.lineWidthPx))
+    : 2;
+  syncRsvpDebugRect(
+    rsvpNameDebugRect,
+    nameCenterX,
+    nameCenterY,
+    nameWidth,
+    nameHeight,
+    debugEnabled && debugConfig.showNameFieldRect !== false,
+    debugStrokeColor,
+    debugLineWidthPx,
+  );
+  syncRsvpDebugRect(
+    rsvpYesDebugRect,
+    yesCenterX,
+    yesCenterY,
+    yesWidth,
+    yesHeight,
+    debugEnabled && debugConfig.showButtonRects !== false,
+    debugStrokeColor,
+    debugLineWidthPx,
+  );
+  syncRsvpDebugRect(
+    rsvpNoDebugRect,
+    noCenterX,
+    noCenterY,
+    noWidth,
+    noHeight,
+    debugEnabled && debugConfig.showButtonRects !== false,
+    debugStrokeColor,
+    debugLineWidthPx,
+  );
+
+  rsvpYesButton.style.left = `${yesCenterX}px`;
+  rsvpYesButton.style.top = `${yesCenterY}px`;
+  rsvpYesButton.style.width = `${yesWidth}px`;
+  rsvpYesButton.style.height = `${yesHeight}px`;
+  rsvpNoButton.style.left = `${noCenterX}px`;
+  rsvpNoButton.style.top = `${noCenterY}px`;
+  rsvpNoButton.style.width = `${noWidth}px`;
+  rsvpNoButton.style.height = `${noHeight}px`;
+  rsvpYesButton.style.pointerEvents = 'auto';
+  rsvpNoButton.style.pointerEvents = 'auto';
+  rsvpNameInput.style.pointerEvents = 'auto';
+  rsvpNameInput.style.caretColor = nameFieldConfig.textColor || '#101010';
+  rsvpLayer.dataset.activeSectionId = activeSectionId;
+  rsvpLayer.dataset.rsvpTimestamp = Number.isFinite(nowMs) ? String(nowMs) : String(performance.now());
+  syncRsvpButtonVisualState(rsvpConfig, runtime);
+}
+
+function onRsvpNameInputEvent() {
+  const swipeConfig = resolveSwipeSectionsConfig();
+  const rsvpConfig = swipeConfig && swipeConfig.rsvp ? swipeConfig.rsvp : null;
+  const maxLength = rsvpConfig && rsvpConfig.nameField ? rsvpConfig.nameField.maxLength : 120;
+  const nextName = normalizeRsvpNameValue(rsvpNameInput.value || '', maxLength);
+  if (nextName !== rsvpNameInput.value) {
+    rsvpNameInput.value = nextName;
+  }
+  setRsvpStatePatch({ name: nextName });
+}
+
+function onRsvpButtonHoverEvent(event, isEntering) {
+  const target = event && event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+  if (!target) {
+    return;
+  }
+  const response = sanitizeRsvpResponseValue(target.dataset.rsvpResponse, null);
+  const runtime = getSwipeSectionsRsvpRuntimeState();
+  if (!runtime) {
+    return;
+  }
+  runtime.hoverResponse = isEntering ? (response || '') : '';
+  syncRsvpButtonVisualState(resolveSwipeSectionsConfig().rsvp, runtime);
+}
+
+function onRsvpButtonClick(event) {
+  if (event && event.cancelable === true) {
+    event.preventDefault();
+  }
+  const target = event && event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+  if (!target) {
+    return;
+  }
+  const response = sanitizeRsvpResponseValue(target.dataset.rsvpResponse, null);
+  if (!response) {
+    return;
+  }
+  setRsvpStatePatch({ response });
+}
+
+function setupRsvpLayerEventHandlers() {
+  rsvpNameInput.addEventListener('input', onRsvpNameInputEvent);
+  rsvpNameInput.addEventListener('change', onRsvpNameInputEvent);
+  rsvpYesButton.addEventListener('mouseenter', (event) => onRsvpButtonHoverEvent(event, true));
+  rsvpYesButton.addEventListener('mouseleave', (event) => onRsvpButtonHoverEvent(event, false));
+  rsvpNoButton.addEventListener('mouseenter', (event) => onRsvpButtonHoverEvent(event, true));
+  rsvpNoButton.addEventListener('mouseleave', (event) => onRsvpButtonHoverEvent(event, false));
+  rsvpYesButton.addEventListener('focus', (event) => onRsvpButtonHoverEvent(event, true));
+  rsvpYesButton.addEventListener('blur', (event) => onRsvpButtonHoverEvent(event, false));
+  rsvpNoButton.addEventListener('focus', (event) => onRsvpButtonHoverEvent(event, true));
+  rsvpNoButton.addEventListener('blur', (event) => onRsvpButtonHoverEvent(event, false));
+  rsvpYesButton.addEventListener('click', onRsvpButtonClick);
+  rsvpNoButton.addEventListener('click', onRsvpButtonClick);
 }
 
 function shouldRenderOpenButtonArrowLive(gateConfig = resolveHeroPlaybackGateConfig()) {
@@ -12599,6 +13593,219 @@ function resolveSwipeSectionsFallbackOverlayPath() {
   return './test_page.png';
 }
 
+function sanitizeRsvpResponseValue(value, fallback = null) {
+  if (value === 'yes' || value === 'no') {
+    return value;
+  }
+  if (fallback === 'yes' || fallback === 'no' || fallback === null) {
+    return fallback;
+  }
+  return null;
+}
+
+function sanitizeRsvpTextAlign(value, fallback = 'left') {
+  if (value === 'left' || value === 'center' || value === 'right' || value === 'start' || value === 'end') {
+    return value;
+  }
+  if (fallback === 'left' || fallback === 'center' || fallback === 'right' || fallback === 'start' || fallback === 'end') {
+    return fallback;
+  }
+  return 'left';
+}
+
+function resolveSwipeSectionsRsvpConfig(
+  rsvpCandidate,
+  sections = [],
+) {
+  const safeConfig = isPlainObjectLiteral(rsvpCandidate) ? rsvpCandidate : {};
+  const nameFieldRaw = isPlainObjectLiteral(safeConfig.nameField) ? safeConfig.nameField : {};
+  const buttonsRaw = isPlainObjectLiteral(safeConfig.buttons) ? safeConfig.buttons : {};
+  const yesButtonRaw = isPlainObjectLiteral(buttonsRaw.yes) ? buttonsRaw.yes : {};
+  const noButtonRaw = isPlainObjectLiteral(buttonsRaw.no) ? buttonsRaw.no : {};
+  const animationRaw = isPlainObjectLiteral(buttonsRaw.animation) ? buttonsRaw.animation : {};
+  const initialStateRaw = isPlainObjectLiteral(safeConfig.initialState) ? safeConfig.initialState : {};
+  const debugRaw = isPlainObjectLiteral(safeConfig.debug) ? safeConfig.debug : {};
+  const fallbackSectionId = (
+    sections[2]
+    && typeof sections[2].id === 'string'
+    && sections[2].id.trim().length > 0
+  )
+    ? sections[2].id.trim()
+    : (
+      sections[0]
+      && typeof sections[0].id === 'string'
+      && sections[0].id.trim().length > 0
+        ? sections[0].id.trim()
+        : 'section-3'
+    );
+  const requestedSectionId = (
+    typeof safeConfig.sectionId === 'string'
+    && safeConfig.sectionId.trim().length > 0
+  )
+    ? safeConfig.sectionId.trim()
+    : fallbackSectionId;
+  const hasSectionId = sections.some((section) => section && section.id === requestedSectionId);
+  const sectionId = hasSectionId ? requestedSectionId : fallbackSectionId;
+  const fontSourcePath = normalizeHostedAssetPath(
+    typeof nameFieldRaw.fontSourcePath === 'string' ? nameFieldRaw.fontSourcePath.trim() : '',
+  );
+  return {
+    enabled: safeConfig.enabled === true,
+    sectionId,
+    nameField: {
+      offsetXVideoHeightRatio: Number.isFinite(Number(nameFieldRaw.offsetXVideoHeightRatio))
+        ? Number(nameFieldRaw.offsetXVideoHeightRatio)
+        : 0,
+      offsetYVideoHeightRatio: Number.isFinite(Number(nameFieldRaw.offsetYVideoHeightRatio))
+        ? Number(nameFieldRaw.offsetYVideoHeightRatio)
+        : 0,
+      widthVideoHeightRatio: Number.isFinite(Number(nameFieldRaw.widthVideoHeightRatio))
+        ? Math.max(0, Number(nameFieldRaw.widthVideoHeightRatio))
+        : 0.34,
+      heightVideoHeightRatio: Number.isFinite(Number(nameFieldRaw.heightVideoHeightRatio))
+        ? Math.max(0, Number(nameFieldRaw.heightVideoHeightRatio))
+        : 0.06,
+      fontFamily: (
+        typeof nameFieldRaw.fontFamily === 'string'
+        && nameFieldRaw.fontFamily.trim().length > 0
+      )
+        ? nameFieldRaw.fontFamily.trim()
+        : '"Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, "Times New Roman", serif',
+      fontSourcePath: (
+        typeof fontSourcePath === 'string'
+        && fontSourcePath.trim().length > 0
+      )
+        ? fontSourcePath.trim()
+        : '',
+      fontWeight: (
+        typeof nameFieldRaw.fontWeight === 'string'
+        || Number.isFinite(Number(nameFieldRaw.fontWeight))
+      )
+        ? nameFieldRaw.fontWeight
+        : 500,
+      fontStyle: (
+        typeof nameFieldRaw.fontStyle === 'string'
+        && nameFieldRaw.fontStyle.trim().length > 0
+      )
+        ? nameFieldRaw.fontStyle.trim()
+        : 'normal',
+      fontSizeVideoHeightRatio: Number.isFinite(Number(nameFieldRaw.fontSizeVideoHeightRatio))
+        ? Math.max(0, Number(nameFieldRaw.fontSizeVideoHeightRatio))
+        : 0.028,
+      textColor: (
+        typeof nameFieldRaw.textColor === 'string'
+        && nameFieldRaw.textColor.trim().length > 0
+      )
+        ? nameFieldRaw.textColor.trim()
+        : '#101010',
+      textAlign: sanitizeRsvpTextAlign(nameFieldRaw.textAlign, 'left'),
+      maxLength: Number.isFinite(Number(nameFieldRaw.maxLength))
+        ? clamp(Math.floor(Number(nameFieldRaw.maxLength)), 1, 512)
+        : 120,
+    },
+    buttons: {
+      spritePath: (
+        typeof buttonsRaw.spritePath === 'string'
+        && buttonsRaw.spritePath.trim().length > 0
+      )
+        ? buttonsRaw.spritePath.trim()
+        : '',
+      spriteCellWidth: Number.isFinite(Number(buttonsRaw.spriteCellWidth))
+        ? Math.max(1, Number(buttonsRaw.spriteCellWidth))
+        : 44,
+      spriteCellHeight: Number.isFinite(Number(buttonsRaw.spriteCellHeight))
+        ? Math.max(1, Number(buttonsRaw.spriteCellHeight))
+        : 44,
+      spriteScale: Number.isFinite(Number(buttonsRaw.spriteScale))
+        ? Math.max(0.01, Number(buttonsRaw.spriteScale))
+        : 1,
+      spriteCols: Number.isFinite(Number(buttonsRaw.spriteCols))
+        ? Math.max(2, Math.floor(Number(buttonsRaw.spriteCols)))
+        : 2,
+      spriteRows: Number.isFinite(Number(buttonsRaw.spriteRows))
+        ? Math.max(2, Math.floor(Number(buttonsRaw.spriteRows)))
+        : 2,
+      frameMap: {
+        yesRow: Number.isFinite(Number(buttonsRaw.yesRow))
+          ? Math.max(0, Math.floor(Number(buttonsRaw.yesRow)))
+          : 0,
+        noRow: Number.isFinite(Number(buttonsRaw.noRow))
+          ? Math.max(0, Math.floor(Number(buttonsRaw.noRow)))
+          : 1,
+        unselectedCol: Number.isFinite(Number(buttonsRaw.unselectedCol))
+          ? Math.max(0, Math.floor(Number(buttonsRaw.unselectedCol)))
+          : 0,
+        selectedCol: Number.isFinite(Number(buttonsRaw.selectedCol))
+          ? Math.max(0, Math.floor(Number(buttonsRaw.selectedCol)))
+          : 1,
+      },
+      yes: {
+        offsetXVideoHeightRatio: Number.isFinite(Number(yesButtonRaw.offsetXVideoHeightRatio))
+          ? Number(yesButtonRaw.offsetXVideoHeightRatio)
+          : -0.095,
+        offsetYVideoHeightRatio: Number.isFinite(Number(yesButtonRaw.offsetYVideoHeightRatio))
+          ? Number(yesButtonRaw.offsetYVideoHeightRatio)
+          : 0.152,
+        widthVideoHeightRatio: Number.isFinite(Number(yesButtonRaw.widthVideoHeightRatio))
+          ? Math.max(0, Number(yesButtonRaw.widthVideoHeightRatio))
+          : 0.11,
+        heightVideoHeightRatio: Number.isFinite(Number(yesButtonRaw.heightVideoHeightRatio))
+          ? Math.max(0, Number(yesButtonRaw.heightVideoHeightRatio))
+          : 0.11,
+      },
+      no: {
+        offsetXVideoHeightRatio: Number.isFinite(Number(noButtonRaw.offsetXVideoHeightRatio))
+          ? Number(noButtonRaw.offsetXVideoHeightRatio)
+          : 0.095,
+        offsetYVideoHeightRatio: Number.isFinite(Number(noButtonRaw.offsetYVideoHeightRatio))
+          ? Number(noButtonRaw.offsetYVideoHeightRatio)
+          : 0.152,
+        widthVideoHeightRatio: Number.isFinite(Number(noButtonRaw.widthVideoHeightRatio))
+          ? Math.max(0, Number(noButtonRaw.widthVideoHeightRatio))
+          : 0.11,
+        heightVideoHeightRatio: Number.isFinite(Number(noButtonRaw.heightVideoHeightRatio))
+          ? Math.max(0, Number(noButtonRaw.heightVideoHeightRatio))
+          : 0.11,
+      },
+      animation: {
+        hoverScale: Number.isFinite(Number(animationRaw.hoverScale))
+          ? Math.max(0.01, Number(animationRaw.hoverScale))
+          : 1.06,
+        selectedScale: Number.isFinite(Number(animationRaw.selectedScale))
+          ? Math.max(0.01, Number(animationRaw.selectedScale))
+          : 1.14,
+        transitionDurationMs: Number.isFinite(Number(animationRaw.transitionDurationMs))
+          ? Math.max(0, Number(animationRaw.transitionDurationMs))
+          : 180,
+        transitionEasing: (
+          typeof animationRaw.transitionEasing === 'string'
+          && animationRaw.transitionEasing.trim().length > 0
+        )
+          ? animationRaw.transitionEasing.trim()
+          : 'cubic-bezier(0.16, 1, 0.3, 1)',
+      },
+    },
+    initialState: {
+      name: typeof initialStateRaw.name === 'string' ? initialStateRaw.name : '',
+      response: sanitizeRsvpResponseValue(initialStateRaw.response, null),
+    },
+    debug: {
+      enabled: debugRaw.enabled === true,
+      showNameFieldRect: debugRaw.showNameFieldRect !== false,
+      showButtonRects: debugRaw.showButtonRects !== false,
+      strokeColor: (
+        typeof debugRaw.strokeColor === 'string'
+        && debugRaw.strokeColor.trim().length > 0
+      )
+        ? debugRaw.strokeColor.trim()
+        : 'rgba(255, 120, 120, 0.95)',
+      lineWidthPx: Number.isFinite(Number(debugRaw.lineWidthPx))
+        ? Math.max(1, Number(debugRaw.lineWidthPx))
+        : 2,
+    },
+  };
+}
+
 function resolveSwipeSectionsConfig(configCandidate = CONFIG.swipeSections) {
   const safeConfig = isPlainObjectLiteral(configCandidate) ? configCandidate : {};
   const gateConfig = resolveHeroPlaybackGateConfig(CONFIG.heroPlaybackGate);
@@ -12606,6 +13813,31 @@ function resolveSwipeSectionsConfig(configCandidate = CONFIG.swipeSections) {
     ? Math.max(0, Math.floor(Number(gateConfig.postButtonPauseFrame)))
     : 0;
   const fallbackOverlayPath = resolveSwipeSectionsFallbackOverlayPath();
+  const pagesRaw = Array.isArray(safeConfig.pages) ? safeConfig.pages : [];
+  const pages = [];
+  for (let i = 0; i < pagesRaw.length; i += 1) {
+    const pagePath = normalizeCenterOverlayImagePath(pagesRaw[i]);
+    if (pagePath.length > 0) {
+      pages.push(pagePath);
+    }
+  }
+  if (pages.length <= 0) {
+    pages.push(fallbackOverlayPath);
+  }
+
+  const resolvePageIndexFromPath = (path) => {
+    const normalizedPath = normalizeCenterOverlayImagePath(path);
+    if (normalizedPath.length <= 0) {
+      return 1;
+    }
+    const existingIndex = pages.findIndex((candidate) => candidate === normalizedPath);
+    if (existingIndex >= 0) {
+      return existingIndex + 1;
+    }
+    pages.push(normalizedPath);
+    return pages.length;
+  };
+
   const sectionsRaw = Array.isArray(safeConfig.sections) ? safeConfig.sections : [];
   const sections = [];
   for (let i = 0; i < sectionsRaw.length; i += 1) {
@@ -12623,12 +13855,25 @@ function resolveSwipeSectionsConfig(configCandidate = CONFIG.swipeSections) {
     )
       ? rawEntry.id.trim()
       : `section-${sections.length + 1}`;
-    const centerOverlayImagePath = (
-      typeof rawEntry.centerOverlayImagePath === 'string'
-      && rawEntry.centerOverlayImagePath.trim().length > 0
-    )
-      ? rawEntry.centerOverlayImagePath.trim()
-      : fallbackOverlayPath;
+    const explicitPageIndexRaw = Number(
+      rawEntry.pageIndex !== undefined
+        ? rawEntry.pageIndex
+        : rawEntry.centerOverlayPageIndex
+    );
+    let centerOverlayPageIndex = Number.isFinite(explicitPageIndexRaw)
+      ? Math.floor(explicitPageIndexRaw)
+      : 0;
+    if (centerOverlayPageIndex <= 0) {
+      const explicitPath = (
+        typeof rawEntry.centerOverlayImagePath === 'string'
+        && rawEntry.centerOverlayImagePath.trim().length > 0
+      )
+        ? rawEntry.centerOverlayImagePath.trim()
+        : '';
+      centerOverlayPageIndex = resolvePageIndexFromPath(explicitPath || pages[0] || fallbackOverlayPath);
+    }
+    centerOverlayPageIndex = clamp(centerOverlayPageIndex, 1, pages.length);
+    const centerOverlayImagePath = pages[centerOverlayPageIndex - 1] || fallbackOverlayPath;
     const centerOverlayOffsetYVideoHeightRatioRaw = Number(rawEntry.centerOverlayOffsetYVideoHeightRatio);
     const centerOverlayOffsetYVideoHeightRatio = Number.isFinite(centerOverlayOffsetYVideoHeightRatioRaw)
       ? centerOverlayOffsetYVideoHeightRatioRaw
@@ -12636,6 +13881,7 @@ function resolveSwipeSectionsConfig(configCandidate = CONFIG.swipeSections) {
     sections.push({
       id,
       frame,
+      centerOverlayPageIndex,
       centerOverlayImagePath,
       centerOverlayOffsetYVideoHeightRatio,
     });
@@ -12644,7 +13890,8 @@ function resolveSwipeSectionsConfig(configCandidate = CONFIG.swipeSections) {
     sections.push({
       id: 'section-1',
       frame: fallbackFrame,
-      centerOverlayImagePath: fallbackOverlayPath,
+      centerOverlayPageIndex: 1,
+      centerOverlayImagePath: pages[0] || fallbackOverlayPath,
       centerOverlayOffsetYVideoHeightRatio: null,
     });
   }
@@ -12662,6 +13909,7 @@ function resolveSwipeSectionsConfig(configCandidate = CONFIG.swipeSections) {
   return {
     enabled: safeConfig.enabled === true,
     initialSectionIndex,
+    pages,
     sections,
     input: {
       wheelEnabled: inputConfig.wheelEnabled !== false,
@@ -12730,6 +13978,7 @@ function resolveSwipeSectionsConfig(configCandidate = CONFIG.swipeSections) {
         1,
       ),
     },
+    rsvp: resolveSwipeSectionsRsvpConfig(safeConfig.rsvp, sections),
   };
 }
 
@@ -12748,6 +13997,19 @@ function isEditableEventTarget(target) {
   }
   const editableAncestor = element.closest('input, textarea, select');
   return Boolean(editableAncestor);
+}
+
+function isRsvpControlEventTarget(target) {
+  if (!target || typeof target !== 'object') {
+    return false;
+  }
+  const element = target instanceof Element
+    ? target
+    : (target.parentElement instanceof Element ? target.parentElement : null);
+  if (!element) {
+    return false;
+  }
+  return Boolean(element.closest('#rsvpLayer [data-rsvp-control], #rsvpLayer input, #rsvpLayer button'));
 }
 
 function evaluateAnimationGrowthEaseT(t, easeMode, easePower) {
@@ -13958,6 +15220,8 @@ function ensureScrollStageLayoutStructure() {
     wash2Layer,
     video,
     centerOverlayImageLayer,
+    centerOverlayImageLayerAlt,
+    rsvpLayer,
     frontCanvas,
     flowersFrontCanvas,
     mainElement,
@@ -13991,6 +15255,8 @@ function ensureRootBackgroundLayoutStructure() {
     wash2Layer,
     video,
     centerOverlayImageLayer,
+    centerOverlayImageLayerAlt,
+    rsvpLayer,
     frontCanvas,
     flowersFrontCanvas,
   ];
@@ -14734,6 +16000,7 @@ function renderScene(options = {}) {
   const heroPlaybackFrame = getCurrentHeroVideoFrame(heroPlaybackGateConfig);
   const overlayNowMs = performance.now();
   syncCenterOverlayImageLayer(overlayNowMs, heroPlaybackFrame);
+  syncRsvpLayer(overlayNowMs);
   syncWash1Layer(heroPlaybackFrame);
   syncWash2Layer(heroPlaybackFrame);
   if (enforceHeroPlaybackGatePauseFrames(heroPlaybackFrame, heroPlaybackGateConfig, { rerenderOnPause: false })) {
@@ -15298,7 +16565,9 @@ function setSwipeSectionOverlayPathOverride(path, options = {}) {
     return;
   }
   swipeState.centerOverlayImagePathOverride = nextPath;
-  requestCenterOverlayImageLoad({ force: forceLoad }).catch(() => {});
+  if (nextPath.length > 0) {
+    ensureCenterOverlayImagePreload(nextPath, { retry: forceLoad }).catch(() => {});
+  }
 }
 
 function clearSwipeSectionsTouchTracking() {
@@ -15345,6 +16614,7 @@ function cancelSwipeSectionTransition() {
   swipeState.transitionToSectionIndex = -1;
   swipeState.transitionDirection = 0;
   swipeState.overlayOpacityMultiplier = 1;
+  swipeState.overlayOutgoingOpacityMultiplier = 0;
   swipeState.overlayTransitionHasSwappedPath = false;
 }
 
@@ -15437,6 +16707,11 @@ function syncSwipeSectionsStateWithConfig(options = {}) {
   if (!swipeState || !Array.isArray(swipeConfig.sections) || swipeConfig.sections.length <= 0) {
     return swipeConfig;
   }
+  initializeRsvpStateIfNeeded(swipeConfig);
+  const rsvpRuntime = getSwipeSectionsRsvpRuntimeState();
+  if (rsvpRuntime && swipeConfig.rsvp) {
+    rsvpRuntime.sectionId = swipeConfig.rsvp.sectionId;
+  }
   preloadSwipeSectionsOverlayImages(swipeConfig);
   if (swipeConfig.enabled !== true) {
     cancelSwipeSectionTransition();
@@ -15445,6 +16720,7 @@ function syncSwipeSectionsStateWithConfig(options = {}) {
     if (swipeState.isTransitioning !== true) {
       setSwipeSectionOverlayPathOverride('');
       swipeState.overlayOpacityMultiplier = 1;
+      swipeState.overlayOutgoingOpacityMultiplier = 0;
       swipeState.overlayTransitionHasSwappedPath = false;
     }
     return swipeConfig;
@@ -15473,6 +16749,7 @@ function syncSwipeSectionsStateWithConfig(options = {}) {
   if (swipeState.isTransitioning !== true) {
     setSwipeSectionOverlayPathOverride(nextSection.centerOverlayImagePath, { forceLoad: safeOptions.forceLoadOverlay });
     swipeState.overlayOpacityMultiplier = 1;
+    swipeState.overlayOutgoingOpacityMultiplier = 0;
     swipeState.overlayTransitionHasSwappedPath = false;
   }
   syncSwipeSectionDomState(nextSection, nextIndex);
@@ -15583,12 +16860,9 @@ function prepareSwipeSectionOverlayTransitionForTargetSection(targetSection, dur
   swipeState.overlayTransitionSwapProgress = swapProgress;
   swipeState.overlayTransitionFadeOutRatio = fadeOutRatio;
   swipeState.overlayTransitionFadeInStartProgress = fadeInStartProgress;
-  swipeState.overlayTransitionHasSwappedPath = false;
-  swipeState.overlayOpacityMultiplier = 1;
-  if (mode === 'none' && targetSection) {
-    setSwipeSectionOverlayPathOverride(targetSection.centerOverlayImagePath, { forceLoad: true });
-    swipeState.overlayTransitionHasSwappedPath = true;
-  }
+  swipeState.overlayTransitionHasSwappedPath = true;
+  swipeState.overlayOutgoingOpacityMultiplier = mode === 'none' ? 0 : 1;
+  swipeState.overlayOpacityMultiplier = mode === 'none' ? 1 : 0;
 }
 
 function updateSwipeSectionOverlayTransitionProgress(progress, targetSection) {
@@ -15598,31 +16872,34 @@ function updateSwipeSectionOverlayTransitionProgress(progress, targetSection) {
   }
   const clampedProgress = clamp(Number.isFinite(progress) ? progress : 0, 0, 1);
   const mode = sanitizeSwipeSectionOverlayTransitionMode(swipeState.overlayTransitionMode, 'fade');
-  if (
-    swipeState.overlayTransitionHasSwappedPath !== true
-    && clampedProgress >= swipeState.overlayTransitionSwapProgress
-  ) {
-    setSwipeSectionOverlayPathOverride(targetSection.centerOverlayImagePath, { forceLoad: true });
-    swipeState.overlayTransitionHasSwappedPath = true;
-  }
+  let outgoingOpacity = 1;
+  let incomingOpacity = 1;
   if (mode === 'none') {
-    swipeState.overlayOpacityMultiplier = 1;
+    outgoingOpacity = 0;
+    incomingOpacity = 1;
+    swipeState.overlayOutgoingOpacityMultiplier = outgoingOpacity;
+    swipeState.overlayOpacityMultiplier = incomingOpacity;
     return;
   }
   const fadeOutRatio = clamp(Number(swipeState.overlayTransitionFadeOutRatio), 0, 1);
   const fadeInStartProgress = clamp(Number(swipeState.overlayTransitionFadeInStartProgress), 0, 1);
-  let opacity = 1;
   if (fadeOutRatio > 1e-6 && clampedProgress <= fadeOutRatio) {
-    opacity = 1 - (clampedProgress / fadeOutRatio);
-  } else if (clampedProgress < fadeInStartProgress) {
-    opacity = 0;
+    outgoingOpacity = 1 - (clampedProgress / fadeOutRatio);
   } else if (fadeInStartProgress >= 1 - 1e-6) {
-    opacity = 1;
+    outgoingOpacity = 0;
+  } else {
+    outgoingOpacity = 0;
+  }
+  if (clampedProgress < fadeInStartProgress) {
+    incomingOpacity = 0;
+  } else if (fadeInStartProgress >= 1 - 1e-6) {
+    incomingOpacity = 1;
   } else {
     const fadeInProgress = (clampedProgress - fadeInStartProgress) / (1 - fadeInStartProgress);
-    opacity = clamp(fadeInProgress, 0, 1);
+    incomingOpacity = clamp(fadeInProgress, 0, 1);
   }
-  swipeState.overlayOpacityMultiplier = clamp(opacity, 0, 1);
+  swipeState.overlayOutgoingOpacityMultiplier = clamp(outgoingOpacity, 0, 1);
+  swipeState.overlayOpacityMultiplier = clamp(incomingOpacity, 0, 1);
 }
 
 function finalizeSwipeSectionTransition(targetIndex, direction, reason, swipeConfig = resolveSwipeSectionsConfig()) {
@@ -15744,6 +17021,9 @@ function tryNavigateSwipeSectionDirection(direction, reason, event = null) {
   if (event && isEditableEventTarget(event.target)) {
     return false;
   }
+  if (event && isRsvpControlEventTarget(event.target)) {
+    return false;
+  }
   const swipeState = STATE.swipeSections;
   const sections = swipeConfig.sections;
   if (!swipeState || !Array.isArray(sections) || sections.length <= 0) {
@@ -15862,6 +17142,9 @@ function onSwipeSectionsWheel(event) {
   if (isEditableEventTarget(event && event.target)) {
     return;
   }
+  if (isRsvpControlEventTarget(event && event.target)) {
+    return;
+  }
   const swipeState = STATE.swipeSections;
   if (!swipeState) {
     return;
@@ -15955,6 +17238,10 @@ function onSwipeSectionsTouchStart(event) {
     return;
   }
   if (isEditableEventTarget(event && event.target)) {
+    clearSwipeSectionsTouchTracking();
+    return;
+  }
+  if (isRsvpControlEventTarget(event && event.target)) {
     clearSwipeSectionsTouchTracking();
     return;
   }
@@ -16343,6 +17630,9 @@ function onMouseOut() {
 }
 
 function onMouseClick(event) {
+  if (isRsvpControlEventTarget(event && event.target)) {
+    return;
+  }
   if (tryResumeHeroVideoPlaybackFromUserGesture(event)) {
     return;
   }
@@ -16635,6 +17925,28 @@ function applySwipeSectionsOptions(nextOptions) {
   const nextOverlayTransitionPatch = isPlainObjectLiteral(nextOptions.overlayTransition)
     ? nextOptions.overlayTransition
     : {};
+  const nextRsvpPatch = isPlainObjectLiteral(nextOptions.rsvp) ? nextOptions.rsvp : {};
+  const currentRsvp = isPlainObjectLiteral(currentConfig.rsvp) ? currentConfig.rsvp : {};
+  const currentRsvpInitialState = isPlainObjectLiteral(currentRsvp.initialState) ? currentRsvp.initialState : {};
+  const currentRsvpNameField = isPlainObjectLiteral(currentRsvp.nameField) ? currentRsvp.nameField : {};
+  const currentRsvpDebug = isPlainObjectLiteral(currentRsvp.debug) ? currentRsvp.debug : {};
+  const currentRsvpButtons = isPlainObjectLiteral(currentRsvp.buttons) ? currentRsvp.buttons : {};
+  const currentRsvpButtonsFrameMap = isPlainObjectLiteral(currentRsvpButtons.frameMap) ? currentRsvpButtons.frameMap : {};
+  const currentRsvpButtonsYes = isPlainObjectLiteral(currentRsvpButtons.yes) ? currentRsvpButtons.yes : {};
+  const currentRsvpButtonsNo = isPlainObjectLiteral(currentRsvpButtons.no) ? currentRsvpButtons.no : {};
+  const currentRsvpButtonsAnimation = isPlainObjectLiteral(currentRsvpButtons.animation)
+    ? currentRsvpButtons.animation
+    : {};
+  const nextRsvpInitialState = isPlainObjectLiteral(nextRsvpPatch.initialState) ? nextRsvpPatch.initialState : {};
+  const nextRsvpNameField = isPlainObjectLiteral(nextRsvpPatch.nameField) ? nextRsvpPatch.nameField : {};
+  const nextRsvpDebug = isPlainObjectLiteral(nextRsvpPatch.debug) ? nextRsvpPatch.debug : {};
+  const nextRsvpButtons = isPlainObjectLiteral(nextRsvpPatch.buttons) ? nextRsvpPatch.buttons : {};
+  const nextRsvpButtonsFrameMap = isPlainObjectLiteral(nextRsvpButtons.frameMap) ? nextRsvpButtons.frameMap : {};
+  const nextRsvpButtonsYes = isPlainObjectLiteral(nextRsvpButtons.yes) ? nextRsvpButtons.yes : {};
+  const nextRsvpButtonsNo = isPlainObjectLiteral(nextRsvpButtons.no) ? nextRsvpButtons.no : {};
+  const nextRsvpButtonsAnimation = isPlainObjectLiteral(nextRsvpButtons.animation)
+    ? nextRsvpButtons.animation
+    : {};
   const mergedConfig = {
     ...currentConfig,
     ...nextOptions,
@@ -16650,6 +17962,42 @@ function applySwipeSectionsOptions(nextOptions) {
     overlayTransition: {
       ...currentConfig.overlayTransition,
       ...nextOverlayTransitionPatch,
+    },
+    rsvp: {
+      ...currentRsvp,
+      ...nextRsvpPatch,
+      initialState: {
+        ...currentRsvpInitialState,
+        ...nextRsvpInitialState,
+      },
+      nameField: {
+        ...currentRsvpNameField,
+        ...nextRsvpNameField,
+      },
+      debug: {
+        ...currentRsvpDebug,
+        ...nextRsvpDebug,
+      },
+      buttons: {
+        ...currentRsvpButtons,
+        ...nextRsvpButtons,
+        frameMap: {
+          ...currentRsvpButtonsFrameMap,
+          ...nextRsvpButtonsFrameMap,
+        },
+        yes: {
+          ...currentRsvpButtonsYes,
+          ...nextRsvpButtonsYes,
+        },
+        no: {
+          ...currentRsvpButtonsNo,
+          ...nextRsvpButtonsNo,
+        },
+        animation: {
+          ...currentRsvpButtonsAnimation,
+          ...nextRsvpButtonsAnimation,
+        },
+      },
     },
   };
   CONFIG.swipeSections = resolveSwipeSectionsConfig(mergedConfig);
@@ -17683,6 +19031,18 @@ function exposeDevToolsApi() {
 
     setSwipeSectionsOptions(nextOptions) {
       applySwipeSectionsOptions(nextOptions);
+    },
+
+    getRsvpState() {
+      return getRsvpStateSnapshot();
+    },
+
+    setRsvpState(patch = {}) {
+      return setRsvpStatePatch(patch);
+    },
+
+    clearRsvpState() {
+      return clearRsvpState();
     },
 
     getSwipeSectionState() {
