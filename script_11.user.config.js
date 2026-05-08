@@ -510,9 +510,7 @@
         id: 'section-2',
         frame: 280,
         pageIndex: 2,
-        // centerOverlayOffsetYVideoHeightRatio: -0.0520833333 + -0.095,
-        centerOverlayOffsetYVideoHeightRatio: -0.0520833333, // example of a per-section Y offset tweak
-        //  // example of a per-section Y offset tweak
+        centerOverlayOffsetYVideoHeightRatio: -0.0520833333 + -0.095, // example of a per-section Y offset tweak
       },
       {
         id: 'section-3',

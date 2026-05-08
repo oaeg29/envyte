@@ -49,6 +49,8 @@ const rsvpNameFitMeasureCanvas = document.createElement('canvas');
 const rsvpNameFitMeasureCtx = rsvpNameFitMeasureCanvas.getContext('2d');
 const wash1Layer = document.createElement('div');
 const wash2Layer = document.createElement('div');
+const section2ButtonLayer = document.createElement('div');
+const section2Button = document.createElement('button');
 
 // =========================
 // 2) Config
@@ -2292,6 +2294,13 @@ rsvpLayer.appendChild(rsvpYesButton);
 rsvpLayer.appendChild(rsvpNoButton);
 wash1Layer.id = 'wash1Layer';
 wash2Layer.id = 'wash2Layer';
+section2ButtonLayer.id = 'section2ButtonLayer';
+section2ButtonLayer.setAttribute('aria-hidden', 'true');
+section2Button.id = 'section2Button';
+section2Button.type = 'button';
+section2Button.setAttribute('aria-label', 'View Location');
+section2Button.textContent = 'View Location';
+section2ButtonLayer.appendChild(section2Button);
 // video.height = window.innerHeight;   // Set height in pixels
 
 document.body.appendChild(flowersBackCanvas);
@@ -2301,10 +2310,16 @@ document.body.appendChild(video);  // Adds it to the page
 document.body.appendChild(centerOverlayImageLayer);
 document.body.appendChild(centerOverlayImageLayerAlt);
 document.body.appendChild(rsvpLayer);
+document.body.appendChild(section2ButtonLayer);
 // Keep front overlay canvas in root stacking context so it can render above the video.
 document.body.appendChild(frontCanvas);
 document.body.appendChild(flowersFrontCanvas);
 setupRsvpLayerEventHandlers();
+section2Button.addEventListener('mouseenter', onSection2ButtonHoverEnter);
+section2Button.addEventListener('mouseleave', onSection2ButtonHoverLeave);
+section2Button.addEventListener('focus', onSection2ButtonHoverEnter);
+section2Button.addEventListener('blur', onSection2ButtonHoverLeave);
+section2Button.addEventListener('click', onSection2ButtonClick);
 wash1Layer.addEventListener('animationend', (event) => {
   if (event && event.animationName === 'wash1Pulse') {
     wash1Layer.classList.remove('is-active');
@@ -5368,6 +5383,131 @@ function syncRsvpLayer(nowMs = performance.now()) {
   syncRsvpButtonVisualState(rsvpConfig, runtime);
 }
 
+function hideSection2ButtonLayer() {
+  section2ButtonLayer.style.display = 'none';
+  section2ButtonLayer.style.visibility = 'hidden';
+  section2ButtonLayer.style.pointerEvents = 'none';
+  section2ButtonLayer.setAttribute('aria-hidden', 'true');
+}
+
+function syncSection2ButtonLayer(nowMs = performance.now()) {
+  const swipeConfig = resolveSwipeSectionsConfig();
+  const sections = swipeConfig && Array.isArray(swipeConfig.sections) ? swipeConfig.sections : [];
+  const activeSectionId = resolveRsvpActiveSectionId(swipeConfig);
+  
+  if (!swipeConfig || !swipeConfig.enabled || sections.length === 0) {
+    hideSection2ButtonLayer();
+    return;
+  }
+  
+  if (!isSwipeSectionsNavigationActive(swipeConfig)) {
+    hideSection2ButtonLayer();
+    return;
+  }
+  
+  const section2 = sections.find(s => s.id === 'section-2');
+  if (!section2 || !section2.button || section2.button.enabled !== true) {
+    hideSection2ButtonLayer();
+    return;
+  }
+  
+  const shouldShow = activeSectionId.length > 0 && activeSectionId === 'section-2';
+  if (!shouldShow) {
+    hideSection2ButtonLayer();
+    return;
+  }
+  
+  const videoRect = getHeroVideoRenderedRect();
+  const videoHeight = (
+    videoRect
+    && Number.isFinite(videoRect.height)
+    && videoRect.height > 0
+  )
+    ? videoRect.height
+    : resolveHeroVideoRenderedHeightPx();
+  
+  if (!(videoHeight > 0)) {
+    hideSection2ButtonLayer();
+    return;
+  }
+  
+  const videoLeft = videoRect ? Number.isFinite(videoRect.left) ? videoRect.left : 0 : 0;
+  const videoTop = videoRect ? Number.isFinite(videoRect.top) ? videoRect.top : 0 : 0;
+  const centerX = videoLeft + videoRect.width * 0.5;
+  const centerY = videoTop + videoRect.height * 0.5;
+  
+  const buttonConfig = section2.button;
+  const buttonCenterX = centerX + (Number(buttonConfig.offsetXVideoHeightRatio) || 0) * videoHeight;
+  const buttonCenterY = centerY + (Number(buttonConfig.offsetYVideoHeightRatio) || 0) * videoHeight;
+  const buttonWidth = Math.max(0, (Number(buttonConfig.widthVideoHeightRatio) || 0) * videoHeight);
+  const buttonHeight = Math.max(0, (Number(buttonConfig.heightVideoHeightRatio) || 0) * videoHeight);
+  
+  if (buttonWidth <= 0 || buttonHeight <= 0) {
+    hideSection2ButtonLayer();
+    return;
+  }
+  
+  section2ButtonLayer.style.display = 'block';
+  section2ButtonLayer.style.visibility = 'visible';
+  section2ButtonLayer.style.pointerEvents = 'none';
+  section2ButtonLayer.setAttribute('aria-hidden', 'false');
+  
+  section2Button.textContent = buttonConfig.text || 'View Location';
+  section2Button.setAttribute('aria-label', buttonConfig.text || 'View Location');
+  section2Button.style.position = 'fixed';
+  section2Button.style.left = `${buttonCenterX}px`;
+  section2Button.style.top = `${buttonCenterY}px`;
+  section2Button.style.width = `${buttonWidth}px`;
+  section2Button.style.height = `${buttonHeight}px`;
+  section2Button.style.transform = 'translate(-50%, -50%)';
+  section2Button.style.backgroundColor = buttonConfig.backgroundColor || 'rgba(255, 255, 255, 0.9)';
+  section2Button.style.color = buttonConfig.textColor || '#1f1b17';
+  section2Button.style.fontSize = buttonConfig.fontSize || 'inherit';
+  section2Button.style.fontFamily = buttonConfig.fontFamily || 'inherit';
+  section2Button.style.fontWeight = String(buttonConfig.fontWeight || '500');
+  section2Button.style.border = '1px solid rgba(0, 0, 0, 0.1)';
+  section2Button.style.borderRadius = buttonConfig.borderRadius || '4px';
+  section2Button.style.cursor = 'pointer';
+  section2Button.style.pointerEvents = 'auto';
+  section2Button.style.zIndex = '1000';
+  
+  const animation = buttonConfig.animation || {};
+  const transitionDurationMs = Number(animation.transitionDurationMs) || 150;
+  const transitionEasing = animation.transitionEasing || 'cubic-bezier(0.16, 1, 0.3, 1)';
+  section2Button.style.transition = `transform ${transitionDurationMs}ms ${transitionEasing}, background-color ${transitionDurationMs}ms ${transitionEasing}`;
+  
+  section2ButtonLayer.dataset.activeSectionId = activeSectionId;
+  section2ButtonLayer.dataset.buttonTimestamp = Number.isFinite(nowMs) ? String(nowMs) : String(performance.now());
+}
+
+function onSection2ButtonHoverEnter() {
+  const section2 = getSection2Config();
+  if (!section2 || !section2.button || !section2.button.animation) {
+    return;
+  }
+  const hoverScale = Number(section2.button.animation.hoverScale) || 1.08;
+  section2Button.style.transform = `translate(-50%, -50%) scale(${hoverScale})`;
+}
+
+function onSection2ButtonHoverLeave() {
+  section2Button.style.transform = 'translate(-50%, -50%) scale(1)';
+}
+
+function onSection2ButtonClick(event) {
+  event.preventDefault();
+  event.stopPropagation();
+  const section2 = getSection2Config();
+  if (section2 && section2.button && section2.button.link) {
+    window.open(section2.button.link, '_blank', 'noopener,noreferrer');
+  }
+}
+
+function getSection2Config() {
+  const swipeConfig = resolveSwipeSectionsConfig();
+  const sections = swipeConfig && Array.isArray(swipeConfig.sections) ? swipeConfig.sections : [];
+  return sections.find(s => s.id === 'section-2') || null;
+}
+
 function onRsvpNameInputEvent() {
   const swipeConfig = resolveSwipeSectionsConfig();
   const rsvpConfig = swipeConfig && swipeConfig.rsvp ? swipeConfig.rsvp : null;
@@ -5378,6 +5518,7 @@ function onRsvpNameInputEvent() {
   }
   setRsvpStatePatch({ name: nextName });
 }
+
 
 function onRsvpButtonHoverEvent(event, isEntering) {
   const target = event && event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
@@ -16113,6 +16254,7 @@ function renderScene(options = {}) {
   const overlayNowMs = performance.now();
   syncCenterOverlayImageLayer(overlayNowMs, heroPlaybackFrame);
   syncRsvpLayer(overlayNowMs);
+  syncSection2ButtonLayer(overlayNowMs);
   syncWash1Layer(heroPlaybackFrame);
   syncWash2Layer(heroPlaybackFrame);
   if (enforceHeroPlaybackGatePauseFrames(heroPlaybackFrame, heroPlaybackGateConfig, { rerenderOnPause: false })) {
