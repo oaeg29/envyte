@@ -2550,6 +2550,12 @@ const STATE = {
   useIOSFixedViewportWorkaround: false,
   heroVideoReferenceRect: null,
   heroVideoReferenceRectLocked: false,
+  priorityZonesCache: {
+    signature: '',
+    rects: [],
+    radiusPx: 0,
+  },
+  priorityDebugLastCulledCircles: [],
   heroPlaybackGate: {
     monitorRafId: null,
     monitorVideoFrameCallbackId: null,
@@ -2593,6 +2599,8 @@ const STATE = {
       startSceneX: 0,
       startSceneY: 0,
       startMs: 0,
+      sawMultiTouch: false,
+      swipeIntentLocked: false,
     },
     centerOverlayImagePathOverride: '',
     overlayOpacityMultiplier: 1,
@@ -3186,6 +3194,188 @@ function resolveOffshootCenterBlockArea(configCandidate = CONFIG.offshoot) {
     topY: centerY - halfHeightAbovePx,
     bottomY: centerY + halfHeightBelowPx,
   };
+}
+
+function resolvePriorityConfig(configCandidate = CONFIG.priority) {
+  const safeConfig = isPlainObjectLiteral(configCandidate) ? configCandidate : {};
+  const rawSquares = Array.isArray(safeConfig.squares) ? safeConfig.squares : [];
+  const squares = [];
+  const maxSquares = 5;
+  for (let i = 0; i < rawSquares.length && squares.length < maxSquares; i += 1) {
+    const raw = isPlainObjectLiteral(rawSquares[i]) ? rawSquares[i] : {};
+    squares.push({
+      enabled: raw.enabled === true,
+      centerXRatio: clamp(
+        Number.isFinite(Number(raw.centerXRatio)) ? Number(raw.centerXRatio) : 0.5,
+        0,
+        1,
+      ),
+      centerYRatio: clamp(
+        Number.isFinite(Number(raw.centerYRatio)) ? Number(raw.centerYRatio) : 0.5,
+        0,
+        1,
+      ),
+      sizeXRatio: Math.max(0, Number.isFinite(Number(raw.sizeXRatio)) ? Number(raw.sizeXRatio) : 0),
+      sizeYRatio: Math.max(0, Number.isFinite(Number(raw.sizeYRatio)) ? Number(raw.sizeYRatio) : 0),
+    });
+  }
+  while (squares.length < maxSquares) {
+    squares.push({
+      enabled: false,
+      centerXRatio: 0.5,
+      centerYRatio: 0.5,
+      sizeXRatio: 0,
+      sizeYRatio: 0,
+    });
+  }
+
+  const safeDebug = isPlainObjectLiteral(safeConfig.debug) ? safeConfig.debug : {};
+  return {
+    enabled: safeConfig.enabled === true,
+    endpointCullRadiusPxVideoHeightRatio: Math.max(
+      0,
+      Number.isFinite(Number(safeConfig.endpointCullRadiusPxVideoHeightRatio))
+        ? Number(safeConfig.endpointCullRadiusPxVideoHeightRatio)
+        : 0,
+    ),
+    squares,
+    debug: {
+      enabled: safeDebug.enabled === true,
+      drawOnFrontLayer: safeDebug.drawOnFrontLayer !== false,
+      strokeStyle: (
+        typeof safeDebug.strokeStyle === 'string' && safeDebug.strokeStyle.length > 0
+      ) ? safeDebug.strokeStyle : 'rgba(255, 120, 70, 0.95)',
+      fillStyle: (
+        typeof safeDebug.fillStyle === 'string' && safeDebug.fillStyle.length > 0
+      ) ? safeDebug.fillStyle : 'rgba(255, 120, 70, 0.12)',
+      lineWidthPx: Number.isFinite(Number(safeDebug.lineWidthPx))
+        ? Math.max(0.25, Number(safeDebug.lineWidthPx))
+        : 2,
+      showCulledEndpointCircles: safeDebug.showCulledEndpointCircles !== false,
+      culledCircleStrokeStyle: (
+        typeof safeDebug.culledCircleStrokeStyle === 'string' && safeDebug.culledCircleStrokeStyle.length > 0
+      ) ? safeDebug.culledCircleStrokeStyle : 'rgba(255, 65, 65, 0.98)',
+      culledCircleFillStyle: (
+        typeof safeDebug.culledCircleFillStyle === 'string' && safeDebug.culledCircleFillStyle.length > 0
+      ) ? safeDebug.culledCircleFillStyle : 'rgba(255, 65, 65, 0.14)',
+    },
+  };
+}
+
+function resolvePriorityZoneRectsPx(priorityConfig = resolvePriorityConfig()) {
+  const config = resolvePriorityConfig(priorityConfig);
+  const rect = getHeroVideoRenderedRect();
+  const videoSizePx = (
+    rect
+    && Number.isFinite(rect.width)
+    && Number.isFinite(rect.height)
+    && rect.width > 0
+    && rect.height > 0
+  )
+    ? Math.min(rect.width, rect.height)
+    : 0;
+  const signature = JSON.stringify({
+    enabled: config.enabled,
+    videoSizePx: Number(videoSizePx.toFixed(4)),
+    rectLeft: rect ? Number(rect.left.toFixed(4)) : null,
+    rectTop: rect ? Number(rect.top.toFixed(4)) : null,
+    rectW: rect ? Number(rect.width.toFixed(4)) : null,
+    rectH: rect ? Number(rect.height.toFixed(4)) : null,
+    squares: config.squares,
+    radius: config.endpointCullRadiusPxVideoHeightRatio,
+  });
+  if (STATE.priorityZonesCache.signature === signature) {
+    return {
+      rects: STATE.priorityZonesCache.rects,
+      radiusPx: STATE.priorityZonesCache.radiusPx,
+    };
+  }
+
+  const resolvedRects = [];
+  if (rect && videoSizePx > 0) {
+    for (let i = 0; i < config.squares.length; i += 1) {
+      const sq = config.squares[i];
+      if (!sq || sq.enabled !== true) {
+        continue;
+      }
+      const widthPx = Math.max(0, videoSizePx * sq.sizeXRatio);
+      const heightPx = Math.max(0, videoSizePx * sq.sizeYRatio);
+      if (widthPx <= 1e-6 || heightPx <= 1e-6) {
+        continue;
+      }
+      const centerX = rect.left + (rect.width * sq.centerXRatio);
+      const centerY = rect.top + (rect.height * sq.centerYRatio);
+      resolvedRects.push({
+        centerX,
+        centerY,
+        widthPx,
+        heightPx,
+        left: centerX - widthPx * 0.5,
+        top: centerY - heightPx * 0.5,
+        right: centerX + widthPx * 0.5,
+        bottom: centerY + heightPx * 0.5,
+      });
+    }
+  }
+
+  const radiusPx = Math.max(0, videoSizePx * config.endpointCullRadiusPxVideoHeightRatio);
+  STATE.priorityZonesCache.signature = signature;
+  STATE.priorityZonesCache.rects = resolvedRects;
+  STATE.priorityZonesCache.radiusPx = radiusPx;
+  return {
+    rects: resolvedRects,
+    radiusPx,
+  };
+}
+
+function circleIntersectsRect(cx, cy, radius, rect) {
+  if (!Number.isFinite(cx) || !Number.isFinite(cy) || !Number.isFinite(radius) || !rect) {
+    return false;
+  }
+  const safeRadius = Math.max(0, radius);
+  const nearestX = clamp(cx, rect.left, rect.right);
+  const nearestY = clamp(cy, rect.top, rect.bottom);
+  const dx = cx - nearestX;
+  const dy = cy - nearestY;
+  return (dx * dx + dy * dy) <= (safeRadius * safeRadius);
+}
+
+function drawPriorityDebugOverlay(targetCtx = ctx) {
+  const priorityConfig = resolvePriorityConfig();
+  if (!targetCtx || !priorityConfig || priorityConfig.debug.enabled !== true) {
+    return;
+  }
+  const resolved = resolvePriorityZoneRectsPx(priorityConfig);
+  const rects = Array.isArray(resolved.rects) ? resolved.rects : [];
+  targetCtx.save();
+  targetCtx.lineWidth = priorityConfig.debug.lineWidthPx;
+  targetCtx.strokeStyle = priorityConfig.debug.strokeStyle;
+  targetCtx.fillStyle = priorityConfig.debug.fillStyle;
+  for (let i = 0; i < rects.length; i += 1) {
+    const rect = rects[i];
+    targetCtx.beginPath();
+    targetCtx.rect(rect.left, rect.top, rect.widthPx, rect.heightPx);
+    targetCtx.fill();
+    targetCtx.stroke();
+  }
+  if (priorityConfig.debug.showCulledEndpointCircles === true) {
+    const circles = Array.isArray(STATE.priorityDebugLastCulledCircles)
+      ? STATE.priorityDebugLastCulledCircles
+      : [];
+    targetCtx.strokeStyle = priorityConfig.debug.culledCircleStrokeStyle;
+    targetCtx.fillStyle = priorityConfig.debug.culledCircleFillStyle;
+    for (let i = 0; i < circles.length; i += 1) {
+      const entry = circles[i];
+      if (!entry || !Number.isFinite(entry.x) || !Number.isFinite(entry.y) || !Number.isFinite(entry.r)) {
+        continue;
+      }
+      targetCtx.beginPath();
+      targetCtx.arc(entry.x, entry.y, Math.max(0, entry.r), 0, Math.PI * 2);
+      targetCtx.fill();
+      targetCtx.stroke();
+    }
+  }
+  targetCtx.restore();
 }
 
 function isPointInsideOffshootCenterBlock(point, area) {
@@ -7771,6 +7961,171 @@ class BranchGarden {
     return this.branches;
   }
 
+  applyPriorityZonePruning() {
+    const priorityConfig = resolvePriorityConfig();
+    const resolvedZones = resolvePriorityZoneRectsPx(priorityConfig);
+    const zoneRects = Array.isArray(resolvedZones.rects) ? resolvedZones.rects : [];
+    const radiusPx = Number.isFinite(resolvedZones.radiusPx) ? Math.max(0, resolvedZones.radiusPx) : 0;
+    STATE.priorityDebugLastCulledCircles = [];
+    if (
+      priorityConfig.enabled !== true
+      || zoneRects.length <= 0
+      || !Array.isArray(this.branches)
+      || this.branches.length <= 0
+    ) {
+      return 0;
+    }
+
+    const useAnimation = Boolean(CONFIG.branchGrowth && CONFIG.branchGrowth.enabled === true);
+    const overlayWrapConfig = resolveOverlayWrapConfig();
+    const overlayWrapActive = isOverlayWrapActive(overlayWrapConfig, useAnimation);
+    if (overlayWrapActive !== true) {
+      return 0;
+    }
+    const hiddenBand = getOverlayHiddenBand(overlayWrapConfig);
+    if (!hiddenBand) {
+      return 0;
+    }
+
+    const branchById = new Map();
+    const childrenByParentId = new Map();
+    for (let i = 0; i < this.branches.length; i += 1) {
+      const branch = this.branches[i];
+      if (!branch || !Number.isFinite(branch.id)) {
+        continue;
+      }
+      branchById.set(branch.id, branch);
+      const parentId = Number.isFinite(branch.parentId) ? branch.parentId : null;
+      if (!childrenByParentId.has(parentId)) {
+        childrenByParentId.set(parentId, []);
+      }
+      childrenByParentId.get(parentId).push(branch.id);
+    }
+
+    const rootsToCull = new Set();
+    const branchSubtreesToCull = new Set();
+    const culledCircles = [];
+    const branchIds = Array.from(branchById.keys());
+    for (let i = 0; i < branchIds.length; i += 1) {
+      const branchId = branchIds[i];
+      const branch = branchById.get(branchId);
+      if (!branch || !branch.pathData || !Number.isFinite(branch.pathData.totalLength)) {
+        continue;
+      }
+      const pathLen = Math.max(0, branch.pathData.totalLength);
+      if (pathLen <= 1e-8) {
+        continue;
+      }
+      const endpoint = getPathPointAtLength(branch.pathData, pathLen);
+      if (!endpoint || !Number.isFinite(endpoint.x) || !Number.isFinite(endpoint.y)) {
+        continue;
+      }
+      // Promoted-only: mirror overlay wrap promotion semantics using final endpoint location.
+      if (isPointInsideOverlayHiddenBand(endpoint, hiddenBand)) {
+        continue;
+      }
+
+      let hit = false;
+      for (let r = 0; r < zoneRects.length; r += 1) {
+        if (circleIntersectsRect(endpoint.x, endpoint.y, radiusPx, zoneRects[r])) {
+          hit = true;
+          break;
+        }
+      }
+      if (!hit) {
+        continue;
+      }
+      culledCircles.push({ x: endpoint.x, y: endpoint.y, r: radiusPx });
+      if (Number.isFinite(branch.parentId)) {
+        branchSubtreesToCull.add(branch.id);
+      } else {
+        rootsToCull.add(branch.id);
+      }
+    }
+
+    if (rootsToCull.size <= 0 && branchSubtreesToCull.size <= 0) {
+      STATE.priorityDebugLastCulledCircles = culledCircles;
+      return 0;
+    }
+
+    const idsToCull = new Set();
+    const enqueueSubtree = (startId) => {
+      const queue = [startId];
+      while (queue.length > 0) {
+        const current = queue.shift();
+        if (!Number.isFinite(current) || idsToCull.has(current)) {
+          continue;
+        }
+        idsToCull.add(current);
+        const children = childrenByParentId.get(current);
+        if (!Array.isArray(children) || children.length <= 0) {
+          continue;
+        }
+        for (let i = 0; i < children.length; i += 1) {
+          queue.push(children[i]);
+        }
+      }
+    };
+    rootsToCull.forEach((id) => enqueueSubtree(id));
+    branchSubtreesToCull.forEach((id) => enqueueSubtree(id));
+
+    if (idsToCull.size <= 0) {
+      STATE.priorityDebugLastCulledCircles = culledCircles;
+      return 0;
+    }
+
+    this.rootBranches = this.rootBranches.filter((root) => {
+      if (!root || !Number.isFinite(root.id)) {
+        return false;
+      }
+      return !idsToCull.has(root.id);
+    });
+    this.branches = this.branches.filter((branch) => (
+      branch && Number.isFinite(branch.id) && !idsToCull.has(branch.id)
+    ));
+
+    const keptByOldId = new Map();
+    for (let i = 0; i < this.branches.length; i += 1) {
+      const branch = this.branches[i];
+      keptByOldId.set(branch.id, branch);
+    }
+    const oldToNewId = new Map();
+    this.nextBranchId = 1;
+    for (let i = 0; i < this.branches.length; i += 1) {
+      const branch = this.branches[i];
+      const oldId = branch.id;
+      const newId = this.nextBranchId++;
+      branch.id = newId;
+      oldToNewId.set(oldId, newId);
+    }
+    for (let i = 0; i < this.branches.length; i += 1) {
+      const branch = this.branches[i];
+      if (!Number.isFinite(branch.parentId)) {
+        branch.parentId = null;
+        continue;
+      }
+      const newParentId = oldToNewId.get(branch.parentId);
+      branch.parentId = Number.isFinite(newParentId) ? newParentId : null;
+    }
+    for (let i = 0; i < this.rootBranches.length; i += 1) {
+      const root = this.rootBranches[i];
+      if (!root || !Number.isFinite(root.id)) {
+        continue;
+      }
+      if (!keptByOldId.has(root.id)) {
+        continue;
+      }
+      const mapped = oldToNewId.get(root.id);
+      if (Number.isFinite(mapped)) {
+        root.id = mapped;
+        root.parentId = null;
+      }
+    }
+
+    STATE.priorityDebugLastCulledCircles = culledCircles;
+    return idsToCull.size;
+  }
+
   addBranch(seedX, seedY, direction = -1, options = {}) {
     if (!Number.isFinite(seedX) || !Number.isFinite(seedY)) {
       return null;
@@ -12334,6 +12689,7 @@ function resolveSwipeSectionsConfig(configCandidate = CONFIG.swipeSections) {
         ? Math.max(0.01, Number(inputConfig.touchAxisLockRatio))
         : 1.2,
       touchPreventDefault: inputConfig.touchPreventDefault !== false,
+      touchCancelOnMultiTouch: inputConfig.touchCancelOnMultiTouch !== false,
       touchRequireOverlayWrapBandStart: inputConfig.touchRequireOverlayWrapBandStart !== false,
       touchFallbackToFullscreenWhenOverlayWrapDisabled: (
         inputConfig.touchFallbackToFullscreenWhenOverlayWrapDisabled !== false
@@ -13150,6 +13506,9 @@ function stepBranchAnimationFrame(timestampMs) {
 }
 
 function onBranchStructureChanged() {
+  if (STATE.branchGarden && typeof STATE.branchGarden.applyPriorityZonePruning === 'function') {
+    STATE.branchGarden.applyPriorityZonePruning();
+  }
   resetFlowerGrowthRuntimeState({ clearSignature: true });
   refreshBranchEndpointsAndFlowerSystem();
   refreshBranchThicknessBaseScales();
@@ -14878,6 +15237,13 @@ function renderScene(options = {}) {
       : ctx;
     drawHeroPlaybackWiggleButtonDebugOverlay(heroPlaybackGateConfig, debugTargetCtx);
   }
+  const priorityConfig = resolvePriorityConfig();
+  if (priorityConfig.debug.enabled === true) {
+    const debugTargetCtx = (priorityConfig.debug.drawOnFrontLayer === true && frontCtx)
+      ? frontCtx
+      : ctx;
+    drawPriorityDebugOverlay(debugTargetCtx);
+  }
 
   if (overlayWrapActive && hiddenBand && overlayWrapConfig.showCenterBandOverlay === true) {
     const overlayTargetCtx = frontCtx || ctx;
@@ -14947,6 +15313,8 @@ function clearSwipeSectionsTouchTracking() {
   swipeState.touchTracking.startSceneX = 0;
   swipeState.touchTracking.startSceneY = 0;
   swipeState.touchTracking.startMs = 0;
+  swipeState.touchTracking.sawMultiTouch = false;
+  swipeState.touchTracking.swipeIntentLocked = false;
 }
 
 function resetSwipeSectionsWheelGestureSession() {
@@ -15590,6 +15958,11 @@ function onSwipeSectionsTouchStart(event) {
     clearSwipeSectionsTouchTracking();
     return;
   }
+  const activeTouches = event && event.touches ? event.touches : null;
+  if (!activeTouches || activeTouches.length !== 1) {
+    clearSwipeSectionsTouchTracking();
+    return;
+  }
   const changedTouches = event && event.changedTouches ? event.changedTouches : null;
   if (!changedTouches || changedTouches.length <= 0) {
     clearSwipeSectionsTouchTracking();
@@ -15617,9 +15990,8 @@ function onSwipeSectionsTouchStart(event) {
   swipeState.touchTracking.startSceneX = scenePos.x;
   swipeState.touchTracking.startSceneY = scenePos.y;
   swipeState.touchTracking.startMs = performance.now();
-  if (swipeConfig.input.touchPreventDefault === true && event && event.cancelable === true) {
-    event.preventDefault();
-  }
+  swipeState.touchTracking.sawMultiTouch = false;
+  swipeState.touchTracking.swipeIntentLocked = false;
 }
 
 function onSwipeSectionsTouchMove(event) {
@@ -15628,7 +16000,43 @@ function onSwipeSectionsTouchMove(event) {
     return;
   }
   const swipeConfig = resolveSwipeSectionsConfig();
-  if (swipeConfig.input && swipeConfig.input.touchPreventDefault === true && event && event.cancelable === true) {
+  const touchTracking = swipeState.touchTracking;
+  const activeTouches = event && event.touches ? event.touches : null;
+  const multiTouchActive = Boolean(activeTouches && activeTouches.length >= 2);
+  if (multiTouchActive) {
+    touchTracking.sawMultiTouch = true;
+    if (swipeConfig.input && swipeConfig.input.touchCancelOnMultiTouch !== false) {
+      clearSwipeSectionsTouchTracking();
+    }
+    return;
+  }
+  if (touchTracking.sawMultiTouch === true) {
+    return;
+  }
+  const trackedTouch = findTouchByIdentifier(activeTouches, touchTracking.touchIdentifier);
+  if (!trackedTouch || !Number.isFinite(trackedTouch.clientX) || !Number.isFinite(trackedTouch.clientY)) {
+    return;
+  }
+  const dx = trackedTouch.clientX - touchTracking.startClientX;
+  const dy = trackedTouch.clientY - touchTracking.startClientY;
+  const absDx = Math.abs(dx);
+  const absDy = Math.abs(dy);
+  const axisLockRatio = Math.max(0.01, Number(swipeConfig.input.touchAxisLockRatio) || 1.2);
+  const threshold = Math.max(1, Number(swipeConfig.input.touchSwipeThresholdPx) || 42);
+  if (
+    touchTracking.swipeIntentLocked !== true
+    && absDy > (absDx * axisLockRatio)
+    && absDy >= threshold
+  ) {
+    touchTracking.swipeIntentLocked = true;
+  }
+  if (
+    touchTracking.swipeIntentLocked === true
+    && swipeConfig.input
+    && swipeConfig.input.touchPreventDefault === true
+    && event
+    && event.cancelable === true
+  ) {
     event.preventDefault();
   }
 }
@@ -15636,6 +16044,10 @@ function onSwipeSectionsTouchMove(event) {
 function onSwipeSectionsTouchEnd(event) {
   const swipeState = STATE.swipeSections;
   if (!swipeState || !swipeState.touchTracking || swipeState.touchTracking.active !== true) {
+    clearSwipeSectionsTouchTracking();
+    return;
+  }
+  if (swipeState.touchTracking.sawMultiTouch === true) {
     clearSwipeSectionsTouchTracking();
     return;
   }
@@ -15659,7 +16071,10 @@ function onSwipeSectionsTouchEnd(event) {
   const minFlickVelocity = Math.max(0, Number(swipeConfig.input.touchMinFlickVelocityPxPerMs) || 0);
   const axisLockRatio = Math.max(0.01, Number(swipeConfig.input.touchAxisLockRatio) || 1.2);
   let triggered = false;
-  const passesVerticalIntent = absDy > (absDx * axisLockRatio);
+  const passesVerticalIntent = (
+    swipeState.touchTracking.swipeIntentLocked === true
+    || absDy > (absDx * axisLockRatio)
+  );
   const passesDistance = absDy >= threshold;
   const passesVelocity = Math.abs(velocityYPxPerMs) >= minFlickVelocity;
   if (passesVerticalIntent && (passesDistance || passesVelocity)) {
@@ -16325,6 +16740,30 @@ function applyOffshootOptions(nextOptions) {
   Object.assign(CONFIG.offshoot, sanitized);
   if (STATE.branchGarden) {
     STATE.branchGarden.rebuildBranches();
+  }
+  renderScene();
+}
+
+function applyPriorityOptions(nextOptions) {
+  if (!isPlainObjectLiteral(nextOptions)) {
+    return;
+  }
+  const current = resolvePriorityConfig();
+  const mergedSquares = Array.isArray(nextOptions.squares)
+    ? nextOptions.squares
+    : current.squares;
+  const mergedDebug = isPlainObjectLiteral(nextOptions.debug)
+    ? { ...current.debug, ...nextOptions.debug }
+    : current.debug;
+  CONFIG.priority = resolvePriorityConfig({
+    ...current,
+    ...nextOptions,
+    squares: mergedSquares,
+    debug: mergedDebug,
+  });
+  STATE.priorityZonesCache.signature = '';
+  if (STATE.branchGarden) {
+    STATE.branchGarden.rebuildBranches({ regenerateRoots: true, resetRootTimeCursor: true });
   }
   renderScene();
 }
@@ -17212,6 +17651,10 @@ function exposeDevToolsApi() {
 
     setOffshootOptions(nextOptions) {
       applyOffshootOptions(nextOptions);
+    },
+
+    setPriorityOptions(nextOptions) {
+      applyPriorityOptions(nextOptions);
     },
 
     setPathGenerationOptions(nextOptions) {

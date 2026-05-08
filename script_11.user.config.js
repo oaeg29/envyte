@@ -126,7 +126,7 @@
     spawnTMin: 0.01,
     spawnTMax: 0.96,
     biasExponent: 1.6,
-    angleDegRange: [45,45],
+    angleDegRange: [0,0],
     sideMode: 'alternate', // random | left | right | alternate
     depthScale: 0.6,
     minSpawnSpacingT: 0.02,
@@ -138,6 +138,58 @@
      centerBlockHalfWidthPxVideoHeightRatio: 0.182, // X half-width as ratio of sampled video height
     centerBlockHalfHeightAbovePxVideoHeightRatio: 0.8, // Y extent above center as ratio of sampled video height
     centerBlockHalfHeightBelowPxVideoHeightRatio: 0.8,  // Y extent below center as ratio of sampled video height
+  },
+
+  priority: {
+    enabled: true,
+    endpointCullRadiusPxVideoHeightRatio: 0.045,
+    squares: [
+      {
+        enabled: true,
+        centerXRatio: 0.4,
+        centerYRatio: 0.4,
+        sizeXRatio: 0.15,
+        sizeYRatio: 0.12,
+      },
+      {
+        enabled: false,
+        centerXRatio: 0.5,
+        centerYRatio: 0.5,
+        sizeXRatio: 0.25,
+        sizeYRatio: 0.25,
+      },
+      {
+        enabled: false,
+        centerXRatio: 0.5,
+        centerYRatio: 0.5,
+        sizeXRatio: 0.25,
+        sizeYRatio: 0.25,
+      },
+      {
+        enabled: false,
+        centerXRatio: 0.5,
+        centerYRatio: 0.5,
+        sizeXRatio: 0.25,
+        sizeYRatio: 0.25,
+      },
+      {
+        enabled: false,
+        centerXRatio: 0.5,
+        centerYRatio: 0.5,
+        sizeXRatio: 0.25,
+        sizeYRatio: 0.25,
+      },
+    ],
+    debug: {
+      enabled: false,
+      drawOnFrontLayer: true,
+      strokeStyle: 'rgba(255, 120, 70, 0.95)',
+      fillStyle: 'rgba(255, 120, 70, 0.12)',
+      lineWidthPx: 2,
+      showCulledEndpointCircles: true,
+      culledCircleStrokeStyle: 'rgba(255, 65, 65, 0.98)',
+      culledCircleFillStyle: 'rgba(255, 65, 65, 0.14)',
+    },
   },
 
   branchGrowth: {
@@ -153,7 +205,7 @@
     autoStart: true,
     requireFoliageLoadedBeforeStart: true,
     useOffscreenLayerCache: true,
-    overlayPromotionGrowthOnMode: 'matchGrowthOff', // growthON only: matchGrowthOff | firstExitCutover
+    overlayPromotionGrowthOnMode: 'growthON', // growthON only: matchGrowthOff | firstExitCutover
   },
 
   frameJumpHotkeys: {
@@ -443,7 +495,7 @@
       {
         id: 'section-1',
         frame: 261,
-        centerOverlayImagePath: './test_page.png',
+        centerOverlayImagePath: './test_page2.png',
         // Optional per-section Y placement override for centerOverlayImage.
         // Ratio uses the same video-size basis as centerOverlayImage.offsetYMode='videoSizeRatio'.
         centerOverlayOffsetYVideoHeightRatio: -0.0520833333,
@@ -478,7 +530,8 @@
       touchSwipeThresholdPx: 42, // minimum touch distance before swipe triggers (px)
       touchMinFlickVelocityPxPerMs: 0.62, // OR-rule with distance threshold; useful for short fast flicks
       touchAxisLockRatio: 1.2,
-      touchPreventDefault: true,
+      touchPreventDefault: true, // preventDefault only after swipe intent is locked
+      touchCancelOnMultiTouch: true, // cancel swipe candidate when a second finger appears
       touchRequireOverlayWrapBandStart: true,
       touchFallbackToFullscreenWhenOverlayWrapDisabled: true,
     },
@@ -532,7 +585,7 @@
     centerHalfWidthPx: 50, // fallback when video size is unavailable
     skipHiddenBackDrawEnabled: true,
     spriteHiddenCullInnerPaddingPx: 0,
-    spriteHiddenCullRadiusScale: 0.3, // 0.05..1 scales the hidden-cull test circle radius
+    spriteHiddenCullRadiusScale: 0.2, // 0.05..1 scales the hidden-cull test circle radius
     debugHiddenSpriteCullCirclesEnabled: false,
     debugHiddenSpriteCullCirclesMode: 'culled', // culled | all
     debugHiddenSpriteCullCirclesMaxPerFrame: 400,
