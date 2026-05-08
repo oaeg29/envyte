@@ -493,7 +493,7 @@
     // Ordered page list used by section.pageIndex (1-based).
     pages: [
       './test_page2.png',
-      './page_2.png',
+      './page_2.1.png',
       './page_3.png',
     ],
     // Section count is derived from this array length.
@@ -510,7 +510,29 @@
         id: 'section-2',
         frame: 280,
         pageIndex: 2,
-        centerOverlayOffsetYVideoHeightRatio: -0.0520833333 + -0.095, // example of a per-section Y offset tweak
+        // centerOverlayOffsetYVideoHeightRatio: -0.0520833333 + -0.095,
+        centerOverlayOffsetYVideoHeightRatio: -0.0520833333, // example of a per-section Y offset tweak
+        //  // example of a per-section Y offset tweak
+        button: {
+          enabled: true,
+          offsetXVideoHeightRatio: 0,
+          offsetYVideoHeightRatio: 0.15,
+          widthVideoHeightRatio: 0.15,
+          heightVideoHeightRatio: 0.078,
+          link: 'https://maps.google.com', // configurable link for maps/location
+          text: 'View Location',
+          backgroundColor: 'rgba(255, 255, 255, 0.9)',
+          textColor: '#1f1b17',
+          fontSize: 'inherit',
+          borderRadius: '4px',
+          fontFamily: 'inherit',
+          fontWeight: '500',
+          animation: {
+            hoverScale: 1.08,
+            transitionDurationMs: 150,
+            transitionEasing: 'cubic-bezier(0.16, 1, 0.3, 1)',
+          },
+        },
       },
       {
         id: 'section-3',
@@ -573,8 +595,12 @@
         fontStyle: 'normal',
         fontSizeVideoHeightRatio: 0.028,
         textColor: '#1f1b17',
-        textAlign: 'left',
+        textAlign: 'center',
         maxLength: 120,
+        autoFitEnabled: true,
+        autoFitMinFontSizeRatio: 0.62, // min rendered size = base font size * this ratio
+        autoFitStepPx: 0.5, // shrink step used while text overflows field width
+        autoFitHorizontalPaddingPx: 4, // reserved horizontal fit margin inside the field
       },
       debug: {
         enabled: true, // set true to render RSVP layout debug rectangles

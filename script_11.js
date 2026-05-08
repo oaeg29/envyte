@@ -45,8 +45,12 @@ const rsvpNoButtonImage = document.createElement('img');
 const rsvpNameDebugRect = document.createElement('div');
 const rsvpYesDebugRect = document.createElement('div');
 const rsvpNoDebugRect = document.createElement('div');
+const rsvpNameFitMeasureCanvas = document.createElement('canvas');
+const rsvpNameFitMeasureCtx = rsvpNameFitMeasureCanvas.getContext('2d');
 const wash1Layer = document.createElement('div');
 const wash2Layer = document.createElement('div');
+const section2ButtonLayer = document.createElement('div');
+const section2Button = document.createElement('button');
 
 // =========================
 // 2) Config
@@ -2290,6 +2294,13 @@ rsvpLayer.appendChild(rsvpYesButton);
 rsvpLayer.appendChild(rsvpNoButton);
 wash1Layer.id = 'wash1Layer';
 wash2Layer.id = 'wash2Layer';
+section2ButtonLayer.id = 'section2ButtonLayer';
+section2ButtonLayer.setAttribute('aria-hidden', 'true');
+section2Button.id = 'section2Button';
+section2Button.type = 'button';
+section2Button.setAttribute('aria-label', 'View Location');
+section2Button.textContent = 'View Location';
+section2ButtonLayer.appendChild(section2Button);
 // video.height = window.innerHeight;   // Set height in pixels
 
 document.body.appendChild(flowersBackCanvas);
@@ -2299,10 +2310,16 @@ document.body.appendChild(video);  // Adds it to the page
 document.body.appendChild(centerOverlayImageLayer);
 document.body.appendChild(centerOverlayImageLayerAlt);
 document.body.appendChild(rsvpLayer);
+document.body.appendChild(section2ButtonLayer);
 // Keep front overlay canvas in root stacking context so it can render above the video.
 document.body.appendChild(frontCanvas);
 document.body.appendChild(flowersFrontCanvas);
 setupRsvpLayerEventHandlers();
+section2Button.addEventListener('mouseenter', onSection2ButtonHoverEnter);
+section2Button.addEventListener('mouseleave', onSection2ButtonHoverLeave);
+section2Button.addEventListener('focus', onSection2ButtonHoverEnter);
+section2Button.addEventListener('blur', onSection2ButtonHoverLeave);
+section2Button.addEventListener('click', onSection2ButtonClick);
 wash1Layer.addEventListener('animationend', (event) => {
   if (event && event.animationName === 'wash1Pulse') {
     wash1Layer.classList.remove('is-active');
@@ -4616,6 +4633,95 @@ function normalizeRsvpNameValue(value, maxLength = 120) {
   return asString.slice(0, limit);
 }
 
+function toRsvpNameTitleCase(value) {
+  if (typeof value !== 'string' || value.length <= 0) {
+    return '';
+  }
+  return value.replace(/\S+/g, (word) => {
+    const firstChar = word.charAt(0).toUpperCase();
+    const remainingChars = word.slice(1).toLowerCase();
+    return `${firstChar}${remainingChars}`;
+  });
+}
+
+function buildRsvpNameFontCss(fontSizePx, nameFieldConfig = {}) {
+  const style = (
+    typeof nameFieldConfig.fontStyle === 'string' && nameFieldConfig.fontStyle.trim().length > 0
+  )
+    ? nameFieldConfig.fontStyle.trim()
+    : 'normal';
+  const weight = (
+    typeof nameFieldConfig.fontWeight === 'string'
+    || Number.isFinite(Number(nameFieldConfig.fontWeight))
+  )
+    ? String(nameFieldConfig.fontWeight)
+    : 'normal';
+  const family = (
+    typeof nameFieldConfig.fontFamily === 'string' && nameFieldConfig.fontFamily.trim().length > 0
+  )
+    ? nameFieldConfig.fontFamily.trim()
+    : 'sans-serif';
+  const sizePx = Number.isFinite(Number(fontSizePx)) ? Math.max(0.1, Number(fontSizePx)) : 0.1;
+  return `${style} normal ${weight} ${sizePx}px ${family}`;
+}
+
+function measureRsvpNameTextWidthPx(text, fontSizePx, nameFieldConfig = {}) {
+  const safeText = typeof text === 'string' ? text : '';
+  if (safeText.length <= 0 || !rsvpNameFitMeasureCtx) {
+    return 0;
+  }
+  rsvpNameFitMeasureCtx.font = buildRsvpNameFontCss(fontSizePx, nameFieldConfig);
+  return Math.max(0, Number(rsvpNameFitMeasureCtx.measureText(safeText).width) || 0);
+}
+
+function resolveRsvpNameFittedFontSizePx(name, baseFontSizePx, inputWidthPx, nameFieldConfig = {}) {
+  const baseSize = Number.isFinite(Number(baseFontSizePx)) ? Math.max(0, Number(baseFontSizePx)) : 0;
+  if (!(baseSize > 0)) {
+    return 0;
+  }
+  if (nameFieldConfig.autoFitEnabled === false) {
+    return baseSize;
+  }
+  const availableWidth = Math.max(
+    0,
+    Number.isFinite(Number(inputWidthPx))
+      ? Number(inputWidthPx) - (2 * Math.max(0, Number(nameFieldConfig.autoFitHorizontalPaddingPx) || 0))
+      : 0,
+  );
+  if (!(availableWidth > 0)) {
+    return baseSize;
+  }
+  const safeName = typeof name === 'string' ? name : '';
+  if (safeName.length <= 0) {
+    return baseSize;
+  }
+  const minRatio = clamp(
+    Number.isFinite(Number(nameFieldConfig.autoFitMinFontSizeRatio))
+      ? Number(nameFieldConfig.autoFitMinFontSizeRatio)
+      : 0.62,
+    0.05,
+    1,
+  );
+  const minFontSizePx = Math.max(0.1, baseSize * minRatio);
+  const stepPx = Number.isFinite(Number(nameFieldConfig.autoFitStepPx))
+    ? Math.max(0.1, Number(nameFieldConfig.autoFitStepPx))
+    : 0.5;
+
+  let fontSizePx = baseSize;
+  let measuredWidthPx = measureRsvpNameTextWidthPx(safeName, fontSizePx, nameFieldConfig);
+  if (measuredWidthPx <= availableWidth) {
+    return fontSizePx;
+  }
+  while (fontSizePx > minFontSizePx + 1e-6) {
+    fontSizePx = Math.max(minFontSizePx, fontSizePx - stepPx);
+    measuredWidthPx = measureRsvpNameTextWidthPx(safeName, fontSizePx, nameFieldConfig);
+    if (measuredWidthPx <= availableWidth + 1e-6) {
+      return fontSizePx;
+    }
+  }
+  return minFontSizePx;
+}
+
 function setRsvpStatePatch(patch = {}, options = {}) {
   const runtime = getSwipeSectionsRsvpRuntimeState();
   if (!runtime) {
@@ -4629,7 +4735,8 @@ function setRsvpStatePatch(patch = {}, options = {}) {
   let changed = false;
 
   if (Object.prototype.hasOwnProperty.call(safePatch, 'name')) {
-    const nextName = normalizeRsvpNameValue(safePatch.name, maxLength);
+    const normalizedName = normalizeRsvpNameValue(safePatch.name, maxLength);
+    const nextName = toRsvpNameTitleCase(normalizedName);
     if (nextName !== runtime.name) {
       runtime.name = nextName;
       changed = true;
@@ -5192,9 +5299,8 @@ function syncRsvpLayer(nowMs = performance.now()) {
   rsvpNameInput.style.fontFamily = nameFieldConfig.fontFamily || '';
   rsvpNameInput.style.fontWeight = String(nameFieldConfig.fontWeight || 'normal');
   rsvpNameInput.style.fontStyle = nameFieldConfig.fontStyle || 'normal';
-  rsvpNameInput.style.fontSize = `${nameFontSize}px`;
   rsvpNameInput.style.color = nameFieldConfig.textColor || '#101010';
-  rsvpNameInput.style.textAlign = sanitizeRsvpTextAlign(nameFieldConfig.textAlign, 'left');
+  rsvpNameInput.style.textAlign = sanitizeRsvpTextAlign(nameFieldConfig.textAlign, 'center');
   rsvpNameInput.style.lineHeight = nameHeight > 0 ? `${nameHeight}px` : '';
   rsvpNameInput.maxLength = Number.isFinite(Number(nameFieldConfig.maxLength))
     ? Math.max(1, Math.floor(Number(nameFieldConfig.maxLength)))
@@ -5202,6 +5308,13 @@ function syncRsvpLayer(nowMs = performance.now()) {
   if (rsvpNameInput.value !== runtime.name) {
     rsvpNameInput.value = runtime.name;
   }
+  const fittedNameFontSize = resolveRsvpNameFittedFontSizePx(
+    runtime.name,
+    nameFontSize,
+    nameWidth,
+    nameFieldConfig,
+  );
+  rsvpNameInput.style.fontSize = `${fittedNameFontSize}px`;
 
   const yesConfig = buttonsConfig.yes || {};
   const noConfig = buttonsConfig.no || {};
@@ -5270,16 +5383,142 @@ function syncRsvpLayer(nowMs = performance.now()) {
   syncRsvpButtonVisualState(rsvpConfig, runtime);
 }
 
+function hideSection2ButtonLayer() {
+  section2ButtonLayer.style.display = 'none';
+  section2ButtonLayer.style.visibility = 'hidden';
+  section2ButtonLayer.style.pointerEvents = 'none';
+  section2ButtonLayer.setAttribute('aria-hidden', 'true');
+}
+
+function syncSection2ButtonLayer(nowMs = performance.now()) {
+  const swipeConfig = resolveSwipeSectionsConfig();
+  const sections = swipeConfig && Array.isArray(swipeConfig.sections) ? swipeConfig.sections : [];
+  const activeSectionId = resolveRsvpActiveSectionId(swipeConfig);
+  
+  if (!swipeConfig || !swipeConfig.enabled || sections.length === 0) {
+    hideSection2ButtonLayer();
+    return;
+  }
+  
+  if (!isSwipeSectionsNavigationActive(swipeConfig)) {
+    hideSection2ButtonLayer();
+    return;
+  }
+  
+  const section2 = sections.find(s => s.id === 'section-2');
+  if (!section2 || !section2.button || section2.button.enabled !== true) {
+    hideSection2ButtonLayer();
+    return;
+  }
+  
+  const shouldShow = activeSectionId.length > 0 && activeSectionId === 'section-2';
+  if (!shouldShow) {
+    hideSection2ButtonLayer();
+    return;
+  }
+  
+  const videoRect = getHeroVideoRenderedRect();
+  const videoHeight = (
+    videoRect
+    && Number.isFinite(videoRect.height)
+    && videoRect.height > 0
+  )
+    ? videoRect.height
+    : resolveHeroVideoRenderedHeightPx();
+  
+  if (!(videoHeight > 0)) {
+    hideSection2ButtonLayer();
+    return;
+  }
+  
+  const videoLeft = videoRect ? Number.isFinite(videoRect.left) ? videoRect.left : 0 : 0;
+  const videoTop = videoRect ? Number.isFinite(videoRect.top) ? videoRect.top : 0 : 0;
+  const centerX = videoLeft + videoRect.width * 0.5;
+  const centerY = videoTop + videoRect.height * 0.5;
+  
+  const buttonConfig = section2.button;
+  const buttonCenterX = centerX + (Number(buttonConfig.offsetXVideoHeightRatio) || 0) * videoHeight;
+  const buttonCenterY = centerY + (Number(buttonConfig.offsetYVideoHeightRatio) || 0) * videoHeight;
+  const buttonWidth = Math.max(0, (Number(buttonConfig.widthVideoHeightRatio) || 0) * videoHeight);
+  const buttonHeight = Math.max(0, (Number(buttonConfig.heightVideoHeightRatio) || 0) * videoHeight);
+  
+  if (buttonWidth <= 0 || buttonHeight <= 0) {
+    hideSection2ButtonLayer();
+    return;
+  }
+  
+  section2ButtonLayer.style.display = 'block';
+  section2ButtonLayer.style.visibility = 'visible';
+  section2ButtonLayer.style.pointerEvents = 'none';
+  section2ButtonLayer.setAttribute('aria-hidden', 'false');
+  
+  section2Button.textContent = buttonConfig.text || 'View Location';
+  section2Button.setAttribute('aria-label', buttonConfig.text || 'View Location');
+  section2Button.style.position = 'fixed';
+  section2Button.style.left = `${buttonCenterX}px`;
+  section2Button.style.top = `${buttonCenterY}px`;
+  section2Button.style.width = `${buttonWidth}px`;
+  section2Button.style.height = `${buttonHeight}px`;
+  section2Button.style.transform = 'translate(-50%, -50%)';
+  section2Button.style.backgroundColor = buttonConfig.backgroundColor || 'rgba(255, 255, 255, 0.9)';
+  section2Button.style.color = buttonConfig.textColor || '#1f1b17';
+  section2Button.style.fontSize = buttonConfig.fontSize || 'inherit';
+  section2Button.style.fontFamily = buttonConfig.fontFamily || 'inherit';
+  section2Button.style.fontWeight = String(buttonConfig.fontWeight || '500');
+  section2Button.style.border = '1px solid rgba(0, 0, 0, 0.1)';
+  section2Button.style.borderRadius = buttonConfig.borderRadius || '4px';
+  section2Button.style.cursor = 'pointer';
+  section2Button.style.pointerEvents = 'auto';
+  section2Button.style.zIndex = '1000';
+  
+  const animation = buttonConfig.animation || {};
+  const transitionDurationMs = Number(animation.transitionDurationMs) || 150;
+  const transitionEasing = animation.transitionEasing || 'cubic-bezier(0.16, 1, 0.3, 1)';
+  section2Button.style.transition = `transform ${transitionDurationMs}ms ${transitionEasing}, background-color ${transitionDurationMs}ms ${transitionEasing}`;
+  
+  section2ButtonLayer.dataset.activeSectionId = activeSectionId;
+  section2ButtonLayer.dataset.buttonTimestamp = Number.isFinite(nowMs) ? String(nowMs) : String(performance.now());
+}
+
+function onSection2ButtonHoverEnter() {
+  const section2 = getSection2Config();
+  if (!section2 || !section2.button || !section2.button.animation) {
+    return;
+  }
+  const hoverScale = Number(section2.button.animation.hoverScale) || 1.08;
+  section2Button.style.transform = `translate(-50%, -50%) scale(${hoverScale})`;
+}
+
+function onSection2ButtonHoverLeave() {
+  section2Button.style.transform = 'translate(-50%, -50%) scale(1)';
+}
+
+function onSection2ButtonClick(event) {
+  event.preventDefault();
+  event.stopPropagation();
+  const section2 = getSection2Config();
+  if (section2 && section2.button && section2.button.link) {
+    window.open(section2.button.link, '_blank', 'noopener,noreferrer');
+  }
+}
+
+function getSection2Config() {
+  const swipeConfig = resolveSwipeSectionsConfig();
+  const sections = swipeConfig && Array.isArray(swipeConfig.sections) ? swipeConfig.sections : [];
+  return sections.find(s => s.id === 'section-2') || null;
+}
+
 function onRsvpNameInputEvent() {
   const swipeConfig = resolveSwipeSectionsConfig();
   const rsvpConfig = swipeConfig && swipeConfig.rsvp ? swipeConfig.rsvp : null;
   const maxLength = rsvpConfig && rsvpConfig.nameField ? rsvpConfig.nameField.maxLength : 120;
-  const nextName = normalizeRsvpNameValue(rsvpNameInput.value || '', maxLength);
+  const nextName = toRsvpNameTitleCase(normalizeRsvpNameValue(rsvpNameInput.value || '', maxLength));
   if (nextName !== rsvpNameInput.value) {
     rsvpNameInput.value = nextName;
   }
   setRsvpStatePatch({ name: nextName });
 }
+
 
 function onRsvpButtonHoverEvent(event, isEntering) {
   const target = event && event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
@@ -13698,10 +13937,24 @@ function resolveSwipeSectionsRsvpConfig(
       )
         ? nameFieldRaw.textColor.trim()
         : '#101010',
-      textAlign: sanitizeRsvpTextAlign(nameFieldRaw.textAlign, 'left'),
+      textAlign: sanitizeRsvpTextAlign(nameFieldRaw.textAlign, 'center'),
       maxLength: Number.isFinite(Number(nameFieldRaw.maxLength))
         ? clamp(Math.floor(Number(nameFieldRaw.maxLength)), 1, 512)
         : 120,
+      autoFitEnabled: nameFieldRaw.autoFitEnabled !== false,
+      autoFitMinFontSizeRatio: clamp(
+        Number.isFinite(Number(nameFieldRaw.autoFitMinFontSizeRatio))
+          ? Number(nameFieldRaw.autoFitMinFontSizeRatio)
+          : 0.62,
+        0.05,
+        1,
+      ),
+      autoFitStepPx: Number.isFinite(Number(nameFieldRaw.autoFitStepPx))
+        ? Math.max(0.1, Number(nameFieldRaw.autoFitStepPx))
+        : 0.5,
+      autoFitHorizontalPaddingPx: Number.isFinite(Number(nameFieldRaw.autoFitHorizontalPaddingPx))
+        ? Math.max(0, Number(nameFieldRaw.autoFitHorizontalPaddingPx))
+        : 4,
     },
     buttons: {
       spritePath: (
@@ -16001,6 +16254,7 @@ function renderScene(options = {}) {
   const overlayNowMs = performance.now();
   syncCenterOverlayImageLayer(overlayNowMs, heroPlaybackFrame);
   syncRsvpLayer(overlayNowMs);
+  syncSection2ButtonLayer(overlayNowMs);
   syncWash1Layer(heroPlaybackFrame);
   syncWash2Layer(heroPlaybackFrame);
   if (enforceHeroPlaybackGatePauseFrames(heroPlaybackFrame, heroPlaybackGateConfig, { rerenderOnPause: false })) {
@@ -17460,6 +17714,9 @@ function tryHandleFrameJumpHotkey(event) {
 }
 
 function onKeydown(event) {
+  if (isEditableEventTarget(event && event.target)) {
+    return;
+  }
   if (tryHandleFrameJumpHotkey(event)) {
     return;
   }
