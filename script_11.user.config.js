@@ -193,7 +193,7 @@
   },
 
   branchGrowth: {
-    enabled: false,
+    enabled: true,
     mode: 'linearBySeedY', // simultaneous | linearBySeedY
     linearSweepDirection: 'up', // down (top->bottom) | up (bottom->top)
     linearSweepDurationSec: 6, // sweep time across root seed Y range
@@ -510,7 +510,37 @@
         id: 'section-2',
         frame: 280,
         pageIndex: 2,
-        centerOverlayOffsetYVideoHeightRatio: -0.0520833333 + -0.095, // example of a per-section Y offset tweak
+        // centerOverlayOffsetYVideoHeightRatio: -0.0520833333 + -0.095, // example of a per-section Y offset tweak
+        centerOverlayOffsetYVideoHeightRatio: -0.0520833333, // example of a per-section Y offset tweak
+
+        button: {
+          enabled: true,
+          text: 'View Location',
+          link: 'https://www.google.com/maps/dir//Sonesta+Hotel+Tower+%26+Casino+Cairo%D8%8C+Sonesta+Cairo+Hotel%D8%8C+3+El+Tayaran+St,+Ash+Sharekat,+Nasr+City,+Cairo+Governorate+4450113%E2%80%AD/@30.0789591,31.314985,17z/data=!4m20!1m10!3m9!1s0x14583e4709298029:0x12ce28bf24f83939!2sSonesta+Hotel+Tower+%26+Casino+Cairo!5m2!4m1!1i2!8m2!3d30.0789591!4d31.3175599!16s%2Fg%2F1tdjn3ms!4m8!1m0!1m5!1m1!1s0x14583e4709298029:0x12ce28bf24f83939!2m2!1d31.3175599!2d30.0789591!3e0!5m1!1e4?entry=ttu&g_ep=EgoyMDI2MDUwMi4wIKXMDSoASAFQAw%3D%3D',
+          pngSrc: './loc_pin.png',
+          pngFit: 'contain',
+          offsetXVideoHeightRatio: 0,
+          offsetYVideoHeightRatio: 0.18,
+          widthVideoHeightRatio: 0.08,
+          heightVideoHeightRatio: 0.08,
+          backgroundColor: 'rgba(255, 255, 255, 0)',
+          textColor: '#1f1b17',
+          fontFamily: 'Arial, sans-serif',
+          fontSize: '14px',
+          fontWeight: 500,
+          borderRadius: '18px',
+          padding: '8px 16px',
+          animation: {
+            hoverScale: 1.08,
+            transitionDurationMs: 180,
+            transitionEasing: 'cubic-bezier(0.16, 1, 0.3, 1)',
+          },
+          debug: {
+            enabled: false,
+            outlineStyle: '2px dashed rgba(255, 20, 20, 0.9)',
+            outlineOffset: '3px',
+          },
+        },
       },
       {
         id: 'section-3',
@@ -581,7 +611,7 @@
         autoFitHorizontalPaddingPx: 4, // reserved horizontal fit margin inside the field
       },
       debug: {
-        enabled: true, // set true to render RSVP layout debug rectangles
+        enabled: false, // set true to render RSVP layout debug rectangles
         showNameFieldRect: true,
         showButtonRects: true,
         strokeColor: 'rgba(255, 120, 120, 0.95)',

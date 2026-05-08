@@ -621,26 +621,38 @@ body[data-viewport-layout-mode="relative166"] #loadingScreen {
   padding: 8px 16px;
   border: 1px solid rgba(0, 0, 0, 0.1);
   border-radius: 4px;
-  background-color: rgba(255, 255, 255, 0.9);
+  background-color: rgba(255, 255, 255, 0);
   color: #1f1b17;
   font-family: inherit;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
   touch-action: manipulation;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  /* box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1); */
 }
 
 #section2Button:hover {
-  background-color: rgba(255, 255, 255, 0.95);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  background-color: rgba(255, 255, 255, 0);
+  box-shadow: none;
 }
 
 #section2Button:active {
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: none;
 }
 
 #section2Button:focus-visible {
-  outline: 2px solid rgba(0, 0, 0, 0.2);
-  outline-offset: 2px;
+  outline: none;
+}
+
+#section2Button.clicked {
+  animation: buttonClickScale 2s ease-out forwards;
+}
+
+@keyframes buttonClickScale {
+  0% {
+    transform: translate(-50%, -50%) scale(1.1);
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+  }
 }

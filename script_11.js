@@ -5436,7 +5436,11 @@ function syncSection2ButtonLayer(nowMs = performance.now()) {
   const centerX = videoLeft + videoRect.width * 0.5;
   const centerY = videoTop + videoRect.height * 0.5;
   
-  const buttonConfig = section2.button;
+  const buttonConfig = section2.button || {};
+  if (!buttonConfig.enabled) {
+    hideSection2ButtonLayer();
+    return;
+  }
   const buttonCenterX = centerX + (Number(buttonConfig.offsetXVideoHeightRatio) || 0) * videoHeight;
   const buttonCenterY = centerY + (Number(buttonConfig.offsetYVideoHeightRatio) || 0) * videoHeight;
   const buttonWidth = Math.max(0, (Number(buttonConfig.widthVideoHeightRatio) || 0) * videoHeight);
@@ -5447,13 +5451,16 @@ function syncSection2ButtonLayer(nowMs = performance.now()) {
     return;
   }
   
+  const hasPng = typeof buttonConfig.pngSrc === 'string' && buttonConfig.pngSrc.trim().length > 0;
+  const buttonLabel = buttonConfig.text || 'View Location';
+  
   section2ButtonLayer.style.display = 'block';
   section2ButtonLayer.style.visibility = 'visible';
   section2ButtonLayer.style.pointerEvents = 'none';
   section2ButtonLayer.setAttribute('aria-hidden', 'false');
   
-  section2Button.textContent = buttonConfig.text || 'View Location';
-  section2Button.setAttribute('aria-label', buttonConfig.text || 'View Location');
+  section2Button.textContent = hasPng ? '' : buttonLabel;
+  section2Button.setAttribute('aria-label', buttonLabel);
   section2Button.style.position = 'fixed';
   section2Button.style.left = `${buttonCenterX}px`;
   section2Button.style.top = `${buttonCenterY}px`;
@@ -5465,11 +5472,25 @@ function syncSection2ButtonLayer(nowMs = performance.now()) {
   section2Button.style.fontSize = buttonConfig.fontSize || 'inherit';
   section2Button.style.fontFamily = buttonConfig.fontFamily || 'inherit';
   section2Button.style.fontWeight = String(buttonConfig.fontWeight || '500');
-  section2Button.style.border = '1px solid rgba(0, 0, 0, 0.1)';
-  section2Button.style.borderRadius = buttonConfig.borderRadius || '4px';
+  section2Button.style.border = 'none';
+  section2Button.style.borderRadius = '0';
   section2Button.style.cursor = 'pointer';
   section2Button.style.pointerEvents = 'auto';
   section2Button.style.zIndex = '1000';
+  section2Button.style.padding = hasPng ? (buttonConfig.pngPadding || '0') : (buttonConfig.padding || '8px 16px');
+  section2Button.style.backgroundImage = hasPng ? `url("${buttonConfig.pngSrc}")` : 'none';
+  section2Button.style.backgroundRepeat = hasPng ? 'no-repeat' : '';
+  section2Button.style.backgroundPosition = hasPng ? 'center' : '';
+  section2Button.style.backgroundSize = hasPng ? (buttonConfig.pngFit || 'contain') : '';
+  
+  const debug = buttonConfig.debug || {};
+  if (debug.enabled) {
+    section2Button.style.outline = debug.outlineStyle || '2px dashed rgba(255, 20, 20, 0.9)';
+    section2Button.style.outlineOffset = debug.outlineOffset || '3px';
+  } else {
+    section2Button.style.outline = 'none';
+    section2Button.style.outlineOffset = '';
+  }
   
   const animation = buttonConfig.animation || {};
   const transitionDurationMs = Number(animation.transitionDurationMs) || 150;
@@ -5496,6 +5517,13 @@ function onSection2ButtonHoverLeave() {
 function onSection2ButtonClick(event) {
   event.preventDefault();
   event.stopPropagation();
+  
+  // Add click animation for mobile devices
+  section2Button.classList.add('clicked');
+  setTimeout(() => {
+    section2Button.classList.remove('clicked');
+  }, 2000);
+  
   const section2 = getSection2Config();
   if (section2 && section2.button && section2.button.link) {
     window.open(section2.button.link, '_blank', 'noopener,noreferrer');
@@ -14093,6 +14121,132 @@ function resolveSwipeSectionsConfig(configCandidate = CONFIG.swipeSections) {
 
   const sectionsRaw = Array.isArray(safeConfig.sections) ? safeConfig.sections : [];
   const sections = [];
+  const resolveSwipeSectionButtonConfig = (buttonCandidate) => {
+    const buttonRaw = isPlainObjectLiteral(buttonCandidate) ? buttonCandidate : null;
+    if (!buttonRaw) {
+      return null;
+    }
+    const animationRaw = isPlainObjectLiteral(buttonRaw.animation) ? buttonRaw.animation : {};
+    const debugRaw = isPlainObjectLiteral(buttonRaw.debug) ? buttonRaw.debug : {};
+    const normalizedPngSrc = (
+      typeof buttonRaw.pngSrc === 'string'
+      && buttonRaw.pngSrc.trim().length > 0
+    )
+      ? normalizeCenterOverlayImagePath(buttonRaw.pngSrc.trim())
+      : '';
+    const normalizedLink = (
+      typeof buttonRaw.link === 'string'
+      && buttonRaw.link.trim().length > 0
+    )
+      ? buttonRaw.link.trim()
+      : '';
+    return {
+      enabled: buttonRaw.enabled === true,
+      text: (
+        typeof buttonRaw.text === 'string'
+        && buttonRaw.text.trim().length > 0
+      )
+        ? buttonRaw.text.trim()
+        : 'View Location',
+      link: normalizedLink,
+      pngSrc: normalizedPngSrc,
+      pngFit: (
+        typeof buttonRaw.pngFit === 'string'
+        && buttonRaw.pngFit.trim().length > 0
+      )
+        ? buttonRaw.pngFit.trim()
+        : 'contain',
+      pngPadding: (
+        typeof buttonRaw.pngPadding === 'string'
+        && buttonRaw.pngPadding.trim().length > 0
+      )
+        ? buttonRaw.pngPadding.trim()
+        : '0',
+      offsetXVideoHeightRatio: Number.isFinite(Number(buttonRaw.offsetXVideoHeightRatio))
+        ? Number(buttonRaw.offsetXVideoHeightRatio)
+        : 0,
+      offsetYVideoHeightRatio: Number.isFinite(Number(buttonRaw.offsetYVideoHeightRatio))
+        ? Number(buttonRaw.offsetYVideoHeightRatio)
+        : 0,
+      widthVideoHeightRatio: Number.isFinite(Number(buttonRaw.widthVideoHeightRatio))
+        ? Math.max(0, Number(buttonRaw.widthVideoHeightRatio))
+        : 0,
+      heightVideoHeightRatio: Number.isFinite(Number(buttonRaw.heightVideoHeightRatio))
+        ? Math.max(0, Number(buttonRaw.heightVideoHeightRatio))
+        : 0,
+      backgroundColor: (
+        typeof buttonRaw.backgroundColor === 'string'
+        && buttonRaw.backgroundColor.trim().length > 0
+      )
+        ? buttonRaw.backgroundColor.trim()
+        : 'rgba(255, 255, 255, 0.9)',
+      textColor: (
+        typeof buttonRaw.textColor === 'string'
+        && buttonRaw.textColor.trim().length > 0
+      )
+        ? buttonRaw.textColor.trim()
+        : '#1f1b17',
+      fontFamily: (
+        typeof buttonRaw.fontFamily === 'string'
+        && buttonRaw.fontFamily.trim().length > 0
+      )
+        ? buttonRaw.fontFamily.trim()
+        : 'inherit',
+      fontSize: (
+        typeof buttonRaw.fontSize === 'string'
+        && buttonRaw.fontSize.trim().length > 0
+      )
+        ? buttonRaw.fontSize.trim()
+        : 'inherit',
+      fontWeight: (
+        buttonRaw.fontWeight !== undefined
+        && buttonRaw.fontWeight !== null
+      )
+        ? buttonRaw.fontWeight
+        : 500,
+      borderRadius: (
+        typeof buttonRaw.borderRadius === 'string'
+        && buttonRaw.borderRadius.trim().length > 0
+      )
+        ? buttonRaw.borderRadius.trim()
+        : '4px',
+      padding: (
+        typeof buttonRaw.padding === 'string'
+        && buttonRaw.padding.trim().length > 0
+      )
+        ? buttonRaw.padding.trim()
+        : '8px 16px',
+      animation: {
+        hoverScale: Number.isFinite(Number(animationRaw.hoverScale))
+          ? Math.max(0.01, Number(animationRaw.hoverScale))
+          : 1.08,
+        transitionDurationMs: Number.isFinite(Number(animationRaw.transitionDurationMs))
+          ? Math.max(0, Number(animationRaw.transitionDurationMs))
+          : 150,
+        transitionEasing: (
+          typeof animationRaw.transitionEasing === 'string'
+          && animationRaw.transitionEasing.trim().length > 0
+        )
+          ? animationRaw.transitionEasing.trim()
+          : 'cubic-bezier(0.16, 1, 0.3, 1)',
+      },
+      debug: {
+        enabled: debugRaw.enabled === true,
+        outlineStyle: (
+          typeof debugRaw.outlineStyle === 'string'
+          && debugRaw.outlineStyle.trim().length > 0
+        )
+          ? debugRaw.outlineStyle.trim()
+          : '2px dashed rgba(255, 20, 20, 0.9)',
+        outlineOffset: (
+          typeof debugRaw.outlineOffset === 'string'
+          && debugRaw.outlineOffset.trim().length > 0
+        )
+          ? debugRaw.outlineOffset.trim()
+          : '3px',
+      },
+    };
+  };
   for (let i = 0; i < sectionsRaw.length; i += 1) {
     const rawEntry = isPlainObjectLiteral(sectionsRaw[i]) ? sectionsRaw[i] : {};
     const fallbackSectionFrame = sections.length > 0
@@ -14131,12 +14285,14 @@ function resolveSwipeSectionsConfig(configCandidate = CONFIG.swipeSections) {
     const centerOverlayOffsetYVideoHeightRatio = Number.isFinite(centerOverlayOffsetYVideoHeightRatioRaw)
       ? centerOverlayOffsetYVideoHeightRatioRaw
       : null;
+    const button = resolveSwipeSectionButtonConfig(rawEntry.button);
     sections.push({
       id,
       frame,
       centerOverlayPageIndex,
       centerOverlayImagePath,
       centerOverlayOffsetYVideoHeightRatio,
+      button,
     });
   }
   if (sections.length <= 0) {
@@ -14146,6 +14302,7 @@ function resolveSwipeSectionsConfig(configCandidate = CONFIG.swipeSections) {
       centerOverlayPageIndex: 1,
       centerOverlayImagePath: pages[0] || fallbackOverlayPath,
       centerOverlayOffsetYVideoHeightRatio: null,
+      button: null,
     });
   }
 
@@ -15153,6 +15310,17 @@ function isPostZoomViewportRecoveryActive() {
   return postZoomViewportRecoveryActive === true;
 }
 
+function isTextInputFocused() {
+  const active = document && document.activeElement ? document.activeElement : null;
+  if (!active) {
+    return false;
+  }
+  const tag = typeof active.tagName === 'string' ? active.tagName.toLowerCase() : '';
+  const isInput = tag === 'input' || tag === 'textarea';
+  const isContentEditable = active.contentEditable === 'true' || active.isContentEditable === true;
+  return isInput || isContentEditable;
+}
+
 function getViewportLayoutSignature() {
   const bodyMode = document && document.body
     ? String(document.body.getAttribute('data-viewport-layout-mode') || '').trim()
@@ -15180,6 +15348,10 @@ function runCoalescedViewportResync(reason = 'unspecified') {
     viewportPinchZoomWasActive = true;
     postZoomViewportRecoveryActive = true;
     schedulePostZoomLayoutResync({ reason: `${reason}:pinch-active` });
+    return false;
+  }
+  if (isTextInputFocused()) {
+    schedulePostZoomLayoutResync({ reason: `${reason}:input-focused`, delayMs: 300 });
     return false;
   }
 
@@ -15955,6 +16127,10 @@ function setupVisualViewportHandlers() {
     }
     if (viewportPinchZoomWasActive) {
       schedulePostZoomLayoutResync({ reason: 'visualViewport:post-pinch' });
+      return;
+    }
+    if (isTextInputFocused()) {
+      schedulePostZoomLayoutResync({ reason: 'visualViewport:input-focused', delayMs: 300 });
       return;
     }
     if (isIOSRelative166ViewportModeActive()) {
@@ -17636,6 +17812,10 @@ function onResize() {
   if (isViewportPinchZoomActive()) {
     viewportPinchZoomWasActive = true;
     schedulePostZoomLayoutResync({ reason: 'window-resize:pinch-active' });
+    return;
+  }
+  if (isTextInputFocused()) {
+    schedulePostZoomLayoutResync({ reason: 'window-resize:input-focused', delayMs: 300 });
     return;
   }
   runCoalescedViewportResync('window-resize');
