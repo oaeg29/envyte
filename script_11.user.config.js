@@ -596,12 +596,12 @@
         offsetXVideoHeightRatio: 0,
         offsetYVideoHeightRatio: -0.11,
         widthVideoHeightRatio: 0.36,
-        heightVideoHeightRatio: 0.078,
+        heightVideoHeightRatio: 0.088,
         fontFamily: 'ZeinaRsvpScript',
-        fontSourcePath: '', // local path to font file, e.g. './fonts/ZeinaRsvpScript.woff2'
+        fontSourcePath: './PinyonScript-Regular.ttf', // local path to font file, e.g. './fonts/ZeinaRsvpScript.woff2'
         fontWeight: 500,
         fontStyle: 'normal',
-        fontSizeVideoHeightRatio: 0.028,
+        fontSizeVideoHeightRatio: 0.042,
         textColor: '#1f1b17',
         textAlign: 'center',
         maxLength: 120,
@@ -614,6 +614,7 @@
         enabled: false, // set true to render RSVP layout debug rectangles
         showNameFieldRect: true,
         showButtonRects: true,
+        showConfirmButtonRect: true,
         strokeColor: 'rgba(255, 120, 120, 0.95)',
         lineWidthPx: 2,
       },
@@ -635,6 +636,38 @@
           offsetYVideoHeightRatio: 0.098,
           widthVideoHeightRatio: 0.11,
           heightVideoHeightRatio: 0.11,
+        },
+        confirm: {
+          enabled: true,
+          offsetXVideoHeightRatio: 0,
+          offsetYVideoHeightRatio: 0.2,
+          widthVideoHeightRatio: 0.14,
+          heightVideoHeightRatio: 0.07,
+          spritePath: 'confirm.png', // optional dedicated confirm sprite-sheet path; empty = fallback to default button sprite
+          spriteCellWidth: 733,
+          spriteCellHeight: 366.5,
+          spriteScale: 1,
+          spriteCols: 1,
+          spriteRows: 2,
+          unselectedRow: 0,
+          selectedRow: 1,
+          col: 0,
+          appsScript: {
+            enabled: true,
+            webAppUrl: 'https://script.google.com/macros/s/AKfycbyYesFFD1SUCSgvCtEzR9fAB3Qo-iFRBflAwGSdYIWhD4Py_1P5QW2L1EVq4OcCamcdUw/exec', // paste deployed Google Apps Script Web App URL
+            mode: 'no-cors',
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            payload: {}, // optional extra fields merged into { name, rsvp }
+          },
+          submitUrl: '',
+          submitMethod: 'POST',
+          submitHeaders: {
+            'Content-Type': 'application/json',
+          },
+          submitPayload: {},
         },
         animation: {
           hoverScale: 1.06,

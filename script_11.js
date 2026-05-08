@@ -40,11 +40,14 @@ const rsvpLayer = document.createElement('div');
 const rsvpNameInput = document.createElement('input');
 const rsvpYesButton = document.createElement('button');
 const rsvpNoButton = document.createElement('button');
+const rsvpConfirmButton = document.createElement('button');
 const rsvpYesButtonImage = document.createElement('img');
 const rsvpNoButtonImage = document.createElement('img');
+const rsvpConfirmButtonImage = document.createElement('img');
 const rsvpNameDebugRect = document.createElement('div');
 const rsvpYesDebugRect = document.createElement('div');
 const rsvpNoDebugRect = document.createElement('div');
+const rsvpConfirmDebugRect = document.createElement('div');
 const rsvpNameFitMeasureCanvas = document.createElement('canvas');
 const rsvpNameFitMeasureCtx = rsvpNameFitMeasureCanvas.getContext('2d');
 const wash1Layer = document.createElement('div');
@@ -2272,26 +2275,39 @@ rsvpNoButton.type = 'button';
 rsvpNoButton.setAttribute('aria-label', 'RSVP no');
 rsvpNoButton.setAttribute('data-rsvp-control', 'no');
 rsvpNoButton.dataset.rsvpResponse = 'no';
+rsvpConfirmButton.id = 'rsvpConfirmButton';
+rsvpConfirmButton.type = 'button';
+rsvpConfirmButton.setAttribute('aria-label', 'RSVP confirm');
+rsvpConfirmButton.setAttribute('data-rsvp-control', 'confirm');
+rsvpConfirmButton.dataset.rsvpResponse = 'confirm';
 rsvpYesButtonImage.id = 'rsvpYesButtonImage';
 rsvpYesButtonImage.alt = '';
 rsvpYesButtonImage.draggable = false;
 rsvpNoButtonImage.id = 'rsvpNoButtonImage';
 rsvpNoButtonImage.alt = '';
 rsvpNoButtonImage.draggable = false;
+rsvpConfirmButtonImage.id = 'rsvpConfirmButtonImage';
+rsvpConfirmButtonImage.alt = '';
+rsvpConfirmButtonImage.draggable = false;
 rsvpNameDebugRect.id = 'rsvpNameDebugRect';
 rsvpNameDebugRect.className = 'rsvpDebugRect';
 rsvpYesDebugRect.id = 'rsvpYesDebugRect';
 rsvpYesDebugRect.className = 'rsvpDebugRect';
 rsvpNoDebugRect.id = 'rsvpNoDebugRect';
 rsvpNoDebugRect.className = 'rsvpDebugRect';
+rsvpConfirmDebugRect.id = 'rsvpConfirmDebugRect';
+rsvpConfirmDebugRect.className = 'rsvpDebugRect';
 rsvpYesButton.appendChild(rsvpYesButtonImage);
 rsvpNoButton.appendChild(rsvpNoButtonImage);
+rsvpConfirmButton.appendChild(rsvpConfirmButtonImage);
 rsvpLayer.appendChild(rsvpNameDebugRect);
 rsvpLayer.appendChild(rsvpYesDebugRect);
 rsvpLayer.appendChild(rsvpNoDebugRect);
+rsvpLayer.appendChild(rsvpConfirmDebugRect);
 rsvpLayer.appendChild(rsvpNameInput);
 rsvpLayer.appendChild(rsvpYesButton);
 rsvpLayer.appendChild(rsvpNoButton);
+rsvpLayer.appendChild(rsvpConfirmButton);
 wash1Layer.id = 'wash1Layer';
 wash2Layer.id = 'wash2Layer';
 section2ButtonLayer.id = 'section2ButtonLayer';
@@ -2692,6 +2708,7 @@ const STATE = {
       sectionId: 'section-3',
       name: '',
       response: null,
+      confirmPressed: false,
       updatedAtMs: 0,
       hoverResponse: '',
       activeFontKey: '',
@@ -4591,6 +4608,9 @@ function getSwipeSectionsRsvpRuntimeState() {
     swipeState.rsvp.name = '';
   }
   swipeState.rsvp.response = sanitizeRsvpResponseValue(swipeState.rsvp.response, null);
+  if (swipeState.rsvp.confirmPressed !== true) {
+    swipeState.rsvp.confirmPressed = false;
+  }
   swipeState.rsvp.sectionId = (
     typeof swipeState.rsvp.sectionId === 'string'
     && swipeState.rsvp.sectionId.trim().length > 0
@@ -4608,6 +4628,7 @@ function getRsvpStateSnapshot(runtimeState = getSwipeSectionsRsvpRuntimeState())
   return {
     name: runtime && typeof runtime.name === 'string' ? runtime.name : '',
     response: runtime ? sanitizeRsvpResponseValue(runtime.response, null) : null,
+    confirmPressed: runtime ? runtime.confirmPressed === true : false,
     sectionId: runtime && typeof runtime.sectionId === 'string' ? runtime.sectionId : '',
     updatedAtMs: runtime && Number.isFinite(Number(runtime.updatedAtMs))
       ? Number(runtime.updatedAtMs)
@@ -4747,6 +4768,15 @@ function setRsvpStatePatch(patch = {}, options = {}) {
     const nextResponse = sanitizeRsvpResponseValue(safePatch.response, null);
     if (nextResponse !== runtime.response) {
       runtime.response = nextResponse;
+      runtime.confirmPressed = false;
+      changed = true;
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(safePatch, 'confirmPressed')) {
+    const nextConfirmPressed = safePatch.confirmPressed === true;
+    if (nextConfirmPressed !== (runtime.confirmPressed === true)) {
+      runtime.confirmPressed = nextConfirmPressed;
       changed = true;
     }
   }
@@ -4782,7 +4812,7 @@ function setRsvpStatePatch(patch = {}, options = {}) {
 }
 
 function clearRsvpState(options = {}) {
-  return setRsvpStatePatch({ name: '', response: null }, options);
+  return setRsvpStatePatch({ name: '', response: null, confirmPressed: false }, options);
 }
 
 function resolveRsvpActiveSectionId(swipeConfig = resolveSwipeSectionsConfig()) {
@@ -4851,6 +4881,8 @@ function buildRsvpSpriteFrameSources(spriteImage, rsvpButtonsConfig) {
     yesSelected: '',
     noDefault: '',
     noSelected: '',
+    confirmDefault: '',
+    confirmSelected: '',
   };
   if (!spriteImage || !rsvpButtonsConfig) {
     return fallback;
@@ -4883,6 +4915,8 @@ function buildRsvpSpriteFrameSources(spriteImage, rsvpButtonsConfig) {
     yesSelected: extractRsvpSpriteFrameDataUrl(spriteImage, resolveFrameRect(yesRow, selectedCol)),
     noDefault: extractRsvpSpriteFrameDataUrl(spriteImage, resolveFrameRect(noRow, unselectedCol)),
     noSelected: extractRsvpSpriteFrameDataUrl(spriteImage, resolveFrameRect(noRow, selectedCol)),
+    confirmDefault: '',
+    confirmSelected: '',
   };
 }
 
@@ -4920,6 +4954,8 @@ function ensureRsvpButtonSpriteFramesLoaded(rsvpConfig) {
       yesSelected: '',
       noDefault: '',
       noSelected: '',
+      confirmDefault: '',
+      confirmSelected: '',
     };
     runtime.spriteLoadPromise = null;
     runtime.spriteLoadStatus = 'idle';
@@ -4927,13 +4963,19 @@ function ensureRsvpButtonSpriteFramesLoaded(rsvpConfig) {
   }
 
   const spritePath = normalizeCenterOverlayImagePath(buttonsConfig.spritePath);
-  if (spritePath.length <= 0) {
+  const confirmConfig = buttonsConfig.confirm || {};
+  const confirmSpritePath = normalizeCenterOverlayImagePath(confirmConfig.spritePath);
+  const hasSeparateConfirmSprite = confirmSpritePath.length > 0 && confirmSpritePath !== spritePath;
+
+  if (spritePath.length <= 0 && !hasSeparateConfirmSprite) {
     runtime.spriteSheetKey = '';
     runtime.spriteFrameSources = {
       yesDefault: '',
       yesSelected: '',
       noDefault: '',
       noSelected: '',
+      confirmDefault: '',
+      confirmSelected: '',
     };
     runtime.spriteLoadPromise = null;
     runtime.spriteLoadStatus = 'idle';
@@ -4941,8 +4983,12 @@ function ensureRsvpButtonSpriteFramesLoaded(rsvpConfig) {
   }
 
   const signature = getRsvpSpriteSheetSignature(buttonsConfig);
+  const confirmSpriteSourcePath = hasSeparateConfirmSprite ? confirmSpritePath : spritePath;
+  const confirmSignature = `confirm:${confirmSpriteSourcePath}|${confirmConfig.spriteCellWidth || ''}|${confirmConfig.spriteCellHeight || ''}|${confirmConfig.spriteScale || ''}|${confirmConfig.spriteCols || ''}|${confirmConfig.spriteRows || ''}|${(confirmConfig.frameMap && confirmConfig.frameMap.unselectedRow) || ''}|${(confirmConfig.frameMap && confirmConfig.frameMap.selectedRow) || ''}|${(confirmConfig.frameMap && confirmConfig.frameMap.col) || ''}`;
+  const fullSignature = `${signature}|${confirmSignature}`;
+
   if (
-    runtime.spriteSheetKey === signature
+    runtime.spriteSheetKey === fullSignature
     && runtime.spriteFrameSources
     && runtime.spriteFrameSources.yesDefault
     && runtime.spriteFrameSources.yesSelected
@@ -4951,21 +4997,64 @@ function ensureRsvpButtonSpriteFramesLoaded(rsvpConfig) {
   ) {
     return Promise.resolve(runtime.spriteFrameSources);
   }
-  if (runtime.spriteSheetKey === signature && runtime.spriteLoadStatus === 'failed') {
+  if (runtime.spriteSheetKey === fullSignature && runtime.spriteLoadStatus === 'failed') {
     return Promise.resolve(null);
   }
-  if (runtime.spriteSheetKey === signature && runtime.spriteLoadPromise) {
+  if (runtime.spriteSheetKey === fullSignature && runtime.spriteLoadPromise) {
     return runtime.spriteLoadPromise;
   }
 
-  runtime.spriteSheetKey = signature;
+  runtime.spriteSheetKey = fullSignature;
   runtime.spriteLoadStatus = 'loading';
-  const loadPromise = loadImage(spritePath)
-    .then((spriteImage) => {
-      if (runtime.spriteSheetKey !== signature) {
+
+  const mainLoadPromise = spritePath.length > 0
+    ? loadImage(spritePath)
+    : Promise.resolve(null);
+  const confirmLoadPromise = hasSeparateConfirmSprite
+    ? loadImage(confirmSpritePath)
+    : Promise.resolve(null);
+
+  const loadPromise = Promise.all([mainLoadPromise, confirmLoadPromise])
+    .then(([spriteImage, confirmSpriteImage]) => {
+      if (runtime.spriteSheetKey !== fullSignature) {
         return null;
       }
-      runtime.spriteFrameSources = buildRsvpSpriteFrameSources(spriteImage, buttonsConfig);
+      const mainFrames = spriteImage ? buildRsvpSpriteFrameSources(spriteImage, buttonsConfig) : {
+        yesDefault: '',
+        yesSelected: '',
+        noDefault: '',
+        noSelected: '',
+        confirmDefault: '',
+        confirmSelected: '',
+      };
+      const cCellWidth = Math.max(1, Math.floor(Number(confirmConfig.spriteCellWidth) * Number(confirmConfig.spriteScale || 1)));
+      const cCellHeight = Math.max(1, Math.floor(Number(confirmConfig.spriteCellHeight) * Number(confirmConfig.spriteScale || 1)));
+      const cCols = Math.max(1, Math.floor(Number(confirmConfig.spriteCols) || 1));
+      const cRows = Math.max(1, Math.floor(Number(confirmConfig.spriteRows) || 2));
+      const cFrameMap = confirmConfig.frameMap || {};
+      const cUnselectedRow = clamp(Math.floor(Number(cFrameMap.unselectedRow) || 0), 0, cRows - 1);
+      const cSelectedRow = clamp(Math.floor(Number(cFrameMap.selectedRow) || 1), 0, cRows - 1);
+      const cCol = clamp(Math.floor(Number(cFrameMap.col) || 0), 0, cCols - 1);
+      const resolveCFrameRect = (rowIndex, colIndex) => ({
+        sx: colIndex * cCellWidth,
+        sy: rowIndex * cCellHeight,
+        sw: cCellWidth,
+        sh: cCellHeight,
+      });
+      const confirmSourceImage = hasSeparateConfirmSprite
+        ? confirmSpriteImage
+        : spriteImage;
+      let confirmFrames = { confirmDefault: '', confirmSelected: '' };
+      if (confirmSourceImage) {
+        confirmFrames = {
+          confirmDefault: extractRsvpSpriteFrameDataUrl(confirmSourceImage, resolveCFrameRect(cUnselectedRow, cCol)),
+          confirmSelected: extractRsvpSpriteFrameDataUrl(confirmSourceImage, resolveCFrameRect(cSelectedRow, cCol)),
+        };
+      }
+      runtime.spriteFrameSources = {
+        ...mainFrames,
+        ...confirmFrames,
+      };
       runtime.spriteLoadPromise = null;
       runtime.spriteLoadStatus = 'loaded';
       syncRsvpButtonVisualState(safeConfig, runtime);
@@ -4973,7 +5062,7 @@ function ensureRsvpButtonSpriteFramesLoaded(rsvpConfig) {
       return runtime.spriteFrameSources;
     })
     .catch((error) => {
-      if (runtime.spriteSheetKey !== signature) {
+      if (runtime.spriteSheetKey !== fullSignature) {
         return null;
       }
       runtime.spriteFrameSources = {
@@ -4981,6 +5070,8 @@ function ensureRsvpButtonSpriteFramesLoaded(rsvpConfig) {
         yesSelected: '',
         noDefault: '',
         noSelected: '',
+        confirmDefault: '',
+        confirmSelected: '',
       };
       runtime.spriteLoadPromise = null;
       runtime.spriteLoadStatus = 'failed';
@@ -5001,6 +5092,11 @@ function getRsvpButtonImageSourceForResponse(
     return isSelected
       ? (safeFrames.yesSelected || safeFrames.yesDefault || '')
       : (safeFrames.yesDefault || safeFrames.yesSelected || '');
+  }
+  if (response === 'confirm') {
+    return isSelected
+      ? (safeFrames.confirmSelected || safeFrames.confirmDefault || '')
+      : (safeFrames.confirmDefault || safeFrames.confirmSelected || '');
   }
   return isSelected
     ? (safeFrames.noSelected || safeFrames.noDefault || '')
@@ -5028,13 +5124,17 @@ function syncRsvpButtonVisualState(
   const selectedScale = Math.max(0.01, Number(animationConfig.selectedScale) || 1);
   const isYesSelected = runtime.response === 'yes';
   const isNoSelected = runtime.response === 'no';
+  const isConfirmSelected = runtime.confirmPressed === true;
   const isYesHovered = runtime.hoverResponse === 'yes';
   const isNoHovered = runtime.hoverResponse === 'no';
+  const isConfirmHovered = runtime.hoverResponse === 'confirm';
   const yesScale = (isYesSelected ? selectedScale : 1) * (isYesHovered ? hoverScale : 1);
   const noScale = (isNoSelected ? selectedScale : 1) * (isNoHovered ? hoverScale : 1);
+  const confirmScale = (isConfirmSelected ? selectedScale : 1) * (isConfirmHovered ? hoverScale : 1);
   const frames = runtime.spriteFrameSources || {};
   const yesSrc = getRsvpButtonImageSourceForResponse('yes', isYesSelected, frames);
   const noSrc = getRsvpButtonImageSourceForResponse('no', isNoSelected, frames);
+  const confirmSrc = getRsvpButtonImageSourceForResponse('confirm', isConfirmSelected, frames);
 
   if (yesSrc && rsvpYesButtonImage.src !== yesSrc) {
     rsvpYesButtonImage.src = yesSrc;
@@ -5046,14 +5146,23 @@ function syncRsvpButtonVisualState(
   } else if (!noSrc && rsvpNoButtonImage.hasAttribute('src')) {
     rsvpNoButtonImage.removeAttribute('src');
   }
+  if (confirmSrc && rsvpConfirmButtonImage.src !== confirmSrc) {
+    rsvpConfirmButtonImage.src = confirmSrc;
+  } else if (!confirmSrc && rsvpConfirmButtonImage.hasAttribute('src')) {
+    rsvpConfirmButtonImage.removeAttribute('src');
+  }
   rsvpYesButton.style.transform = `translate(-50%, -50%) scale(${yesScale})`;
   rsvpNoButton.style.transform = `translate(-50%, -50%) scale(${noScale})`;
+  rsvpConfirmButton.style.transform = `translate(-50%, -50%) scale(${confirmScale})`;
   rsvpYesButton.style.transition = `transform ${transitionDurationMs}ms ${transitionEasing}`;
   rsvpNoButton.style.transition = `transform ${transitionDurationMs}ms ${transitionEasing}`;
+  rsvpConfirmButton.style.transition = `transform ${transitionDurationMs}ms ${transitionEasing}`;
   rsvpYesButton.setAttribute('aria-pressed', isYesSelected ? 'true' : 'false');
   rsvpNoButton.setAttribute('aria-pressed', isNoSelected ? 'true' : 'false');
+  rsvpConfirmButton.setAttribute('aria-pressed', isConfirmSelected ? 'true' : 'false');
   rsvpYesButton.dataset.selected = isYesSelected ? '1' : '0';
   rsvpNoButton.dataset.selected = isNoSelected ? '1' : '0';
+  rsvpConfirmButton.dataset.selected = isConfirmSelected ? '1' : '0';
 }
 
 function ensureRsvpFontLoaded(rsvpConfig) {
@@ -5156,6 +5265,7 @@ function initializeRsvpStateIfNeeded(swipeConfig = resolveSwipeSectionsConfig())
     {
       name: rsvpConfig.initialState ? rsvpConfig.initialState.name : '',
       response: rsvpConfig.initialState ? rsvpConfig.initialState.response : null,
+      confirmPressed: false,
       sectionId: rsvpConfig.sectionId,
     },
     {
@@ -5166,7 +5276,7 @@ function initializeRsvpStateIfNeeded(swipeConfig = resolveSwipeSectionsConfig())
 }
 
 function hideRsvpDebugRects() {
-  const debugRects = [rsvpNameDebugRect, rsvpYesDebugRect, rsvpNoDebugRect];
+  const debugRects = [rsvpNameDebugRect, rsvpYesDebugRect, rsvpNoDebugRect, rsvpConfirmDebugRect];
   for (let i = 0; i < debugRects.length; i += 1) {
     const rectEl = debugRects[i];
     if (!rectEl) {
@@ -5318,6 +5428,8 @@ function syncRsvpLayer(nowMs = performance.now()) {
 
   const yesConfig = buttonsConfig.yes || {};
   const noConfig = buttonsConfig.no || {};
+  const confirmConfig = buttonsConfig.confirm || {};
+  const confirmEnabled = confirmConfig.enabled !== false;
   const yesCenterX = centerX + (Number(yesConfig.offsetXVideoHeightRatio) || 0) * videoHeight;
   const yesCenterY = centerY + (Number(yesConfig.offsetYVideoHeightRatio) || 0) * videoHeight;
   const yesWidth = Math.max(0, (Number(yesConfig.widthVideoHeightRatio) || 0) * videoHeight);
@@ -5326,6 +5438,10 @@ function syncRsvpLayer(nowMs = performance.now()) {
   const noCenterY = centerY + (Number(noConfig.offsetYVideoHeightRatio) || 0) * videoHeight;
   const noWidth = Math.max(0, (Number(noConfig.widthVideoHeightRatio) || 0) * videoHeight);
   const noHeight = Math.max(0, (Number(noConfig.heightVideoHeightRatio) || 0) * videoHeight);
+  const confirmCenterX = centerX + (Number(confirmConfig.offsetXVideoHeightRatio) || 0) * videoHeight;
+  const confirmCenterY = centerY + (Number(confirmConfig.offsetYVideoHeightRatio) || 0) * videoHeight;
+  const confirmWidth = Math.max(0, (Number(confirmConfig.widthVideoHeightRatio) || 0) * videoHeight);
+  const confirmHeight = Math.max(0, (Number(confirmConfig.heightVideoHeightRatio) || 0) * videoHeight);
   const debugEnabled = debugConfig.enabled === true;
   const debugStrokeColor = (
     typeof debugConfig.strokeColor === 'string' && debugConfig.strokeColor.trim().length > 0
@@ -5335,6 +5451,7 @@ function syncRsvpLayer(nowMs = performance.now()) {
   const debugLineWidthPx = Number.isFinite(Number(debugConfig.lineWidthPx))
     ? Math.max(1, Number(debugConfig.lineWidthPx))
     : 2;
+  const showConfirmButtonRect = debugConfig.showConfirmButtonRect !== false;
   syncRsvpDebugRect(
     rsvpNameDebugRect,
     nameCenterX,
@@ -5365,6 +5482,16 @@ function syncRsvpLayer(nowMs = performance.now()) {
     debugStrokeColor,
     debugLineWidthPx,
   );
+  syncRsvpDebugRect(
+    rsvpConfirmDebugRect,
+    confirmCenterX,
+    confirmCenterY,
+    confirmWidth,
+    confirmHeight,
+    debugEnabled && debugConfig.showButtonRects !== false && showConfirmButtonRect && confirmEnabled,
+    debugStrokeColor,
+    debugLineWidthPx,
+  );
 
   rsvpYesButton.style.left = `${yesCenterX}px`;
   rsvpYesButton.style.top = `${yesCenterY}px`;
@@ -5374,8 +5501,14 @@ function syncRsvpLayer(nowMs = performance.now()) {
   rsvpNoButton.style.top = `${noCenterY}px`;
   rsvpNoButton.style.width = `${noWidth}px`;
   rsvpNoButton.style.height = `${noHeight}px`;
+  rsvpConfirmButton.style.left = `${confirmCenterX}px`;
+  rsvpConfirmButton.style.top = `${confirmCenterY}px`;
+  rsvpConfirmButton.style.width = `${confirmWidth}px`;
+  rsvpConfirmButton.style.height = `${confirmHeight}px`;
   rsvpYesButton.style.pointerEvents = 'auto';
   rsvpNoButton.style.pointerEvents = 'auto';
+  rsvpConfirmButton.style.pointerEvents = confirmEnabled ? 'auto' : 'none';
+  rsvpConfirmButton.style.display = confirmEnabled ? 'block' : 'none';
   rsvpNameInput.style.pointerEvents = 'auto';
   rsvpNameInput.style.caretColor = nameFieldConfig.textColor || '#101010';
   rsvpLayer.dataset.activeSectionId = activeSectionId;
@@ -5577,6 +5710,71 @@ function onRsvpButtonClick(event) {
   setRsvpStatePatch({ response });
 }
 
+function onRsvpConfirmButtonClick(event) {
+  if (event && event.cancelable === true) {
+    event.preventDefault();
+  }
+  const swipeConfig = resolveSwipeSectionsConfig();
+  const rsvpConfig = swipeConfig && swipeConfig.rsvp ? swipeConfig.rsvp : null;
+  const confirmConfig = rsvpConfig && rsvpConfig.buttons ? rsvpConfig.buttons.confirm : null;
+  const runtime = getSwipeSectionsRsvpRuntimeState();
+
+  if (!confirmConfig || confirmConfig.enabled === false) {
+    return;
+  }
+
+  setRsvpStatePatch({ confirmPressed: true });
+
+  const submittedName = runtime ? runtime.name : '';
+  const submittedRsvp = runtime ? sanitizeRsvpResponseValue(runtime.response, null) : null;
+
+  const onSubmit = typeof confirmConfig.onSubmit === 'function' ? confirmConfig.onSubmit : null;
+  if (onSubmit) {
+    onSubmit({
+      name: submittedName,
+      rsvp: submittedRsvp,
+      response: submittedRsvp,
+    });
+  }
+
+  const appsScriptConfig = confirmConfig.appsScript;
+  if (
+    appsScriptConfig
+    && appsScriptConfig.enabled !== false
+    && typeof appsScriptConfig.webAppUrl === 'string'
+    && appsScriptConfig.webAppUrl.length > 0
+  ) {
+    const appsScriptPayload = {
+      name: submittedName,
+      rsvp: submittedRsvp,
+      ...(appsScriptConfig.payload || {}),
+    };
+    fetch(appsScriptConfig.webAppUrl, {
+      method: appsScriptConfig.method || 'POST',
+      mode: appsScriptConfig.mode || 'no-cors',
+      headers: appsScriptConfig.headers || { 'Content-Type': 'application/json' },
+      body: JSON.stringify(appsScriptPayload),
+    }).catch(() => {});
+  }
+
+  if (confirmConfig.submitUrl) {
+    const method = confirmConfig.submitMethod || 'POST';
+    const headers = confirmConfig.submitHeaders || { 'Content-Type': 'application/json' };
+    const payload = {
+      name: submittedName,
+      rsvp: submittedRsvp,
+      response: submittedRsvp,
+      ...(confirmConfig.submitPayload || {}),
+    };
+
+    fetch(confirmConfig.submitUrl, {
+      method,
+      headers,
+      body: JSON.stringify(payload),
+    }).catch(() => {});
+  }
+}
+
 function setupRsvpLayerEventHandlers() {
   rsvpNameInput.addEventListener('input', onRsvpNameInputEvent);
   rsvpNameInput.addEventListener('change', onRsvpNameInputEvent);
@@ -5584,12 +5782,17 @@ function setupRsvpLayerEventHandlers() {
   rsvpYesButton.addEventListener('mouseleave', (event) => onRsvpButtonHoverEvent(event, false));
   rsvpNoButton.addEventListener('mouseenter', (event) => onRsvpButtonHoverEvent(event, true));
   rsvpNoButton.addEventListener('mouseleave', (event) => onRsvpButtonHoverEvent(event, false));
+  rsvpConfirmButton.addEventListener('mouseenter', (event) => onRsvpButtonHoverEvent(event, true));
+  rsvpConfirmButton.addEventListener('mouseleave', (event) => onRsvpButtonHoverEvent(event, false));
   rsvpYesButton.addEventListener('focus', (event) => onRsvpButtonHoverEvent(event, true));
   rsvpYesButton.addEventListener('blur', (event) => onRsvpButtonHoverEvent(event, false));
   rsvpNoButton.addEventListener('focus', (event) => onRsvpButtonHoverEvent(event, true));
   rsvpNoButton.addEventListener('blur', (event) => onRsvpButtonHoverEvent(event, false));
+  rsvpConfirmButton.addEventListener('focus', (event) => onRsvpButtonHoverEvent(event, true));
+  rsvpConfirmButton.addEventListener('blur', (event) => onRsvpButtonHoverEvent(event, false));
   rsvpYesButton.addEventListener('click', onRsvpButtonClick);
   rsvpNoButton.addEventListener('click', onRsvpButtonClick);
+  rsvpConfirmButton.addEventListener('click', onRsvpConfirmButtonClick);
 }
 
 function shouldRenderOpenButtonArrowLive(gateConfig = resolveHeroPlaybackGateConfig()) {
@@ -13889,6 +14092,8 @@ function resolveSwipeSectionsRsvpConfig(
   const buttonsRaw = isPlainObjectLiteral(safeConfig.buttons) ? safeConfig.buttons : {};
   const yesButtonRaw = isPlainObjectLiteral(buttonsRaw.yes) ? buttonsRaw.yes : {};
   const noButtonRaw = isPlainObjectLiteral(buttonsRaw.no) ? buttonsRaw.no : {};
+  const confirmButtonRaw = isPlainObjectLiteral(buttonsRaw.confirm) ? buttonsRaw.confirm : {};
+  const confirmAppsScriptRaw = isPlainObjectLiteral(confirmButtonRaw.appsScript) ? confirmButtonRaw.appsScript : {};
   const animationRaw = isPlainObjectLiteral(buttonsRaw.animation) ? buttonsRaw.animation : {};
   const initialStateRaw = isPlainObjectLiteral(safeConfig.initialState) ? safeConfig.initialState : {};
   const debugRaw = isPlainObjectLiteral(safeConfig.debug) ? safeConfig.debug : {};
@@ -14048,6 +14253,104 @@ function resolveSwipeSectionsRsvpConfig(
           ? Math.max(0, Number(noButtonRaw.heightVideoHeightRatio))
           : 0.11,
       },
+      confirm: {
+        enabled: confirmButtonRaw.enabled !== false,
+        offsetXVideoHeightRatio: Number.isFinite(Number(confirmButtonRaw.offsetXVideoHeightRatio))
+          ? Number(confirmButtonRaw.offsetXVideoHeightRatio)
+          : 0,
+        offsetYVideoHeightRatio: Number.isFinite(Number(confirmButtonRaw.offsetYVideoHeightRatio))
+          ? Number(confirmButtonRaw.offsetYVideoHeightRatio)
+          : 0.25,
+        widthVideoHeightRatio: Number.isFinite(Number(confirmButtonRaw.widthVideoHeightRatio))
+          ? Math.max(0, Number(confirmButtonRaw.widthVideoHeightRatio))
+          : 0.14,
+        heightVideoHeightRatio: Number.isFinite(Number(confirmButtonRaw.heightVideoHeightRatio))
+          ? Math.max(0, Number(confirmButtonRaw.heightVideoHeightRatio))
+          : 0.07,
+        spritePath: (
+          typeof confirmButtonRaw.spritePath === 'string'
+          && confirmButtonRaw.spritePath.trim().length > 0
+        )
+          ? confirmButtonRaw.spritePath.trim()
+          : '',
+        spriteCellWidth: Number.isFinite(Number(confirmButtonRaw.spriteCellWidth))
+          ? Math.max(1, Number(confirmButtonRaw.spriteCellWidth))
+          : 88,
+        spriteCellHeight: Number.isFinite(Number(confirmButtonRaw.spriteCellHeight))
+          ? Math.max(1, Number(confirmButtonRaw.spriteCellHeight))
+          : 44,
+        spriteScale: Number.isFinite(Number(confirmButtonRaw.spriteScale))
+          ? Math.max(0.01, Number(confirmButtonRaw.spriteScale))
+          : 1,
+        spriteCols: Number.isFinite(Number(confirmButtonRaw.spriteCols))
+          ? Math.max(1, Math.floor(Number(confirmButtonRaw.spriteCols)))
+          : 1,
+        spriteRows: Number.isFinite(Number(confirmButtonRaw.spriteRows))
+          ? Math.max(1, Math.floor(Number(confirmButtonRaw.spriteRows)))
+          : 2,
+        frameMap: {
+          unselectedRow: Number.isFinite(Number(confirmButtonRaw.unselectedRow))
+            ? Math.max(0, Math.floor(Number(confirmButtonRaw.unselectedRow)))
+            : 0,
+          selectedRow: Number.isFinite(Number(confirmButtonRaw.selectedRow))
+            ? Math.max(0, Math.floor(Number(confirmButtonRaw.selectedRow)))
+            : 1,
+          col: Number.isFinite(Number(confirmButtonRaw.col))
+            ? Math.max(0, Math.floor(Number(confirmButtonRaw.col)))
+            : 0,
+        },
+        appsScript: {
+          enabled: confirmAppsScriptRaw.enabled !== false,
+          webAppUrl: (
+            typeof confirmAppsScriptRaw.webAppUrl === 'string'
+            && confirmAppsScriptRaw.webAppUrl.trim().length > 0
+          )
+            ? confirmAppsScriptRaw.webAppUrl.trim()
+            : '',
+          mode: (
+            typeof confirmAppsScriptRaw.mode === 'string'
+            && (
+              confirmAppsScriptRaw.mode.trim() === 'cors'
+              || confirmAppsScriptRaw.mode.trim() === 'no-cors'
+              || confirmAppsScriptRaw.mode.trim() === 'same-origin'
+              || confirmAppsScriptRaw.mode.trim() === 'navigate'
+            )
+          )
+            ? confirmAppsScriptRaw.mode.trim()
+            : 'no-cors',
+          method: (
+            typeof confirmAppsScriptRaw.method === 'string'
+            && confirmAppsScriptRaw.method.trim().length > 0
+          )
+            ? confirmAppsScriptRaw.method.trim().toUpperCase()
+            : 'POST',
+          headers: isPlainObjectLiteral(confirmAppsScriptRaw.headers)
+            ? confirmAppsScriptRaw.headers
+            : { 'Content-Type': 'application/json' },
+          payload: isPlainObjectLiteral(confirmAppsScriptRaw.payload)
+            ? confirmAppsScriptRaw.payload
+            : {},
+        },
+        onSubmit: typeof confirmButtonRaw.onSubmit === 'function' ? confirmButtonRaw.onSubmit : null,
+        submitUrl: (
+          typeof confirmButtonRaw.submitUrl === 'string'
+          && confirmButtonRaw.submitUrl.trim().length > 0
+        )
+          ? confirmButtonRaw.submitUrl.trim()
+          : '',
+        submitMethod: (
+          typeof confirmButtonRaw.submitMethod === 'string'
+          && confirmButtonRaw.submitMethod.trim().length > 0
+        )
+          ? confirmButtonRaw.submitMethod.trim()
+          : 'POST',
+        submitHeaders: isPlainObjectLiteral(confirmButtonRaw.submitHeaders)
+          ? confirmButtonRaw.submitHeaders
+          : { 'Content-Type': 'application/json' },
+        submitPayload: isPlainObjectLiteral(confirmButtonRaw.submitPayload)
+          ? confirmButtonRaw.submitPayload
+          : {},
+      },
       animation: {
         hoverScale: Number.isFinite(Number(animationRaw.hoverScale))
           ? Math.max(0.01, Number(animationRaw.hoverScale))
@@ -14074,6 +14377,7 @@ function resolveSwipeSectionsRsvpConfig(
       enabled: debugRaw.enabled === true,
       showNameFieldRect: debugRaw.showNameFieldRect !== false,
       showButtonRects: debugRaw.showButtonRects !== false,
+      showConfirmButtonRect: debugRaw.showConfirmButtonRect !== false,
       strokeColor: (
         typeof debugRaw.strokeColor === 'string'
         && debugRaw.strokeColor.trim().length > 0

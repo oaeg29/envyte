@@ -247,7 +247,10 @@ video {
 }
 
 #rsvpYesButton,
-#rsvpNoButton {
+#rsvpNoButton,
+#rsvpConfirmButton {
+  -webkit-appearance: none;
+  appearance: none;
   position: absolute;
   transform: translate(-50%, -50%) scale(1);
   transform-origin: center center;
@@ -261,7 +264,8 @@ video {
 }
 
 #rsvpYesButton img,
-#rsvpNoButton img {
+#rsvpNoButton img,
+#rsvpConfirmButton img {
   width: 100%;
   height: 100%;
   display: block;
@@ -272,9 +276,13 @@ video {
 
 #rsvpYesButton:focus-visible,
 #rsvpNoButton:focus-visible,
-#rsvpNameInput:focus-visible {
+#rsvpConfirmButton:focus-visible {
   outline: 2px solid rgba(245, 248, 255, 0.92);
   outline-offset: 1px;
+}
+
+#rsvpNameInput:focus-visible {
+  outline: none;
 }
 
 #wash1Layer {
