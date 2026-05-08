@@ -45,6 +45,8 @@ const rsvpNoButtonImage = document.createElement('img');
 const rsvpNameDebugRect = document.createElement('div');
 const rsvpYesDebugRect = document.createElement('div');
 const rsvpNoDebugRect = document.createElement('div');
+const rsvpNameFitMeasureCanvas = document.createElement('canvas');
+const rsvpNameFitMeasureCtx = rsvpNameFitMeasureCanvas.getContext('2d');
 const wash1Layer = document.createElement('div');
 const wash2Layer = document.createElement('div');
 
@@ -4616,6 +4618,95 @@ function normalizeRsvpNameValue(value, maxLength = 120) {
   return asString.slice(0, limit);
 }
 
+function toRsvpNameTitleCase(value) {
+  if (typeof value !== 'string' || value.length <= 0) {
+    return '';
+  }
+  return value.replace(/\S+/g, (word) => {
+    const firstChar = word.charAt(0).toUpperCase();
+    const remainingChars = word.slice(1).toLowerCase();
+    return `${firstChar}${remainingChars}`;
+  });
+}
+
+function buildRsvpNameFontCss(fontSizePx, nameFieldConfig = {}) {
+  const style = (
+    typeof nameFieldConfig.fontStyle === 'string' && nameFieldConfig.fontStyle.trim().length > 0
+  )
+    ? nameFieldConfig.fontStyle.trim()
+    : 'normal';
+  const weight = (
+    typeof nameFieldConfig.fontWeight === 'string'
+    || Number.isFinite(Number(nameFieldConfig.fontWeight))
+  )
+    ? String(nameFieldConfig.fontWeight)
+    : 'normal';
+  const family = (
+    typeof nameFieldConfig.fontFamily === 'string' && nameFieldConfig.fontFamily.trim().length > 0
+  )
+    ? nameFieldConfig.fontFamily.trim()
+    : 'sans-serif';
+  const sizePx = Number.isFinite(Number(fontSizePx)) ? Math.max(0.1, Number(fontSizePx)) : 0.1;
+  return `${style} normal ${weight} ${sizePx}px ${family}`;
+}
+
+function measureRsvpNameTextWidthPx(text, fontSizePx, nameFieldConfig = {}) {
+  const safeText = typeof text === 'string' ? text : '';
+  if (safeText.length <= 0 || !rsvpNameFitMeasureCtx) {
+    return 0;
+  }
+  rsvpNameFitMeasureCtx.font = buildRsvpNameFontCss(fontSizePx, nameFieldConfig);
+  return Math.max(0, Number(rsvpNameFitMeasureCtx.measureText(safeText).width) || 0);
+}
+
+function resolveRsvpNameFittedFontSizePx(name, baseFontSizePx, inputWidthPx, nameFieldConfig = {}) {
+  const baseSize = Number.isFinite(Number(baseFontSizePx)) ? Math.max(0, Number(baseFontSizePx)) : 0;
+  if (!(baseSize > 0)) {
+    return 0;
+  }
+  if (nameFieldConfig.autoFitEnabled === false) {
+    return baseSize;
+  }
+  const availableWidth = Math.max(
+    0,
+    Number.isFinite(Number(inputWidthPx))
+      ? Number(inputWidthPx) - (2 * Math.max(0, Number(nameFieldConfig.autoFitHorizontalPaddingPx) || 0))
+      : 0,
+  );
+  if (!(availableWidth > 0)) {
+    return baseSize;
+  }
+  const safeName = typeof name === 'string' ? name : '';
+  if (safeName.length <= 0) {
+    return baseSize;
+  }
+  const minRatio = clamp(
+    Number.isFinite(Number(nameFieldConfig.autoFitMinFontSizeRatio))
+      ? Number(nameFieldConfig.autoFitMinFontSizeRatio)
+      : 0.62,
+    0.05,
+    1,
+  );
+  const minFontSizePx = Math.max(0.1, baseSize * minRatio);
+  const stepPx = Number.isFinite(Number(nameFieldConfig.autoFitStepPx))
+    ? Math.max(0.1, Number(nameFieldConfig.autoFitStepPx))
+    : 0.5;
+
+  let fontSizePx = baseSize;
+  let measuredWidthPx = measureRsvpNameTextWidthPx(safeName, fontSizePx, nameFieldConfig);
+  if (measuredWidthPx <= availableWidth) {
+    return fontSizePx;
+  }
+  while (fontSizePx > minFontSizePx + 1e-6) {
+    fontSizePx = Math.max(minFontSizePx, fontSizePx - stepPx);
+    measuredWidthPx = measureRsvpNameTextWidthPx(safeName, fontSizePx, nameFieldConfig);
+    if (measuredWidthPx <= availableWidth + 1e-6) {
+      return fontSizePx;
+    }
+  }
+  return minFontSizePx;
+}
+
 function setRsvpStatePatch(patch = {}, options = {}) {
   const runtime = getSwipeSectionsRsvpRuntimeState();
   if (!runtime) {
@@ -4629,7 +4720,8 @@ function setRsvpStatePatch(patch = {}, options = {}) {
   let changed = false;
 
   if (Object.prototype.hasOwnProperty.call(safePatch, 'name')) {
-    const nextName = normalizeRsvpNameValue(safePatch.name, maxLength);
+    const normalizedName = normalizeRsvpNameValue(safePatch.name, maxLength);
+    const nextName = toRsvpNameTitleCase(normalizedName);
     if (nextName !== runtime.name) {
       runtime.name = nextName;
       changed = true;
@@ -5192,9 +5284,8 @@ function syncRsvpLayer(nowMs = performance.now()) {
   rsvpNameInput.style.fontFamily = nameFieldConfig.fontFamily || '';
   rsvpNameInput.style.fontWeight = String(nameFieldConfig.fontWeight || 'normal');
   rsvpNameInput.style.fontStyle = nameFieldConfig.fontStyle || 'normal';
-  rsvpNameInput.style.fontSize = `${nameFontSize}px`;
   rsvpNameInput.style.color = nameFieldConfig.textColor || '#101010';
-  rsvpNameInput.style.textAlign = sanitizeRsvpTextAlign(nameFieldConfig.textAlign, 'left');
+  rsvpNameInput.style.textAlign = sanitizeRsvpTextAlign(nameFieldConfig.textAlign, 'center');
   rsvpNameInput.style.lineHeight = nameHeight > 0 ? `${nameHeight}px` : '';
   rsvpNameInput.maxLength = Number.isFinite(Number(nameFieldConfig.maxLength))
     ? Math.max(1, Math.floor(Number(nameFieldConfig.maxLength)))
@@ -5202,6 +5293,13 @@ function syncRsvpLayer(nowMs = performance.now()) {
   if (rsvpNameInput.value !== runtime.name) {
     rsvpNameInput.value = runtime.name;
   }
+  const fittedNameFontSize = resolveRsvpNameFittedFontSizePx(
+    runtime.name,
+    nameFontSize,
+    nameWidth,
+    nameFieldConfig,
+  );
+  rsvpNameInput.style.fontSize = `${fittedNameFontSize}px`;
 
   const yesConfig = buttonsConfig.yes || {};
   const noConfig = buttonsConfig.no || {};
@@ -5274,7 +5372,7 @@ function onRsvpNameInputEvent() {
   const swipeConfig = resolveSwipeSectionsConfig();
   const rsvpConfig = swipeConfig && swipeConfig.rsvp ? swipeConfig.rsvp : null;
   const maxLength = rsvpConfig && rsvpConfig.nameField ? rsvpConfig.nameField.maxLength : 120;
-  const nextName = normalizeRsvpNameValue(rsvpNameInput.value || '', maxLength);
+  const nextName = toRsvpNameTitleCase(normalizeRsvpNameValue(rsvpNameInput.value || '', maxLength));
   if (nextName !== rsvpNameInput.value) {
     rsvpNameInput.value = nextName;
   }
@@ -13698,10 +13796,24 @@ function resolveSwipeSectionsRsvpConfig(
       )
         ? nameFieldRaw.textColor.trim()
         : '#101010',
-      textAlign: sanitizeRsvpTextAlign(nameFieldRaw.textAlign, 'left'),
+      textAlign: sanitizeRsvpTextAlign(nameFieldRaw.textAlign, 'center'),
       maxLength: Number.isFinite(Number(nameFieldRaw.maxLength))
         ? clamp(Math.floor(Number(nameFieldRaw.maxLength)), 1, 512)
         : 120,
+      autoFitEnabled: nameFieldRaw.autoFitEnabled !== false,
+      autoFitMinFontSizeRatio: clamp(
+        Number.isFinite(Number(nameFieldRaw.autoFitMinFontSizeRatio))
+          ? Number(nameFieldRaw.autoFitMinFontSizeRatio)
+          : 0.62,
+        0.05,
+        1,
+      ),
+      autoFitStepPx: Number.isFinite(Number(nameFieldRaw.autoFitStepPx))
+        ? Math.max(0.1, Number(nameFieldRaw.autoFitStepPx))
+        : 0.5,
+      autoFitHorizontalPaddingPx: Number.isFinite(Number(nameFieldRaw.autoFitHorizontalPaddingPx))
+        ? Math.max(0, Number(nameFieldRaw.autoFitHorizontalPaddingPx))
+        : 4,
     },
     buttons: {
       spritePath: (
@@ -17460,6 +17572,9 @@ function tryHandleFrameJumpHotkey(event) {
 }
 
 function onKeydown(event) {
+  if (isEditableEventTarget(event && event.target)) {
+    return;
+  }
   if (tryHandleFrameJumpHotkey(event)) {
     return;
   }
