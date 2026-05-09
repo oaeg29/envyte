@@ -3527,9 +3527,10 @@ function resolveMasterSoundConfig(configCandidate = CONFIG.mastersound) {
   const rawTriggerFrames = Array.isArray(safeConfig.triggerFrames) ? safeConfig.triggerFrames : [];
   const rawDelaysMs = Array.isArray(safeConfig.delaysMs) ? safeConfig.delaysMs : [];
   const rawVolumes = Array.isArray(safeConfig.volumes) ? safeConfig.volumes : [];
+  const rawSpeeds = Array.isArray(safeConfig.speeds) ? safeConfig.speeds : [];
   const rawEnabledFlags = Array.isArray(safeConfig.enabledFlags) ? safeConfig.enabledFlags : [];
 
-  const maxLength = Math.max(rawFilePaths.length, rawTriggerFrames.length, rawDelaysMs.length, rawVolumes.length, rawEnabledFlags.length);
+  const maxLength = Math.max(rawFilePaths.length, rawTriggerFrames.length, rawDelaysMs.length, rawVolumes.length, rawSpeeds.length, rawEnabledFlags.length);
   const sounds = [];
 
   for (let i = 0; i < maxLength; i += 1) {
@@ -3550,6 +3551,11 @@ function resolveMasterSoundConfig(configCandidate = CONFIG.mastersound) {
       0,
       1,
     );
+    const speed = clamp(
+      Number.isFinite(Number(rawSpeeds[i])) ? Number(rawSpeeds[i]) : 1.0,
+      0.1,
+      4.0,
+    );
     const enabledFlag = rawEnabledFlags[i] === 1;
 
     if (filePath.length > 0 && triggerFrame !== null) {
@@ -3558,6 +3564,7 @@ function resolveMasterSoundConfig(configCandidate = CONFIG.mastersound) {
         triggerFrame,
         delayMs,
         volume,
+        speed,
         enabled: enabledFlag,
       });
     }
@@ -3591,11 +3598,12 @@ function resolveMasterSoundConfig(configCandidate = CONFIG.mastersound) {
   };
 }
 
-function playSoundWithDelay(filePath, delayMs, volume = 1.0) {
+function playSoundWithDelay(filePath, delayMs, volume = 1.0, speed = 1.0) {
   const playAudio = () => {
     try {
       const audio = new Audio(filePath);
       audio.volume = Math.max(0, Math.min(1, volume));
+      audio.playbackRate = Math.max(0.1, Math.min(4.0, speed));
       audio.play().catch((err) => {
         console.warn(`Failed to play sound: ${filePath}`, err.message);
       });
@@ -3638,10 +3646,11 @@ function checkAndTriggerMasterSounds(currentFrame) {
       continue;
     }
 
-    // Check if current frame matches trigger frame
-    if (currentFrame === sound.triggerFrame) {
+    // Check if current frame matches trigger frame (with tolerance for floating-point)
+    const frameDiff = Math.abs(currentFrame - sound.triggerFrame);
+    if (frameDiff < 0.5) { // Within half a frame
       masterSoundState.triggeredFrames.add(sound.triggerFrame);
-      playSoundWithDelay(sound.filePath, sound.delayMs, sound.volume);
+      playSoundWithDelay(sound.filePath, sound.delayMs, sound.volume, sound.speed);
     }
   }
 }

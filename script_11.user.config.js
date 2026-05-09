@@ -135,7 +135,7 @@
     pathGenerationMode: 'inherit', // inherit | random | manualTemplate
     templateIndexPool: [2], // e.g. [1, 4, 7] => randomly pick one for each offshoot
     centerBlockEnabled: true, // clip offshoot branches when they enter the center block area
-     centerBlockHalfWidthPxVideoHeightRatio: 0.17, // X half-width as ratio of sampled video height
+     centerBlockHalfWidthPxVideoHeightRatio: 0.16, // X half-width as ratio of sampled video height
     centerBlockHalfHeightAbovePxVideoHeightRatio: 0.8, // Y extent above center as ratio of sampled video height
     centerBlockHalfHeightBelowPxVideoHeightRatio: 0.8,  // Y extent below center as ratio of sampled video height
   },
@@ -228,9 +228,13 @@
       // './sound1.mp3',
       // './sound2.mp3',
       // './sound3.mp3',
-      './woosh_fire.wav',
+      './woosh_2.mp3',
       './pop.mp3',
-      './pop_jingle.mp3',
+      './twinkle_2.mp3',
+      './twinkle_3.mp3',
+      './shine.mp3',
+      './paper_flip.m4a',
+
       
 
     ],
@@ -239,14 +243,20 @@
       // 200,
       // 300,
       126,
-      222,
-      226,
+      222-5,
+      219-3,
+      219-3,
+      188-5,
+      243,
     ],
     delaysMs: [
       // 0,
       // 100,
       // 50,
+      500,
       0,
+      200,
+      100,
       0,
       0,
     ],
@@ -254,10 +264,24 @@
       // 1.0, // volume level (0.0 to 1.0)
       // 0.8,
       // 0.5,
-      0.5,
-      1,
-      1,
+      0.05,
+      0.02,
+      0.02,
+      0.13,
+      0.01,
+      0.2,
 
+    ],
+    speeds: [
+      // 1.0, // playback speed (1.0 = normal, 0.5 = half speed, 2.0 = double speed)
+      // 1.2,
+      // 0.8,
+      1.0,
+      1.0,
+      0.2,
+      0.2,
+      1.3,
+      1,
     ],
     enabledFlags: [
       // 1, // 1 = enabled, 0 = disabled
@@ -266,11 +290,16 @@
       1,
       1,
       1,
+      1,
+      1,
+      1,
     ],
     backgroundMusic: {
       enabled: false, // set to true to enable background music
-      filePath: './background_music.mp3', // path to background music file relative to script location
-      volume: 0.5, // volume level (0.0 to 1.0)
+      // filePath: './moon_song.wav', // path to background music file relative to script location
+      filePath: './viramiller_dream.mp3', // path to background music file relative to script location
+
+      volume: 0.4, // volume level (0.0 to 1.0)
     },
   },
 
@@ -302,10 +331,10 @@
       sound: {
         enabled: true, // set to true to enable sound effect
         // filePath: './open_win.wav', // path to sound file relative to script location
-        filePath: './open.mp3', // path to sound file relative to script location
+        filePath: './click_2.wav', // path to sound file relative to script location
 
         delayMs: 0, // delay in milliseconds before playing sound
-        volume: 1.0, // volume level (0.0 to 1.0)
+        volume: 0.01, // volume level (0.0 to 1.0)
       },
     },
     wiggleButton: {
@@ -538,7 +567,7 @@
   centerOverlayImage: {
     enabled: true,
     spritePath: './test_page2.png', // fallback/default page path; section pageIndex controls active page when swipeSections is enabled
-    scale: 0.4, // interpreted by scaleMode
+    scale: 0.38, // interpreted by scaleMode
     scaleMode: 'videoSizeRatio', // multiplier | videoSizeRatio
     offsetXPx: 0,
     offsetYPx: -0.0520833333, // interpreted by offsetYMode
@@ -769,8 +798,8 @@
     enabled: true,
     animationOnly: false,
     centerHalfWidthPxFromVideoEnabled: true,
-    centerHalfWidthPxVideoHeightRatio: 0.187760416667, // 16.2760416667% of rendered hero video height
-    centerHalfWidthPxVideoHeightRatioBottom: 0.21, // second width ratio used below the switch Y
+    centerHalfWidthPxVideoHeightRatio: 0.179, // 16.2760416667% of rendered hero video height
+    centerHalfWidthPxVideoHeightRatioBottom: 0.2, // second width ratio used below the switch Y
     centerHalfWidthSwitchYVideoHeightRatio: 0.78, // switch Y as % of initially sampled video height (0..1 or 0..100)
     centerHalfWidthPx: 50, // fallback when video size is unavailable
     skipHiddenBackDrawEnabled: true,
