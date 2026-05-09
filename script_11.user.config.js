@@ -823,7 +823,7 @@
     centerHalfWidthSwitchYVideoHeightRatio: 0.78, // switch Y as % of initially sampled video height (0..1 or 0..100)
     centerHalfWidthPx: 50, // fallback when video size is unavailable
     skipHiddenBackDrawEnabled: true,
-    spriteHiddenCullInnerPaddingPx: 10,
+    spriteHiddenCullInnerPaddingPx: 15,
     spriteHiddenCullRadiusScale: 0.2, // 0.05..1 scales the hidden-cull test circle radius
     debugHiddenSpriteCullCirclesEnabled: false,
     debugHiddenSpriteCullCirclesMode: 'culled', // culled | all
