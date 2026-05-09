@@ -683,10 +683,10 @@
     scrollHint: {
       enabled: true,
       spritePath: './scroll_4_more.png',
-      maxWidthPx: 48,
+      widthVideoHeightRatio: 0.07,
       scale: 2,
       offsetXVideoHeightRatio: 0,
-      offsetYVideoHeightRatio: 0.08,
+      offsetYVideoHeightRatio: 0.07,
       bottomMarginPx: 10,
       jumpDelayMs: 3000,
       jumpDistancePx: 10,

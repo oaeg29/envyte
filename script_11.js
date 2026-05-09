@@ -15518,7 +15518,9 @@ function syncSwipeSectionsScrollHintLayer(nowMs = performance.now()) {
     }
   }
 
-  const widthPx = Math.max(0, Number(scrollHintConfig.maxWidthPx));
+  const widthPx = Number.isFinite(scrollHintConfig.widthVideoHeightRatio) && scrollHintConfig.widthVideoHeightRatio > 0
+    ? videoHeight * scrollHintConfig.widthVideoHeightRatio
+    : Math.max(0, Number(scrollHintConfig.maxWidthPx) || 48);
   const scale = scrollHintConfig.scale;
   const scaledWidthPx = widthPx * scale;
   const naturalHeightPx = preloadEntry.image.naturalHeight || 0;
