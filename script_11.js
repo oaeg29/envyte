@@ -3628,8 +3628,13 @@ function checkAndTriggerMasterSounds(currentFrame) {
 
   const masterSoundState = STATE.masterSound;
 
+  // Save previous frame before updating so crossover detection works correctly
+  const previousFrame = typeof masterSoundState.lastFrame === 'number'
+    ? masterSoundState.lastFrame
+    : currentFrame;
+
   // Detect video loop by checking if current frame is less than previous frame
-  if (typeof masterSoundState.lastFrame === 'number' && currentFrame < masterSoundState.lastFrame) {
+  if (currentFrame < previousFrame) {
     resetMasterSoundTriggeredFrames();
   }
   masterSoundState.lastFrame = currentFrame;
@@ -3647,9 +3652,8 @@ function checkAndTriggerMasterSounds(currentFrame) {
       continue;
     }
 
-    // Check if current frame matches trigger frame (with tolerance for floating-point)
-    const frameDiff = Math.abs(currentFrame - sound.triggerFrame);
-    if (frameDiff < 0.5) { // Within half a frame
+    // Fire as soon as we cross or land on the trigger frame (works even when frames are dropped)
+    if (currentFrame >= sound.triggerFrame && previousFrame < sound.triggerFrame) {
       masterSoundState.triggeredFrames.add(sound.triggerFrame);
       playSoundWithDelay(sound.filePath, sound.delayMs, sound.volume, sound.speed);
     }

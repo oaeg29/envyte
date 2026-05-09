@@ -208,7 +208,7 @@
     useIncrementalStemCache: true, // commit only new tip growth each frame; free blit replays the rest
     growthFpsCap: 30, // max render fps during growth animation (0 = uncapped); matches native RAF cadence above this
     earlyCommitEnabled: true, // commit partially-grown branches once they cross earlyCommitThreshold
-    earlyCommitThreshold: 0.85, // fraction of totalLength (0..1) at which a growing branch is committed early
+    earlyCommitThreshold: 0.5, // fraction of totalLength (0..1) at which a growing branch is committed early
     overlayPromotionGrowthOnMode: 'growthON', // growthON only: matchGrowthOff | firstExitCutover
   },
 
