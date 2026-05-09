@@ -5842,7 +5842,6 @@ function syncSection2ButtonLayer(nowMs = performance.now()) {
   
   section2Button.textContent = hasPng ? '' : buttonLabel;
   section2Button.setAttribute('aria-label', buttonLabel);
-  section2Button.style.position = 'fixed';
   section2Button.style.left = `${buttonCenterX}px`;
   section2Button.style.top = `${buttonCenterY}px`;
   section2Button.style.width = `${buttonWidth}px`;
@@ -15336,6 +15335,9 @@ function resolveSwipeSectionsScrollHintConfig(configCandidate = {}) {
         ? safeConfig.spritePath.trim()
         : './scroll_4_more.png',
     ),
+    widthVideoHeightRatio: Number.isFinite(Number(safeConfig.widthVideoHeightRatio)) && Number(safeConfig.widthVideoHeightRatio) > 0
+      ? Number(safeConfig.widthVideoHeightRatio)
+      : 0,
     maxWidthPx: Number.isFinite(Number(safeConfig.maxWidthPx))
       ? Math.max(0, Number(safeConfig.maxWidthPx))
       : 48,

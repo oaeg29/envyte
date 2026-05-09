@@ -1,7 +1,7 @@
 /* Make the canvas fill the entire viewport and sit under content */
 :root {
-  --viewport-relative166-extra-height: 20vh;
-  --page-vertical-shift: -10vh;
+  --viewport-relative166-extra-height: 22vh;
+  --page-vertical-shift: -8.7vh;
   --app-viewport-height: calc(100vh + var(--viewport-relative166-extra-height));
   --app-viewport-width: 100vw;
   --app-viewport-offset-left: 0px;
@@ -364,6 +364,7 @@ body.ios26-fixed-workaround video,
 body.ios26-fixed-workaround #centerOverlayImage,
 body.ios26-fixed-workaround #centerOverlayImageAlt,
 body.ios26-fixed-workaround #rsvpLayer,
+body.ios26-fixed-workaround #section2ButtonLayer,
 body.ios26-fixed-workaround #loadingScreen {
   position: absolute;
 }
@@ -407,6 +408,7 @@ body[data-viewport-layout-mode="relativeAdjustable"] video,
 body[data-viewport-layout-mode="relativeAdjustable"] #centerOverlayImage,
 body[data-viewport-layout-mode="relativeAdjustable"] #centerOverlayImageAlt,
 body[data-viewport-layout-mode="relativeAdjustable"] #rsvpLayer,
+body[data-viewport-layout-mode="relativeAdjustable"] #section2ButtonLayer,
 body[data-viewport-layout-mode="relativeAdjustable"] #loadingScreen,
 body[data-viewport-layout-mode="relative166"] #myCanvas,
 body[data-viewport-layout-mode="relative166"] #myCanvasFront,
@@ -418,6 +420,7 @@ body[data-viewport-layout-mode="relative166"] video,
 body[data-viewport-layout-mode="relative166"] #centerOverlayImage,
 body[data-viewport-layout-mode="relative166"] #centerOverlayImageAlt,
 body[data-viewport-layout-mode="relative166"] #rsvpLayer,
+body[data-viewport-layout-mode="relative166"] #section2ButtonLayer,
 body[data-viewport-layout-mode="relative166"] #loadingScreen {
   position: absolute;
 }
@@ -630,16 +633,16 @@ body[data-viewport-layout-mode="relative166"] #loadingScreen {
 
 #section2ButtonLayer {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+  top: var(--app-viewport-offset-top);
+  left: var(--app-viewport-offset-left);
+  width: var(--app-viewport-width);
+  height: var(--app-viewport-height);
   pointer-events: none;
   z-index: 900;
 }
 
 #section2Button {
-  position: fixed;
+  position: absolute;
   display: inline-block;
   padding: 8px 16px;
   border: 1px solid rgba(0, 0, 0, 0.1);
