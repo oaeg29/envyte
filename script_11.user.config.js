@@ -299,7 +299,7 @@
       1,
     ],
     backgroundMusic: {
-      enabled: false, // set to true to enable background music
+      enabled: true, // set to true to enable background music
       // filePath: './moon_song.wav', // path to background music file relative to script location
       filePath: './viramiller_dream.mp3', // path to background music file relative to script location
 
@@ -686,7 +686,7 @@
       widthVideoHeightRatio: 0.07,
       scale: 2,
       offsetXVideoHeightRatio: 0,
-      offsetYVideoHeightRatio: 0.07,
+      offsetYVideoHeightRatio: 0.15,
       bottomMarginPx: 10,
       jumpDelayMs: 3000,
       jumpDistancePx: 10,

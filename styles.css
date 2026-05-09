@@ -1,7 +1,7 @@
 /* Make the canvas fill the entire viewport and sit under content */
 :root {
-  --viewport-relative166-extra-height: 55px;
-  --page-vertical-shift: -27.5vh;
+  --viewport-relative166-extra-height: 20vh;
+  --page-vertical-shift: -10vh;
   --app-viewport-height: calc(100vh + var(--viewport-relative166-extra-height));
   --app-viewport-width: 100vw;
   --app-viewport-offset-left: 0px;
