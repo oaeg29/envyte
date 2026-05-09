@@ -342,6 +342,39 @@
     return true;
   }
 
+  // Viewport sprite culling utilities (per-petal culling outside viewport)
+  function resolveFlowerSpriteViewportCullBounds(ctxOrCanvas, paddingPx = 0) {
+    const canvas = ctxOrCanvas && ctxOrCanvas.canvas ? ctxOrCanvas.canvas : ctxOrCanvas;
+    if (!canvas) {
+      return null;
+    }
+    // Use CSS viewport dimensions (clientWidth/Height), not buffer dimensions (width/height)
+    const cssWidth = Number.isFinite(canvas.clientWidth) ? canvas.clientWidth : canvas.width;
+    const cssHeight = Number.isFinite(canvas.clientHeight) ? canvas.clientHeight : canvas.height;
+    if (!Number.isFinite(cssWidth) || !Number.isFinite(cssHeight)) {
+      return null;
+    }
+    const width = Math.max(0, cssWidth);
+    const height = Math.max(0, cssHeight);
+    const safePadding = Number.isFinite(paddingPx) ? paddingPx : 0;
+    return {
+      minX: -safePadding,
+      minY: -safePadding,
+      maxX: width + safePadding,
+      maxY: height + safePadding,
+    };
+  }
+
+  function isSpriteCircleOutsideViewport(centerX, centerY, radius, bounds) {
+    if (!bounds) return false;
+    return (
+      (centerX + radius) < bounds.minX ||
+      (centerY + radius) < bounds.minY ||
+      (centerX - radius) > bounds.maxX ||
+      (centerY - radius) > bounds.maxY
+    );
+  }
+
   function resolveColorToRgbaObject(colorValue, fallback) {
     const fallbackColor = fallback && typeof fallback === 'object'
       ? fallback
@@ -522,7 +555,10 @@
   }
 
   function sanitizeSwayMode(mode) {
-    return mode === 'influence' ? 'influence' : 'always';
+    if (mode === 'influence' || mode === 'wind') {
+      return mode;
+    }
+    return 'always';
   }
 
   function sanitizeFlowerRendererMode(mode) {
@@ -1628,6 +1664,12 @@
     )
       ? drawContext
       : null;
+    const viewportCullContext = (
+      drawContext
+      && drawContext.viewportCullEnabled === true
+    )
+      ? drawContext
+      : null;
     const hiddenRadiusScale = hiddenSpriteCullContext
       ? sanitizeHiddenSpriteCullRadiusScale(hiddenSpriteCullContext.hiddenRadiusScale, 1)
       : 1;
@@ -1687,6 +1729,26 @@
             if (runtimeState && Number.isFinite(runtimeState.hiddenSpriteCulledCount)) {
               runtimeState.hiddenSpriteCulledCount += 1;
             }
+            continue;
+          }
+        }
+        if (viewportCullContext) {
+          resolveSpriteCircleCenterFromDrawTransformInto(
+            x,
+            y,
+            openAngle,
+            drawX,
+            drawY,
+            drawSize,
+            drawSize,
+            centerScratch,
+          );
+          if (isSpriteCircleOutsideViewport(
+            centerScratch.x,
+            centerScratch.y,
+            spriteRadius,
+            viewportCullContext.viewportBounds,
+          )) {
             continue;
           }
         }
@@ -1846,6 +1908,26 @@
           continue;
         }
       }
+      if (viewportCullContext) {
+        resolveSpriteCircleCenterFromDrawTransformInto(
+          anchorX,
+          anchorY,
+          angle,
+          drawX,
+          drawY,
+          drawSize,
+          drawSize,
+          centerScratch,
+        );
+        if (isSpriteCircleOutsideViewport(
+          centerScratch.x,
+          centerScratch.y,
+          spriteRadius,
+          viewportCullContext.viewportBounds,
+        )) {
+          continue;
+        }
+      }
       ctx.save();
       ctx.translate(anchorX, anchorY);
       ctx.rotate(angle);
@@ -1958,6 +2040,12 @@
     )
       ? drawContext
       : null;
+    const viewportCullContext = (
+      drawContext
+      && drawContext.viewportCullEnabled === true
+    )
+      ? drawContext
+      : null;
     const hiddenRadiusScale = hiddenSpriteCullContext
       ? sanitizeHiddenSpriteCullRadiusScale(hiddenSpriteCullContext.hiddenRadiusScale, 1)
       : 1;
@@ -2050,6 +2138,16 @@
           if (runtimeState && Number.isFinite(runtimeState.hiddenSpriteCulledCount)) {
             runtimeState.hiddenSpriteCulledCount += 1;
           }
+          continue;
+        }
+      }
+      if (viewportCullContext) {
+        if (isSpriteCircleOutsideViewport(
+          x,
+          y,
+          spriteRadius,
+          viewportCullContext.viewportBounds,
+        )) {
           continue;
         }
       }
@@ -2201,6 +2299,7 @@
       mouseLastSampleX: OFFSCREEN_POINTER,
       mouseLastSampleY: OFFSCREEN_POINTER,
       mouseLastSampleMs: 0,
+      windPositions: null,
       backLayerHiddenSpriteCullContext: {
         enabled: false,
         hiddenBand: null,
@@ -3736,6 +3835,14 @@
       state.mouseLastSampleMs = 0;
     }
 
+    function setWindPositions(positions) {
+      if (!Array.isArray(positions) || positions.length === 0) {
+        state.windPositions = null;
+      } else {
+        state.windPositions = positions;
+      }
+    }
+
     function setPetalOpenAmount(nextAmount) {
       const numeric = Number(nextAmount);
       if (!Number.isFinite(numeric)) {
@@ -4288,9 +4395,15 @@
         1,
         8,
       );
-      const pointerPresent = Number.isFinite(state.mouseX) && Number.isFinite(state.mouseY)
-        && state.mouseX !== OFFSCREEN_POINTER && state.mouseY !== OFFSCREEN_POINTER;
-      const dynamicCapEnabled = commonConfig.swayMode === 'influence'
+      const swayMode = commonConfig.swayMode;
+      const windPositions = (swayMode === 'wind' && Array.isArray(state.windPositions) && state.windPositions.length > 0)
+        ? state.windPositions
+        : null;
+      const pointerPresent = windPositions
+        ? true
+        : (Number.isFinite(state.mouseX) && Number.isFinite(state.mouseY)
+          && state.mouseX !== OFFSCREEN_POINTER && state.mouseY !== OFFSCREEN_POINTER);
+      const dynamicCapEnabled = (swayMode === 'influence' || swayMode === 'wind')
         && commonConfig.influenceDynamicCapEnabled === true
         && commonConfig.influenceDynamicCap > 0;
       const dynamicCap = dynamicCapEnabled ? commonConfig.influenceDynamicCap : 0;
@@ -4302,12 +4415,33 @@
         const flower = state.flowers[i];
         flower.interactionRadius = swayInteractionRadius;
 
-        const dx = state.mouseX - flower.x;
-        const dy = state.mouseY - flower.y;
+        let influenceX = state.mouseX;
+        let influenceY = state.mouseY;
+        if (windPositions) {
+          if (windPositions.length === 1) {
+            influenceX = windPositions[0].x;
+            influenceY = windPositions[0].y;
+          } else {
+            let bestDist = Infinity;
+            for (let w = 0; w < windPositions.length; w += 1) {
+              const wp = windPositions[w];
+              const wdx = wp.x - flower.x;
+              const wdy = wp.y - flower.y;
+              const wd = wdx * wdx + wdy * wdy;
+              if (wd < bestDist) {
+                bestDist = wd;
+                influenceX = wp.x;
+                influenceY = wp.y;
+              }
+            }
+          }
+        }
+
+        const dx = influenceX - flower.x;
+        const dy = influenceY - flower.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
         const isInsideRange = distance <= flower.interactionRadius;
 
-        const swayMode = commonConfig.swayMode;
         if (swayMode === 'always') {
           flower.targetInfluence = 1;
         } else if (isInsideRange) {
@@ -4317,7 +4451,7 @@
         }
 
         if (
-          swayMode === 'influence'
+          (swayMode === 'influence' || swayMode === 'wind')
           && isInsideRange
           && !flower.wasInsideRange
           && flower.hoverInfluence <= commonConfig.swayEpsilon
@@ -4919,6 +5053,7 @@
       layerMetrics,
       app,
       hiddenSpriteCullContext = null,
+      viewportCullContext = null,
     ) {
       if (!flower) {
         return false;
@@ -5029,6 +5164,16 @@
               if (runtimeState && Number.isFinite(runtimeState.hiddenSpriteCulledCount)) {
                 runtimeState.hiddenSpriteCulledCount += 1;
               }
+              continue;
+            }
+          }
+          if (viewportCullContext) {
+            if (isSpriteCircleOutsideViewport(
+              x,
+              y,
+              spriteRadius,
+              viewportCullContext.viewportBounds,
+            )) {
               continue;
             }
           }
@@ -5269,6 +5414,26 @@
             continue;
           }
         }
+        if (viewportCullContext) {
+          resolveSpriteCircleCenterFromDrawTransformInto(
+            anchorWorldX,
+            anchorWorldY,
+            angle,
+            drawX,
+            drawY,
+            drawSize,
+            drawSize,
+            centerScratch,
+          );
+          if (isSpriteCircleOutsideViewport(
+            centerScratch.x,
+            centerScratch.y,
+            spriteRadius,
+            viewportCullContext.viewportBounds,
+          )) {
+            continue;
+          }
+        }
 
         const sprite = acquirePixiSprite(layerName, texture, app);
         if (!sprite) {
@@ -5367,6 +5532,18 @@
           pixiDebugStrokeCulled: { color: 0xff5050, alpha: 0.65 },
         }
         : null;
+
+      const viewportCullEnabled = safeDrawOptions && safeDrawOptions.viewportCullEnabled === true;
+      const viewportCullPaddingPx = safeDrawOptions && Number.isFinite(safeDrawOptions.viewportCullPaddingPx)
+        ? safeDrawOptions.viewportCullPaddingPx
+        : 0;
+      const viewportCullContext = viewportCullEnabled
+        ? {
+          viewportCullEnabled: true,
+          viewportBounds: resolveFlowerSpriteViewportCullBounds(layerCanvas, viewportCullPaddingPx),
+        }
+        : null;
+
       if (hiddenSpriteCullContext && hiddenSpriteCullDebugConfig.enabled) {
         const debugGraphics = ensurePixiHiddenCullDebugGraphics(layerName, app);
         if (debugGraphics && typeof debugGraphics.clear === 'function') {
@@ -5451,6 +5628,7 @@
               layerMetrics,
               app,
               hiddenSpriteCullContext,
+              viewportCullContext,
             )
           ) {
             drawnCount += 1;
@@ -5581,6 +5759,24 @@
         }
         : null;
 
+      const viewportCullEnabled = safeDrawOptions && safeDrawOptions.viewportCullEnabled === true;
+      const viewportCullPaddingPx = safeDrawOptions && Number.isFinite(safeDrawOptions.viewportCullPaddingPx)
+        ? safeDrawOptions.viewportCullPaddingPx
+        : 0;
+      const viewportCullDrawContext = viewportCullEnabled
+        ? {
+          viewportCullEnabled: true,
+          viewportBounds: resolveFlowerSpriteViewportCullBounds(ctx, viewportCullPaddingPx),
+        }
+        : null;
+
+      const drawContext = hiddenSpriteCullDrawContext || viewportCullDrawContext
+        ? {
+          ...hiddenSpriteCullDrawContext,
+          ...viewportCullDrawContext,
+        }
+        : null;
+
       const runtimeState = {
         getImage,
         getPetalOpenAmount,
@@ -5702,7 +5898,7 @@
             flowersConfig,
             commonConfig,
             runtimeState,
-            hiddenSpriteCullDrawContext,
+            drawContext,
           );
           drawnCount += 1;
         }
@@ -5805,6 +6001,7 @@
       setEndpoints,
       setMousePosition,
       clearMousePosition,
+      setWindPositions,
       setPetalOpenAmount,
       togglePetalOpenState,
       animateTogglePetalOpenState,

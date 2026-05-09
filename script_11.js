@@ -2499,6 +2499,10 @@ const STATE = {
   pointerLastSampleY: Number.NEGATIVE_INFINITY,
   pointerLastSampleMs: 0,
 
+  windInfluencers: [],
+  windInfluencerPositions: [],
+  windLastTickMs: 0,
+
   noiseInstance: null,
   stemImage: null,
   stemImageFlippedX: null,
@@ -3078,7 +3082,7 @@ function sanitizeLeafGrowthEaseMode(value) {
 }
 
 function sanitizeSwayMode(value) {
-  if (value === 'always' || value === 'influence') {
+  if (value === 'always' || value === 'influence' || value === 'wind') {
     return value;
   }
   return 'always';
@@ -3101,6 +3105,21 @@ function resolveGlobalMaxSwayFps() {
 function isLeafViewportCullingEnabled() {
   const motionConfig = isPlainObjectLiteral(CONFIG.motion) ? CONFIG.motion : {};
   return motionConfig.leafViewportCullingEnabled !== false;
+}
+
+function resolveLeafViewportCullBounds(paddingPx = 0) {
+  const width = Math.max(0, STATE.viewportWidth || 0);
+  const height = Math.max(0, STATE.viewportHeight || 0);
+  if (width <= 0 || height <= 0) {
+    return null;
+  }
+  const safePadding = Number.isFinite(paddingPx) ? paddingPx : 0;
+  return {
+    minX: -safePadding,
+    minY: -safePadding,
+    maxX: width + safePadding,
+    maxY: height + safePadding,
+  };
 }
 
 function isFlowerViewportCullingEnabled() {
@@ -4609,7 +4628,7 @@ function syncCenterOverlayImageLayer(nowMs = performance.now(), currentFrame = n
     STATE.centerOverlayImageLayerLastShouldBeVisible = [false, false];
   }
 
-  const hideLayerAtIndex = (layerIndex) => {
+  const hideLayerAtIndex = (layerIndex, options = {}) => {
     const layer = centerOverlayImageLayers[layerIndex];
     if (!layer) {
       return;
@@ -4617,7 +4636,9 @@ function syncCenterOverlayImageLayer(nowMs = performance.now(), currentFrame = n
     layer.style.display = 'none';
     layer.style.opacity = '0';
     layer.style.visibility = 'hidden';
-    STATE.centerOverlayImageLayerVisibleSinceMs[layerIndex] = 0;
+    if (options.preserveVisibleSince !== true) {
+      STATE.centerOverlayImageLayerVisibleSinceMs[layerIndex] = 0;
+    }
     STATE.centerOverlayImageLayerLastShouldBeVisible[layerIndex] = false;
   };
 
@@ -4668,7 +4689,7 @@ function syncCenterOverlayImageLayer(nowMs = performance.now(), currentFrame = n
     const preloadEntry = getCenterOverlayImagePreloadEntry(spritePath);
     if (!preloadEntry || preloadEntry.status !== 'loaded' || !preloadEntry.image) {
       ensureCenterOverlayImagePreload(spritePath).catch(() => {});
-      hideLayerAtIndex(layerIndex);
+      hideLayerAtIndex(layerIndex, { preserveVisibleSince: true });
       return false;
     }
     if (layer.dataset.centerOverlayPath !== spritePath || layer.src !== preloadEntry.image.src) {
@@ -8514,6 +8535,145 @@ function getTemplateNoiseOffset(
 }
 
 // =========================
+// Wind System Functions
+// =========================
+
+function areFlowersFullyOpen() {
+  const flowerGrowth = STATE.flowerGrowth;
+  return Boolean(
+    flowerGrowth 
+    && flowerGrowth.openStateLatched === true
+    && flowerGrowth.openSweepCompleted === true
+  );
+}
+
+function resolveWindConfig() {
+  const motionConfig = isPlainObjectLiteral(CONFIG.motion) ? CONFIG.motion : {};
+  const raw = isPlainObjectLiteral(motionConfig.wind) ? motionConfig.wind : {};
+  const influencersRaw = Array.isArray(raw.influencers) ? raw.influencers : [{}];
+  const influencers = influencersRaw.map((inf) => {
+    const safe = isPlainObjectLiteral(inf) ? inf : {};
+    return {
+      phaseShiftX: Number.isFinite(Number(safe.phaseShiftX)) ? Number(safe.phaseShiftX) : 0,
+      phaseShiftY: Number.isFinite(Number(safe.phaseShiftY)) ? Number(safe.phaseShiftY) : 0,
+    };
+  });
+  const debugRaw = isPlainObjectLiteral(raw.debug) ? raw.debug : {};
+  return {
+    enabled: raw.enabled !== false,
+    sweepSpeedPxPerSec: Number.isFinite(Number(raw.sweepSpeedPxPerSec)) ? Math.max(1, Number(raw.sweepSpeedPxPerSec)) : 120,
+    yAmplitudeRatio: Number.isFinite(Number(raw.yAmplitudeRatio)) ? clamp(Number(raw.yAmplitudeRatio), 0, 1) : 0.35,
+    yFrequencyHz: Number.isFinite(Number(raw.yFrequencyHz)) ? Math.max(0.001, Number(raw.yFrequencyHz)) : 0.18,
+    radiusFactor: Number.isFinite(Number(raw.radiusFactor)) ? Math.max(0, Number(raw.radiusFactor)) : 3.1,
+    influencers,
+    debug: {
+      enabled: debugRaw.enabled === true,
+      drawOnFrontLayer: debugRaw.drawOnFrontLayer !== false,
+      strokeStyle: typeof debugRaw.strokeStyle === 'string' ? debugRaw.strokeStyle : 'rgba(80, 180, 255, 0.9)',
+      fillStyle: typeof debugRaw.fillStyle === 'string' ? debugRaw.fillStyle : 'rgba(80, 180, 255, 0.12)',
+      lineWidthPx: Number.isFinite(Number(debugRaw.lineWidthPx)) ? Math.max(0.5, Number(debugRaw.lineWidthPx)) : 2,
+    },
+  };
+}
+
+function tickWindInfluencers(nowMs) {
+  if (resolveGlobalSwayMode() !== 'wind') {
+    STATE.windInfluencerPositions = [];
+    return;
+  }
+  if (!areFlowersFullyOpen()) {
+    STATE.windInfluencerPositions = [];
+    return;
+  }
+
+  const windConfig = resolveWindConfig();
+  if (!windConfig.enabled) {
+    STATE.windInfluencerPositions = [];
+    return;
+  }
+
+  const W = STATE.viewportWidth;
+  const H = STATE.viewportHeight;
+  if (W <= 0 || H <= 0) {
+    STATE.windInfluencerPositions = [];
+    return;
+  }
+
+  const flowersConfig = isPlainObjectLiteral(CONFIG.flowers) ? CONFIG.flowers : {};
+  const drawSize = Number.isFinite(flowersConfig.drawSize) ? Math.max(1, flowersConfig.drawSize) : 80;
+  const radius = drawSize * windConfig.radiusFactor;
+
+  const dtSec = STATE.windLastTickMs > 0
+    ? clamp((nowMs - STATE.windLastTickMs) / 1000, 0, 0.1)
+    : 0;
+  STATE.windLastTickMs = nowMs;
+
+  const tSec = nowMs / 1000;
+  const yCenter = H * 0.5;
+  const yAmplitude = H * windConfig.yAmplitudeRatio;
+
+  const newPositions = [];
+
+  for (let i = 0; i < windConfig.influencers.length; i += 1) {
+    const infCfg = windConfig.influencers[i];
+
+    if (!STATE.windInfluencers[i]) {
+      const startX = W * clamp(infCfg.phaseShiftX, 0, 1);
+      STATE.windInfluencers[i] = {
+        x: startX,
+        direction: 1,
+      };
+    }
+
+    const inf = STATE.windInfluencers[i];
+
+    inf.x += inf.direction * windConfig.sweepSpeedPxPerSec * dtSec;
+    if (inf.x >= W) {
+      inf.x = W;
+      inf.direction = -1;
+    } else if (inf.x <= 0) {
+      inf.x = 0;
+      inf.direction = 1;
+    }
+
+    const yPhaseRad = infCfg.phaseShiftY * 2 * Math.PI;
+    const y = yCenter + yAmplitude * Math.sin(2 * Math.PI * windConfig.yFrequencyHz * tSec + yPhaseRad);
+
+    newPositions.push({ x: inf.x, y, radius });
+  }
+
+  STATE.windInfluencerPositions = newPositions;
+}
+
+function drawWindDebugOverlay(targetCtx) {
+  const windConfig = resolveWindConfig();
+  if (!windConfig.debug.enabled) {
+    return;
+  }
+  const positions = STATE.windInfluencerPositions;
+  if (!positions || positions.length === 0) {
+    return;
+  }
+  const dbg = windConfig.debug;
+  targetCtx.save();
+  for (let i = 0; i < positions.length; i += 1) {
+    const pos = positions[i];
+    targetCtx.beginPath();
+    targetCtx.arc(pos.x, pos.y, pos.radius, 0, 2 * Math.PI);
+    targetCtx.lineWidth = dbg.lineWidthPx;
+    targetCtx.strokeStyle = dbg.strokeStyle;
+    targetCtx.fillStyle = dbg.fillStyle;
+    targetCtx.fill();
+    targetCtx.stroke();
+    targetCtx.font = '12px monospace';
+    targetCtx.fillStyle = dbg.strokeStyle;
+    targetCtx.fillText(`wind[${i}] x:${Math.round(pos.x)} y:${Math.round(pos.y)}`, pos.x + pos.radius + 4, pos.y + 4);
+  }
+  targetCtx.restore();
+}
+
+
+// =========================
 // 5) Branch Generation
 // =========================
 function getNoiseDelta(
@@ -11252,10 +11412,10 @@ function collectBranchEndpointsForGrowthAnimation(
   growthConfigByType,
   flowersRuntimeConfig,
 ) {
+  _growthEndpointResult.length = 0;
   if (!Array.isArray(branches) || branches.length === 0) {
-    return [];
+    return _growthEndpointResult;
   }
-  const endpoints = [];
   for (let i = 0; i < branches.length; i += 1) {
     const branch = branches[i];
     if (!branch || !branch.pathData || !Number.isFinite(branch.pathData.totalLength)) {
@@ -11273,7 +11433,7 @@ function collectBranchEndpointsForGrowthAnimation(
     )
       ? clamp(branchVisibleLengthById.get(branchId), 0, branchLength)
       : branchLength;
-    const endpointIndex = endpoints.length;
+    const endpointIndex = _growthEndpointResult.length;
     const stableKey = typeof branch.stableKey === 'string' ? branch.stableKey : `branch-index:${i}`;
     const assignedFlowerType = resolveFlowerTypeNameForGrowthEndpoint(
       {
@@ -11303,75 +11463,82 @@ function collectBranchEndpointsForGrowthAnimation(
       continue;
     }
     const tangentDeg = getBranchTangentDegAtDistance(branch, tipDistance);
-    endpoints.push({
-      branchId,
-      parentId: Number.isFinite(branch.parentId) ? branch.parentId : null,
-      depth: Number.isFinite(branch.depth) ? branch.depth : 0,
-      stableKey,
-      assignedFlowerType,
-      x: tipPoint.x,
-      y: tipPoint.y,
-      tangentDeg: Number.isFinite(tangentDeg) ? tangentDeg : null,
-      growthScale: growthEnabled
-        ? resolveFlowerGrowthChannelScaleAtBranchTip(
-          branch,
-          spawnDistanceOnPath,
-          elapsedSec,
-          {
-            minScale: typeGrowthConfig && typeGrowthConfig.size
-              ? typeGrowthConfig.size.minScale
-              : 1,
-            durationSec: typeGrowthConfig && typeGrowthConfig.size
-              ? typeGrowthConfig.size.durationSec
-              : 0,
-            ease: typeGrowthConfig && typeGrowthConfig.size
-              ? typeGrowthConfig.size.ease
-              : 'linear',
-            easePower: typeGrowthConfig && typeGrowthConfig.size
-              ? typeGrowthConfig.size.easePower
-              : 1,
-            easeInPower: typeGrowthConfig && typeGrowthConfig.size
-              ? typeGrowthConfig.size.easeInPower
-              : 1,
-            easeOutPower: typeGrowthConfig && typeGrowthConfig.size
-              ? typeGrowthConfig.size.easeOutPower
-              : 1,
-          },
-        )
-        : 1,
-      growthPositionScale: (
-        assignedFlowerType === 'blue'
-        && growthEnabled
+
+    let ep = _growthEndpointPool[endpointIndex];
+    if (!ep) {
+      ep = {};
+      _growthEndpointPool[endpointIndex] = ep;
+    }
+
+    ep.branchId = branchId;
+    ep.parentId = Number.isFinite(branch.parentId) ? branch.parentId : null;
+    ep.depth = Number.isFinite(branch.depth) ? branch.depth : 0;
+    ep.stableKey = stableKey;
+    ep.assignedFlowerType = assignedFlowerType;
+    ep.x = tipPoint.x;
+    ep.y = tipPoint.y;
+    ep.tangentDeg = Number.isFinite(tangentDeg) ? tangentDeg : null;
+    ep.growthScale = growthEnabled
+      ? resolveFlowerGrowthChannelScaleAtBranchTip(
+        branch,
+        spawnDistanceOnPath,
+        elapsedSec,
+        {
+          minScale: typeGrowthConfig && typeGrowthConfig.size
+            ? typeGrowthConfig.size.minScale
+            : 1,
+          durationSec: typeGrowthConfig && typeGrowthConfig.size
+            ? typeGrowthConfig.size.durationSec
+            : 0,
+          ease: typeGrowthConfig && typeGrowthConfig.size
+            ? typeGrowthConfig.size.ease
+            : 'linear',
+          easePower: typeGrowthConfig && typeGrowthConfig.size
+            ? typeGrowthConfig.size.easePower
+            : 1,
+          easeInPower: typeGrowthConfig && typeGrowthConfig.size
+            ? typeGrowthConfig.size.easeInPower
+            : 1,
+          easeOutPower: typeGrowthConfig && typeGrowthConfig.size
+            ? typeGrowthConfig.size.easeOutPower
+            : 1,
+        },
       )
-        ? resolveFlowerGrowthChannelScaleAtBranchTip(
-          branch,
-          spawnDistanceOnPath,
-          elapsedSec,
-          {
-            minScale: typeGrowthConfig && typeGrowthConfig.position
-              ? typeGrowthConfig.position.minScale
-              : 1,
-            durationSec: typeGrowthConfig && typeGrowthConfig.position
-              ? typeGrowthConfig.position.durationSec
-              : 0,
-            ease: typeGrowthConfig && typeGrowthConfig.position
-              ? typeGrowthConfig.position.ease
-              : 'linear',
-            easePower: typeGrowthConfig && typeGrowthConfig.position
-              ? typeGrowthConfig.position.easePower
-              : 1,
-            easeInPower: typeGrowthConfig && typeGrowthConfig.position
-              ? typeGrowthConfig.position.easeInPower
-              : 1,
-            easeOutPower: typeGrowthConfig && typeGrowthConfig.position
-              ? typeGrowthConfig.position.easeOutPower
-              : 1,
-          },
-        )
-        : 1,
-    });
+      : 1;
+    ep.growthPositionScale = (
+      assignedFlowerType === 'blue'
+      && growthEnabled
+    )
+      ? resolveFlowerGrowthChannelScaleAtBranchTip(
+        branch,
+        spawnDistanceOnPath,
+        elapsedSec,
+        {
+          minScale: typeGrowthConfig && typeGrowthConfig.position
+            ? typeGrowthConfig.position.minScale
+            : 1,
+          durationSec: typeGrowthConfig && typeGrowthConfig.position
+            ? typeGrowthConfig.position.durationSec
+            : 0,
+          ease: typeGrowthConfig && typeGrowthConfig.position
+            ? typeGrowthConfig.position.ease
+            : 'linear',
+          easePower: typeGrowthConfig && typeGrowthConfig.position
+            ? typeGrowthConfig.position.easePower
+            : 1,
+          easeInPower: typeGrowthConfig && typeGrowthConfig.position
+            ? typeGrowthConfig.position.easeInPower
+            : 1,
+          easeOutPower: typeGrowthConfig && typeGrowthConfig.position
+            ? typeGrowthConfig.position.easeOutPower
+            : 1,
+        },
+      )
+      : 1;
+
+    _growthEndpointResult.push(ep);
   }
-  return endpoints;
+  return _growthEndpointResult;
 }
 
 function resolveFlowerOpenSweepByBranchId(
@@ -11810,6 +11977,13 @@ function shouldKeepFlowerInteractionLoopAlive() {
     return true;
   }
 
+  if (resolveGlobalSwayMode() === 'wind' && areFlowersFullyOpen()) {
+    const windCfg = resolveWindConfig();
+    if (windCfg.enabled) {
+      return true;
+    }
+  }
+
   const leavesConfig = resolveLeavesConfig(CONFIG.leaves || {});
   if (isLeafSwayActive(leavesConfig)) {
     return true;
@@ -11862,6 +12036,21 @@ function stepFlowerInteractionFrame(timestampMs) {
     STATE.nextInteractionFrameDueMs = 0;
   }
   STATE.lastInteractionRenderMs = nowMs;
+
+  tickWindInfluencers(nowMs);
+
+  if (resolveGlobalSwayMode() === 'wind') {
+    const flowerSystem = getFlowerSystem();
+    if (flowerSystem && CONFIG.flowers && CONFIG.flowers.enabled === true) {
+      const positions = STATE.windInfluencerPositions;
+      if (positions && positions.length > 0) {
+        flowerSystem.setWindPositions(positions);
+      } else {
+        flowerSystem.clearMousePosition();
+      }
+    }
+  }
+
   renderScene({ skipAutoStart: true, timestampMs: nowMs });
 }
 
@@ -12995,7 +13184,11 @@ function isLeafSwayActive(leavesConfig = resolveLeavesConfig(CONFIG.leaves || {}
     return false;
   }
   if (leavesConfig.swayMode !== 'always') {
-    if (Number.isFinite(STATE.pointerX) && Number.isFinite(STATE.pointerY)) {
+    if (leavesConfig.swayMode === 'wind') {
+      if (STATE.windInfluencerPositions && STATE.windInfluencerPositions.length > 0) {
+        return true;
+      }
+    } else if (Number.isFinite(STATE.pointerX) && Number.isFinite(STATE.pointerY)) {
       return true;
     }
     const cachedLeaves = STATE.leafOverlayCache && Array.isArray(STATE.leafOverlayCache.leaves)
@@ -13022,6 +13215,32 @@ function isLeafSwayActive(leavesConfig = resolveLeavesConfig(CONFIG.leaves || {}
   return maxAmplitudeDeg > 1e-6 && maxSpeed > 1e-6;
 }
 
+function getEffectiveInfluencePosition(leafX, leafY) {
+  if (resolveGlobalSwayMode() === 'wind') {
+    const positions = STATE.windInfluencerPositions;
+    if (!positions || positions.length === 0) {
+      return { x: Number.NEGATIVE_INFINITY, y: Number.NEGATIVE_INFINITY };
+    }
+    if (positions.length === 1) {
+      return { x: positions[0].x, y: positions[0].y };
+    }
+    const lx = Number.isFinite(leafX) ? leafX : 0;
+    const ly = Number.isFinite(leafY) ? leafY : 0;
+    let bestDist = Infinity;
+    let best = positions[0];
+    for (let i = 0; i < positions.length; i += 1) {
+      const p = positions[i];
+      const d = Math.hypot(p.x - lx, p.y - ly);
+      if (d < bestDist) {
+        bestDist = d;
+        best = p;
+      }
+    }
+    return { x: best.x, y: best.y };
+  }
+  return { x: STATE.pointerX, y: STATE.pointerY };
+}
+
 function resolveLeafSwayInfluence(leaf, leavesConfig, nowMs) {
   if (!leaf || !leavesConfig) {
     return 0;
@@ -13039,6 +13258,20 @@ function resolveLeafSwayInfluence(leaf, leavesConfig, nowMs) {
     leaf.lastSwayUpdateMs = Number.isFinite(nowMs) ? nowMs : performance.now();
   }
 
+  // Get effective influence position (wind or mouse)
+  const influencePos = getEffectiveInfluencePosition(leaf.x, leaf.y);
+  
+  if (
+    leavesConfig.swayMode !== 'always'
+    && leaf.hoverInfluence === 0
+    && leaf.targetInfluence === 0
+    && influencePos.x === Number.NEGATIVE_INFINITY
+    && influencePos.y === Number.NEGATIVE_INFINITY
+  ) {
+    leaf.lastSwayUpdateMs = Number.isFinite(nowMs) ? nowMs : performance.now();
+    return 0;
+  }
+
   const updateNowMs = Number.isFinite(nowMs) ? nowMs : performance.now();
   const dtSec = clamp((updateNowMs - leaf.lastSwayUpdateMs) / 1000, 0, 0.05);
   leaf.lastSwayUpdateMs = updateNowMs;
@@ -13054,7 +13287,7 @@ function resolveLeafSwayInfluence(leaf, leavesConfig, nowMs) {
 
   if (leavesConfig.swayMode === 'always') {
     leaf.targetInfluence = 1;
-  } else if (!Number.isFinite(STATE.pointerX) || !Number.isFinite(STATE.pointerY)) {
+  } else if (!Number.isFinite(influencePos.x) || !Number.isFinite(influencePos.y)) {
     leaf.targetInfluence = 0;
   } else {
     const leafDrawSize = Number.isFinite(leaf.drawSize) ? Math.max(1, leaf.drawSize) : 1;
@@ -13062,8 +13295,8 @@ function resolveLeafSwayInfluence(leaf, leavesConfig, nowMs) {
     if (interactionRadius <= 1e-6) {
       leaf.targetInfluence = 0;
     } else {
-      const dx = STATE.pointerX - leaf.x;
-      const dy = STATE.pointerY - leaf.y;
+      const dx = influencePos.x - leaf.x;
+      const dy = influencePos.y - leaf.y;
       const distance = Math.hypot(dx, dy);
       leaf.targetInfluence = distance >= interactionRadius ? 0 : (1 - distance / interactionRadius) * mouseSwayScale;
     }
@@ -13427,13 +13660,19 @@ function drawBranchLeaves(branch, leavesConfig, renderOptions = {}) {
     && Number.isFinite(hiddenBand.centerX)
     && resolveHiddenBandEffectiveHalfWidthForYRange(hiddenBand, 0, STATE.viewportHeight) > hiddenSpriteCullInnerPaddingPx;
   const cullingEnabled = isLeafViewportCullingEnabled();
+  const motionConfig = isPlainObjectLiteral(CONFIG.motion) ? CONFIG.motion : {};
+  const leafCullPaddingPx = Number.isFinite(motionConfig.leafSpriteViewportCullPaddingPx)
+    ? motionConfig.leafSpriteViewportCullPaddingPx
+    : 0;
+  
+  const viewportBounds = cullingEnabled ? resolveLeafViewportCullBounds(leafCullPaddingPx) : null;
   const coarseBounds = leafCache && leafCache.bounds ? leafCache.bounds : null;
-  if (cullingEnabled && coarseBounds) {
+  if (cullingEnabled && coarseBounds && viewportBounds) {
     if (
-      coarseBounds.maxX < 0
-      || coarseBounds.maxY < 0
-      || coarseBounds.minX > STATE.viewportWidth
-      || coarseBounds.minY > STATE.viewportHeight
+      coarseBounds.maxX < viewportBounds.minX
+      || coarseBounds.maxY < viewportBounds.minY
+      || coarseBounds.minX > viewportBounds.maxX
+      || coarseBounds.minY > viewportBounds.maxY
     ) {
       return { drawn: 0, culled: leaves.length, skippedHidden: 0 };
     }
@@ -13459,12 +13698,12 @@ function drawBranchLeaves(branch, leavesConfig, renderOptions = {}) {
     const drawX = -drawSize * 0.5;
     const drawY = -drawSize + ((2.2 / leavesConfig.spriteCellHeight) * drawSize);
     const halfAabb = drawSize * 0.9;
-    if (cullingEnabled) {
+    if (cullingEnabled && viewportBounds) {
       if (
-        (leaf.x + halfAabb) < 0
-        || (leaf.y + halfAabb) < 0
-        || (leaf.x - halfAabb) > STATE.viewportWidth
-        || (leaf.y - halfAabb) > STATE.viewportHeight
+        (leaf.x + halfAabb) < viewportBounds.minX
+        || (leaf.y + halfAabb) < viewportBounds.minY
+        || (leaf.x - halfAabb) > viewportBounds.maxX
+        || (leaf.y - halfAabb) > viewportBounds.maxY
       ) {
         culled += 1;
         continue;
@@ -14254,6 +14493,8 @@ const FRAME_JUMP_KEY_SET = new Set(FRAME_JUMP_KEYS);
 const _renderSceneBranchById = new Map();
 const _renderSceneBranchVisibleLengthById = new Map();
 const _renderSceneBranchEndpointVisibleById = new Map();
+const _growthEndpointPool = [];
+const _growthEndpointResult = [];
 
 // =========================
 // 13) Animation Lifecycle and Timing
@@ -15455,7 +15696,7 @@ function getAnimationTotalTimeSec() {
   return criticalPathDistance / ratePxPerSec;
 }
 
-function getBranchVisibleLengthAtElapsed(branch, elapsedSec) {
+function getBranchVisibleLengthAtElapsed(branch, elapsedSec, precomputedTotalTimeSec, precomputedEasedElapsedSec) {
   if (!branch) {
     return 0;
   }
@@ -15472,9 +15713,15 @@ function getBranchVisibleLengthAtElapsed(branch, elapsedSec) {
   const startDistanceMetric = Number.isFinite(branch.startDistanceMetric)
     ? Math.max(0, branch.startDistanceMetric)
     : 0;
-  const totalTimeSec = getAnimationTotalTimeSec();
-  const elapsedRaw = Number.isFinite(elapsedSec) ? Math.max(0, elapsedSec) : 0;
-  const elapsed = resolveAnimationEasedElapsedSec(elapsedRaw, totalTimeSec);
+  const totalTimeSec = Number.isFinite(precomputedTotalTimeSec)
+    ? precomputedTotalTimeSec
+    : getAnimationTotalTimeSec();
+  const elapsed = Number.isFinite(precomputedEasedElapsedSec)
+    ? precomputedEasedElapsedSec
+    : resolveAnimationEasedElapsedSec(
+        Number.isFinite(elapsedSec) ? Math.max(0, elapsedSec) : 0,
+        totalTimeSec,
+      );
   const sweepStartDelaySec = Number.isFinite(branch.sweepStartDelaySec)
     ? Math.max(0, branch.sweepStartDelaySec)
     : 0;
@@ -15944,6 +16191,7 @@ function resizeCanvasToViewport() {
     flowersFrontCanvas.width = Math.floor(STATE.viewportWidth * STATE.dpr);
     flowersFrontCanvas.height = Math.floor(STATE.viewportHeight * STATE.dpr);
   }
+  
   viewportDebugLog(
     'resizeCanvasToViewport',
     `mode=${STATE.viewportLayoutMode}`,
@@ -16149,6 +16397,53 @@ function getStableViewportHeightForLayout(visualViewportHeight, fallbackHeight) 
   return safeFallbackHeight;
 }
 
+/**
+ * Returns the CSS-computed value of --app-viewport-height in pixels.
+ * This is used as a minimum floor for RELATIVE_166 mode to prevent JavaScript
+ * from calculating a smaller height than what CSS has already established.
+ */
+function getCSSMinViewportHeight() {
+  const root = document && document.documentElement ? document.documentElement : null;
+  if (!root || typeof window === 'undefined' || !window.getComputedStyle) {
+    return 0;
+  }
+  try {
+    const computedStyle = window.getComputedStyle(root);
+    const heightValue = computedStyle.getPropertyValue('--app-viewport-height').trim();
+    if (!heightValue) {
+      return 0;
+    }
+    // Handle calc() expressions - parse the computed value
+    // getComputedStyle should return the resolved pixel value, but fallback to parsing
+    const numericMatch = heightValue.match(/^([\d.]+)px$/);
+    if (numericMatch) {
+      const px = parseFloat(numericMatch[1]);
+      return Number.isFinite(px) && px > 0 ? px : 0;
+    }
+    // If getComputedStyle returns the raw calc() expression, we need to measure
+    if (heightValue.includes('calc') || heightValue.includes('var') || heightValue.includes('vh')) {
+      // Create a temporary element to measure the computed height
+      const temp = document.createElement('div');
+      temp.style.position = 'absolute';
+      temp.style.left = '0';
+      temp.style.top = '0';
+      temp.style.width = '1px';
+      temp.style.height = heightValue;
+      temp.style.pointerEvents = 'none';
+      temp.style.opacity = '0';
+      temp.style.zIndex = '-2147483648';
+      document.body.appendChild(temp);
+      const rect = temp.getBoundingClientRect();
+      const measuredHeight = Number.isFinite(rect.height) && rect.height > 0 ? rect.height : 0;
+      document.body.removeChild(temp);
+      return measuredHeight;
+    }
+  } catch (e) {
+    // Silently fail and return 0 to let the normal calculation proceed
+  }
+  return 0;
+}
+
 function resolveViewportSizeForRendering() {
   const layoutMode = sanitizeViewportLayoutMode(STATE.viewportLayoutMode, VIEWPORT_LAYOUT_MODE_LEGACY);
   const safeInnerWidth = Number.isFinite(window.innerWidth) ? Math.max(0, window.innerWidth) : 0;
@@ -16215,8 +16510,24 @@ function resolveViewportSizeForRendering() {
   const width = Math.max(safeInnerWidth, safeClientWidth, probeWidth);
   const height = Math.max(safeInnerHeight, safeClientHeight, probeHeight);
   const resolvedWidth = width > 0 ? width : safeInnerWidth;
-  const resolvedHeight = height > 0 ? height : safeInnerHeight;
+  let resolvedHeight = height > 0 ? height : safeInnerHeight;
   const layoutOverdrawConfig = resolveViewportLayoutOverdrawConfig(layoutMode);
+
+  // For RELATIVE_166 mode, ensure we never shrink below the CSS-established minimum.
+  // The CSS default is `calc(100vh + 55px)` which ensures content overdraws iOS Safari's bottom bar.
+  // JavaScript calculation can be wrong during initial load due to unreliable probe measurements.
+  // This fix reads the CSS-computed value and uses it as a floor to prevent the intermittent overdraw failure.
+  if (layoutMode === VIEWPORT_LAYOUT_MODE_RELATIVE_166) {
+    const cssMinHeight = getCSSMinViewportHeight();
+    if (cssMinHeight > 0 && resolvedHeight < cssMinHeight) {
+      viewportDebugLog(
+        'resolveViewportSizeForRendering',
+        `relative166-floor-applied: ${resolvedHeight}px → ${cssMinHeight}px`,
+      );
+      resolvedHeight = cssMinHeight;
+    }
+  }
+
   if (layoutOverdrawConfig.extraHeightPx > 0) {
     return {
       width: resolvedWidth,
@@ -17186,6 +17497,9 @@ function renderScene(options = {}) {
     backSkippedFlowers: 0,
   };
   const animationTotalTimeSec = useAnimation ? getAnimationTotalTimeSec() : 0;
+  const easedElapsedSec = useAnimation
+    ? resolveAnimationEasedElapsedSec(elapsedSec, animationTotalTimeSec)
+    : 0;
   const leafGrowthTailSec = (
     useAnimation
     && leavesConfig
@@ -17263,7 +17577,7 @@ function renderScene(options = {}) {
         const branchLength = Number.isFinite(branch.pathData.totalLength)
           ? Math.max(0, branch.pathData.totalLength)
           : 0;
-        const visibleLength = getBranchVisibleLengthAtElapsed(branch, elapsedSec);
+        const visibleLength = getBranchVisibleLengthAtElapsed(branch, elapsedSec, animationTotalTimeSec, easedElapsedSec);
         branchVisibleLengthById.set(branch.id, visibleLength);
         branchEndpointVisibleById.set(
           branch.id,
@@ -17321,7 +17635,7 @@ function renderScene(options = {}) {
         ? (
           Number.isFinite(branch.id) && branchVisibleLengthById.has(branch.id)
             ? branchVisibleLengthById.get(branch.id)
-            : getBranchVisibleLengthAtElapsed(branch, elapsedSec)
+            : getBranchVisibleLengthAtElapsed(branch, elapsedSec, animationTotalTimeSec, easedElapsedSec)
         )
         : branch.pathData.totalLength;
       const branchTextures = getBranchStemTextures(branch, CONFIG.brush);
@@ -17422,7 +17736,7 @@ function renderScene(options = {}) {
         ? (
           Number.isFinite(branch.id) && branchVisibleLengthById.has(branch.id)
             ? branchVisibleLengthById.get(branch.id)
-            : getBranchVisibleLengthAtElapsed(branch, elapsedSec)
+            : getBranchVisibleLengthAtElapsed(branch, elapsedSec, animationTotalTimeSec, easedElapsedSec)
         )
         : null;
 
@@ -17628,6 +17942,7 @@ function renderScene(options = {}) {
         isBranchFlowerEndpointVisible(branchId, flower)
         && !isBackLayerForBranch(branchId, flower)
       );
+      const motionConfig = isPlainObjectLiteral(CONFIG.motion) ? CONFIG.motion : {};
       const backFlowerTiming = drawEndpointFlowers(
         renderTimestampMs,
         ctx,
@@ -17640,6 +17955,8 @@ function renderScene(options = {}) {
           hiddenSpriteCullInnerPaddingPx: overlayWrapConfig.spriteHiddenCullInnerPaddingPx,
           hiddenSpriteCullRadiusScale: overlayWrapConfig.spriteHiddenCullRadiusScale,
           hiddenSpriteCullDebug,
+          viewportCullEnabled: motionConfig.flowerSpriteViewportCullingEnabled !== false,
+          viewportCullPaddingPx: motionConfig.flowerSpriteViewportCullPaddingPx,
         },
         false,
       );
@@ -17660,6 +17977,8 @@ function renderScene(options = {}) {
             layerName: 'front',
             skipUpdate: true,
             branchFilter: frontBranchFilter,
+            viewportCullEnabled: motionConfig.flowerSpriteViewportCullingEnabled !== false,
+            viewportCullPaddingPx: motionConfig.flowerSpriteViewportCullPaddingPx,
           },
           true,
         );
@@ -17672,6 +17991,7 @@ function renderScene(options = {}) {
         }
       }
     } else {
+      const nonOverlayMotionConfig = isPlainObjectLiteral(CONFIG.motion) ? CONFIG.motion : {};
       const flowerTiming = drawEndpointFlowers(
         renderTimestampMs,
         ctx,
@@ -17679,6 +17999,8 @@ function renderScene(options = {}) {
           layerName: 'back',
           clearFront: true,
           branchFilter: isBranchFlowerEndpointVisible,
+          viewportCullEnabled: nonOverlayMotionConfig.flowerSpriteViewportCullingEnabled !== false,
+          viewportCullPaddingPx: nonOverlayMotionConfig.flowerSpriteViewportCullPaddingPx,
         },
       );
       if (flowerTiming) {
@@ -17730,6 +18052,12 @@ function renderScene(options = {}) {
   if (overlayWrapActive && hiddenBand && overlayWrapConfig.showCenterBandOverlay === true) {
     const overlayTargetCtx = frontCtx || ctx;
     drawOverlayCenterBand(overlayTargetCtx, hiddenBand, overlayWrapConfig);
+  }
+
+  const windDbgConfig = resolveWindConfig();
+  if (windDbgConfig.debug.enabled) {
+    const windDbgTargetCtx = (windDbgConfig.debug.drawOnFrontLayer === true && frontCtx) ? frontCtx : ctx;
+    drawWindDebugOverlay(windDbgTargetCtx);
   }
 
   if (perfEnabled) {
@@ -20408,6 +20736,7 @@ async function bootstrap() {
   const defaultLoadingMessage = getDefaultLoadingScreenMessage();
   setLoadingScreenVisible(true);
   setLoadingScreenMessage(defaultLoadingMessage);
+  preloadSwipeSectionsOverlayImages();
 
   STATE.viewportLayoutMode = resolveInitialViewportLayoutMode();
   viewportScrollNudgeApplied = false;
@@ -20424,6 +20753,7 @@ async function bootstrap() {
   refreshHeroVideoReferenceRect({ force: true });
   applyViewportLayoutMode(STATE.viewportLayoutMode, { forceRerender: true });
   scheduleIOSRelative166ViewportStabilization();
+  
   STATE.foliageLoad.videoReady = false;
   STATE.foliageLoad.stemReady = false;
   STATE.foliageLoad.leafReady = false;

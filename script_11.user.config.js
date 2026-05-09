@@ -196,7 +196,7 @@
     enabled: true,
     mode: 'linearBySeedY', // simultaneous | linearBySeedY
     linearSweepDirection: 'up', // down (top->bottom) | up (bottom->top)
-    linearSweepDurationSec: 6, // sweep time across root seed Y range
+    linearSweepDurationSec: 12, // sweep time across root seed Y range
     speedMode: 'rate', // duration | rate
     totalDurationSec: 1.5,
     pixelsPerSecond: 50,
@@ -247,9 +247,9 @@
       // 200,
       // 300,
       126,
-      222-5,
-      219-3,
-      219-3,
+      222-6,
+      219-5,
+      219-5,
       188-5,
       243,
     ],
@@ -807,7 +807,7 @@
     centerHalfWidthSwitchYVideoHeightRatio: 0.78, // switch Y as % of initially sampled video height (0..1 or 0..100)
     centerHalfWidthPx: 50, // fallback when video size is unavailable
     skipHiddenBackDrawEnabled: true,
-    spriteHiddenCullInnerPaddingPx: 0,
+    spriteHiddenCullInnerPaddingPx: 10,
     spriteHiddenCullRadiusScale: 0.2, // 0.05..1 scales the hidden-cull test circle radius
     debugHiddenSpriteCullCirclesEnabled: false,
     debugHiddenSpriteCullCirclesMode: 'culled', // culled | all
@@ -822,19 +822,41 @@
   },
 
   motion: {
-    swayMode: 'influence', // always | influence
+    swayMode: 'wind', // always | influence | wind
     maxSwayFps: 24, // <=0 disables cap for interaction-only render loop
     leafViewportCullingEnabled: true,
+    leafSpriteViewportCullPaddingPx: 0, // +100 = render 100px outside viewport, -100 = cull 100px inside viewport (aggressive)
     flowerViewportCullingEnabled: true,
-    swayFastPathEnabled: true,
+    flowerSpriteViewportCullingEnabled: true, // Enable per-petal viewport culling
+    flowerSpriteViewportCullPaddingPx: 10, // +100 = cull 100px outside viewport (prevent pop-in), -50 = cull 50px inside viewport (aggressive)
+    swayFastPathEnabled: false,
     swayPerfLogEnabled: false,
+
+    wind: {
+      enabled: true,
+      sweepSpeedPxPerSec: 140,      // horizontal travel speed in canvas px/sec
+      yAmplitudeRatio: 0.5,        // sin-wave Y amplitude as fraction of canvas height (0..1)
+      yFrequencyHz: 0.05,           // Y oscillation cycles per second
+      radiusFactor: 3.1,            // influence radius = flowers.drawSize * radiusFactor
+      influencers: [
+        { phaseShiftX: 0, phaseShiftY: 0 },           // first influencer
+        // { phaseShiftX: 0.5, phaseShiftY: 0.25 },   // second influencer (uncomment to enable)
+      ],
+      debug: {
+        enabled: false,
+        drawOnFrontLayer: true,
+        strokeStyle: 'rgba(80, 180, 255, 0.9)',
+        fillStyle: 'rgba(80, 180, 255, 0.12)',
+        lineWidthPx: 2,
+      },
+    },
   },
 
   renderDpr: {
     enabled: true,
-    mobileOnly: true,
+    mobileOnly: false,
     mobileCap: 2,
-    desktopCap: null, // ignored when mobileOnly=true; null disables desktop cap
+    desktopCap: true, // ignored when mobileOnly=true; null disables desktop cap
   },
 
   safariTopTintShim: {
@@ -870,21 +892,21 @@
       influenceNoPointerFallBoostRange: [3.0, 4.0], // [min, max]
       mouseSpeedSwayAffectRange: [0.1, 0.2], // [min, max]
       interactionRadiusScaleRange: [0.82, 1.0], // [min, max] multiplier on swayInteractionRadiusFactor
-      minSwayFallSpeed: 1.5,
+      minSwayFallSpeed: 0.5,
     },
     assignmentMode: 'mixed', // single | mixed
     singleType: 'lily',
     mixRatios: {
 
       lily: 1,
-      blue: 0.8,
+      blue: 0.5,
     },
     endpointDirectionTailLengthPx: 26,
     endpointDirectionSampleCount: 5,
     drawSize: 67,
     swayInteractionRadiusFactor: 3.1,
     swayRiseSpeed: 5.5,
-    swayFallSpeed: 0.5,
+    swayFallSpeed: 0.1,
     swayEpsilon: 0.0008,
     mouseSpeedSwayAffect: 0.7,
     influenceDynamicCapEnabled: true,
@@ -1062,9 +1084,9 @@
     swayFallSpeed: 0.5,
     swayEpsilon: 0.0008,
     mouseSpeedSwayAffect: 0.7,
-    swayAmplitudeDegRange: [-30.8, 30.6],
+    swayAmplitudeDegRange: [-20.8, 25.6],
     swaySpeedRange: [1.9, 2.8],
-    countRange: [2, 10],
+    countRange: [1, 4],
     spawnTMin: 0.01,
     spawnTMax: 0.5,
     spawnBiasMode: 'towardBase', // uniform | towardBase | towardTip
