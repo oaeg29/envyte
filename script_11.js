@@ -2560,10 +2560,11 @@ const STATE = {
     globalRatePxPerSec: 0,
     criticalPathDistance: 0,
     maxCompletionSec: 0,
+    lastGrowthRenderMs: 0,
   },
   flowerGrowth: {
     dynamicEndpointsActive: false,
-    lastEndpointSignature: '',
+    lastEndpointSignature: -1,
     openTimerId: null,
     openScheduled: false,
     openTriggered: false,
@@ -10865,7 +10866,7 @@ function resetFlowerGrowthRuntimeState(options = {}) {
   state.cycleToken = (Number.isFinite(state.cycleToken) ? state.cycleToken : 0) + 1;
   if (clearSignature) {
     state.dynamicEndpointsActive = false;
-    state.lastEndpointSignature = '';
+    state.lastEndpointSignature = -1;
     flowerGrowthAnimatedOpenTriggered = false;
   }
   if (clearOpenOverrides) {
@@ -11176,27 +11177,24 @@ function resolveFlowerTypeNameForGrowthEndpoint(endpoint, index, flowersConfig =
 
 function buildFlowerGrowthEndpointSignature(endpoints) {
   if (!Array.isArray(endpoints) || endpoints.length === 0) {
-    return '0';
+    return 0;
   }
-  const parts = [String(endpoints.length)];
+  let h = endpoints.length * 2654435761;
   for (let i = 0; i < endpoints.length; i += 1) {
-    const endpoint = endpoints[i];
-    const branchId = Number.isFinite(endpoint && endpoint.branchId) ? endpoint.branchId : 'n';
-    const typeName = (
-      endpoint && endpoint.assignedFlowerType === 'blue'
-    )
-      ? 'blue'
-      : 'lily';
-    const x = Number.isFinite(endpoint && endpoint.x) ? endpoint.x.toFixed(2) : '0.00';
-    const y = Number.isFinite(endpoint && endpoint.y) ? endpoint.y.toFixed(2) : '0.00';
-    const tangent = Number.isFinite(endpoint && endpoint.tangentDeg) ? endpoint.tangentDeg.toFixed(2) : 'n';
-    const scale = Number.isFinite(endpoint && endpoint.growthScale) ? endpoint.growthScale.toFixed(4) : '1.0000';
-    const positionScale = Number.isFinite(endpoint && endpoint.growthPositionScale)
-      ? endpoint.growthPositionScale.toFixed(4)
-      : '1.0000';
-    parts.push(`${branchId}:${typeName}:${x}:${y}:${tangent}:${scale}:${positionScale}`);
+    const ep = endpoints[i];
+    if (!ep) {
+      continue;
+    }
+    h = (h ^ (Number.isFinite(ep.branchId) ? (ep.branchId * 1000) | 0 : 0)) * 2246822519;
+    h = (h ^ (ep.assignedFlowerType === 'blue' ? 1 : 2)) * 2654435761;
+    h = (h ^ ((Number.isFinite(ep.x) ? ep.x * 100 : 0) | 0)) * 2246822519;
+    h = (h ^ ((Number.isFinite(ep.y) ? ep.y * 100 : 0) | 0)) * 2654435761;
+    h = (h ^ ((Number.isFinite(ep.tangentDeg) ? ep.tangentDeg * 100 : 0) | 0)) * 2246822519;
+    h = (h ^ ((Number.isFinite(ep.growthScale) ? ep.growthScale * 10000 : 10000) | 0)) * 2654435761;
+    h = (h ^ ((Number.isFinite(ep.growthPositionScale) ? ep.growthPositionScale * 10000 : 10000) | 0)) * 2246822519;
+    h = h >>> 0;
   }
-  return parts.join('|');
+  return h >>> 0;
 }
 
 function resolveFlowerGrowthChannelScaleAtBranchTip(
@@ -12626,6 +12624,15 @@ function invalidateLeafOverlayCache() {
   cache.branchCount = 0;
   cache.branchPathRefs.length = 0;
   cache.leaves.length = 0;
+  const branches = STATE.branchGarden && Array.isArray(STATE.branchGarden.branches)
+    ? STATE.branchGarden.branches
+    : [];
+  for (let i = 0; i < branches.length; i += 1) {
+    const leafCache = getBranchLeafCache(branches[i]);
+    if (leafCache) {
+      leafCache._committedLeavesKey = '';
+    }
+  }
 }
 
 function ensureLeafOverlayCache(leavesConfig) {
@@ -13124,6 +13131,9 @@ function resolveLeafGrowthScale(leaf, branch, leavesConfig) {
   if (!leaf || !branch || !leavesConfig || leavesConfig.growthEnabled !== true || CONFIG.branchGrowth.enabled !== true) {
     return 1;
   }
+  if (leaf._growthScaleCachedValue >= 1 - 1e-6) {
+    return 1;
+  }
   const durationSec = Number.isFinite(leavesConfig.growthDurationSec)
     ? Math.max(0, leavesConfig.growthDurationSec)
     : 0;
@@ -13139,6 +13149,12 @@ function resolveLeafGrowthScale(leaf, branch, leavesConfig) {
   const elapsedSec = Number.isFinite(STATE.branchGrowth && STATE.branchGrowth.elapsedSec)
     ? Math.max(0, STATE.branchGrowth.elapsedSec)
     : 0;
+  if (
+    leaf._growthScaleCachedElapsed >= 0
+    && Math.abs(elapsedSec - leaf._growthScaleCachedElapsed) < 0.016
+  ) {
+    return leaf._growthScaleCachedValue;
+  }
   const branchStartMetric = Number.isFinite(branch.startDistanceMetric)
     ? Math.max(0, branch.startDistanceMetric)
     : 0;
@@ -13150,13 +13166,18 @@ function resolveLeafGrowthScale(leaf, branch, leavesConfig) {
     : 0;
   const spawnTimeSec = branchSweepStartDelaySec + ((branchStartMetric + leafDistanceOnBranch) / ratePxPerSec);
   const ageSec = elapsedSec - spawnTimeSec;
+  let scale;
   if (ageSec <= 0) {
-    return clamp(leavesConfig.growthMinScale, 0, 1);
+    scale = clamp(leavesConfig.growthMinScale, 0, 1);
+  } else {
+    const progress = clamp(ageSec / durationSec, 0, 1);
+    const eased = evaluateLeafGrowthEaseT(progress, leavesConfig.growthEase, leavesConfig.growthEasePower);
+    const minScale = clamp(leavesConfig.growthMinScale, 0, 1);
+    scale = minScale + (1 - minScale) * eased;
   }
-  const progress = clamp(ageSec / durationSec, 0, 1);
-  const eased = evaluateLeafGrowthEaseT(progress, leavesConfig.growthEase, leavesConfig.growthEasePower);
-  const minScale = clamp(leavesConfig.growthMinScale, 0, 1);
-  return minScale + (1 - minScale) * eased;
+  leaf._growthScaleCachedElapsed = elapsedSec;
+  leaf._growthScaleCachedValue = scale;
+  return scale;
 }
 
 function isLeafSpawnTAllowed(candidateT, placedTs, minSpawnSpacingT) {
@@ -13318,6 +13339,8 @@ function ensureBranchLeaves(branch, leavesConfig, branchIndex = 0) {
       targetInfluence: leavesConfig.swayMode === 'always' ? 1 : 0,
       motionTime: 0,
       lastSwayUpdateMs: 0,
+      _growthScaleCachedElapsed: -1,
+      _growthScaleCachedValue: -1,
     });
   }
 
@@ -13483,7 +13506,6 @@ function drawBranchLeaves(branch, leavesConfig, renderOptions = {}) {
       }
     }
     const sourceRect = getLeafSpriteSourceRect(leavesConfig, leaf.col, leaf.row);
-    targetCtx.save();
     targetCtx.translate(leaf.x, leaf.y);
     targetCtx.rotate(drawRotationRad);
     targetCtx.drawImage(
@@ -13497,7 +13519,7 @@ function drawBranchLeaves(branch, leavesConfig, renderOptions = {}) {
       drawSize,
       drawSize,
     );
-    targetCtx.restore();
+    targetCtx.setTransform(STATE.dpr, 0, 0, STATE.dpr, 0, 0);
     drawn += 1;
   }
   return { drawn, culled, skippedHidden };
@@ -13543,7 +13565,6 @@ function drawLeafOverlayFast(leavesConfig, nowMs, targetCtx = ctx) {
         * swayInfluence
       )
       : 0;
-    targetCtx.save();
     targetCtx.translate(leaf.x, leaf.y);
     targetCtx.rotate(leaf.rotationRad + swayOffsetRad);
     targetCtx.drawImage(
@@ -13557,9 +13578,106 @@ function drawLeafOverlayFast(leavesConfig, nowMs, targetCtx = ctx) {
       drawSize,
       drawSize,
     );
-    targetCtx.restore();
+    targetCtx.setTransform(STATE.dpr, 0, 0, STATE.dpr, 0, 0);
     drawn += 1;
   }
+  return { drawn, culled };
+}
+
+function drawCommittedBranchLeavesFast(branch, leavesConfig, completedLayerCtx, mainCtx, branchIndex, nowMs) {
+  if (!branch || !leavesConfig || !leavesConfig.enabled || !STATE.leafImage) {
+    return { drawn: 0, culled: 0 };
+  }
+  const leaves = ensureBranchLeaves(branch, leavesConfig, branchIndex);
+  if (!Array.isArray(leaves) || leaves.length === 0) {
+    return { drawn: 0, culled: 0 };
+  }
+
+  const swayEpsilon = Number.isFinite(leavesConfig.swayEpsilon) ? leavesConfig.swayEpsilon : 0.001;
+  const cullingEnabled = isLeafViewportCullingEnabled();
+  const leafCache = getBranchLeafCache(branch);
+  const leavesConfigKey = leavesConfig.cacheKey || '';
+
+  let drawn = 0;
+  let culled = 0;
+
+  const needsBake = (
+    completedLayerCtx
+    && (!leafCache || leafCache._committedLeavesKey !== leavesConfigKey)
+  );
+
+  for (let i = 0; i < leaves.length; i += 1) {
+    const leaf = leaves[i];
+    const drawSize = Number.isFinite(leaf.drawSize) ? Math.max(1, leaf.drawSize) : leavesConfig.drawSize;
+    const drawX = -drawSize * 0.5;
+    const drawY = -drawSize + ((2.2 / leavesConfig.spriteCellHeight) * drawSize);
+    const halfAabb = drawSize * 0.9;
+
+    if (cullingEnabled) {
+      if (
+        (leaf.x + halfAabb) < 0
+        || (leaf.y + halfAabb) < 0
+        || (leaf.x - halfAabb) > STATE.viewportWidth
+        || (leaf.y - halfAabb) > STATE.viewportHeight
+      ) {
+        culled += 1;
+        continue;
+      }
+    }
+
+    const swayInfluence = resolveLeafSwayInfluence(leaf, leavesConfig, nowMs);
+    const isSwaying = swayInfluence > swayEpsilon || leaf.targetInfluence > swayEpsilon;
+    const sourceRect = getLeafSpriteSourceRect(leavesConfig, leaf.col, leaf.row);
+
+    if (needsBake) {
+      completedLayerCtx.setTransform(STATE.dpr, 0, 0, STATE.dpr, 0, 0);
+      completedLayerCtx.translate(leaf.x, leaf.y);
+      completedLayerCtx.rotate(leaf.rotationRad);
+      completedLayerCtx.drawImage(
+        STATE.leafImage,
+        sourceRect.sx,
+        sourceRect.sy,
+        sourceRect.sw,
+        sourceRect.sh,
+        drawX,
+        drawY,
+        drawSize,
+        drawSize,
+      );
+      completedLayerCtx.setTransform(STATE.dpr, 0, 0, STATE.dpr, 0, 0);
+    }
+
+    if (isSwaying && mainCtx) {
+      const swayOffsetRad = leavesConfig.swayEnabled
+        ? (
+          (Number.isFinite(leaf.swayAmplitudeRad) ? leaf.swayAmplitudeRad : 0)
+          * Math.sin(((Number.isFinite(leaf.motionTime) ? leaf.motionTime : 0) * (Number.isFinite(leaf.swaySpeed) ? leaf.swaySpeed : 0)) + (leaf.swayPhase || 0))
+          * swayInfluence
+        )
+        : 0;
+      mainCtx.translate(leaf.x, leaf.y);
+      mainCtx.rotate(leaf.rotationRad + swayOffsetRad);
+      mainCtx.drawImage(
+        STATE.leafImage,
+        sourceRect.sx,
+        sourceRect.sy,
+        sourceRect.sw,
+        sourceRect.sh,
+        drawX,
+        drawY,
+        drawSize,
+        drawSize,
+      );
+      mainCtx.setTransform(STATE.dpr, 0, 0, STATE.dpr, 0, 0);
+    }
+
+    drawn += 1;
+  }
+
+  if (needsBake && leafCache) {
+    leafCache._committedLeavesKey = leavesConfigKey;
+  }
+
   return { drawn, culled };
 }
 
@@ -14060,6 +14178,7 @@ function drawBrushAlongPath(
     }
   }
 
+  const _dpr = STATE.dpr;
   let drawnSamples = 0;
   for (let i = startIndex; i <= endIndexInclusive; i += 1) {
     const sample = samples[i];
@@ -14079,14 +14198,13 @@ function drawBrushAlongPath(
       continue;
     }
 
-    targetCtx.save();
-    targetCtx.transform(
-      sample.normalX,
-      sample.normalY,
-      sample.tangentX,
-      sample.tangentY,
-      sample.originX,
-      sample.originY,
+    targetCtx.setTransform(
+      sample.normalX * _dpr,
+      sample.normalY * _dpr,
+      sample.tangentX * _dpr,
+      sample.tangentY * _dpr,
+      sample.originX * _dpr,
+      sample.originY * _dpr,
     );
 
     targetCtx.drawImage(
@@ -14112,9 +14230,9 @@ function drawBrushAlongPath(
       );
     }
 
-    targetCtx.restore();
     drawnSamples += 1;
   }
+  targetCtx.setTransform(STATE.dpr, 0, 0, STATE.dpr, 0, 0);
 
   if (debugConfig.enabled && debugConfig.showStripCenters) {
     drawStripCentersFromCache(cache.centerX, cache.centerY, endIndexInclusive);
@@ -14129,6 +14247,9 @@ const DISABLED_DEBUG_CONFIG = {
 };
 const FRAME_JUMP_KEYS = ['1', '2', '3', '4', '5', '6'];
 const FRAME_JUMP_KEY_SET = new Set(FRAME_JUMP_KEYS);
+const _renderSceneBranchById = new Map();
+const _renderSceneBranchVisibleLengthById = new Map();
+const _renderSceneBranchEndpointVisibleById = new Map();
 
 // =========================
 // 13) Animation Lifecycle and Timing
@@ -15720,10 +15841,26 @@ function stepBranchAnimationFrame(timestampMs) {
     animationState.elapsedSec = totalTimeSec;
     animationState.running = false;
     animationState.startTimeMs = 0;
+    animationState.lastGrowthRenderMs = 0;
     renderScene({ skipAutoStart: true, timestampMs });
     return;
   }
 
+  const growthFpsCap = Number.isFinite(CONFIG.branchGrowth.growthFpsCap)
+    ? CONFIG.branchGrowth.growthFpsCap
+    : 0;
+  if (growthFpsCap > 0) {
+    const minFrameMs = 1000 / growthFpsCap;
+    const lastRender = Number.isFinite(animationState.lastGrowthRenderMs)
+      ? animationState.lastGrowthRenderMs
+      : 0;
+    if (lastRender > 0 && (timestampMs - lastRender) < minFrameMs - 0.5) {
+      scheduleBranchAnimationFrame();
+      return;
+    }
+  }
+
+  animationState.lastGrowthRenderMs = timestampMs;
   renderScene({ skipAutoStart: true, timestampMs });
   scheduleBranchAnimationFrame();
 }
@@ -17108,9 +17245,12 @@ function renderScene(options = {}) {
   }
 
   const branches = STATE.branchGarden.branches;
-  const branchById = new Map();
-  const branchVisibleLengthById = new Map();
-  const branchEndpointVisibleById = new Map();
+  const branchById = _renderSceneBranchById;
+  const branchVisibleLengthById = _renderSceneBranchVisibleLengthById;
+  const branchEndpointVisibleById = _renderSceneBranchEndpointVisibleById;
+  branchById.clear();
+  branchVisibleLengthById.clear();
+  branchEndpointVisibleById.clear();
   for (let i = 0; i < branches.length; i += 1) {
     const branch = branches[i];
     if (branch && Number.isFinite(branch.id)) {
@@ -17291,12 +17431,14 @@ function renderScene(options = {}) {
             activeBranches += 1;
             if (shouldRenderLeaves) {
               const leafStartMs = perfEnabled ? performance.now() : 0;
-              const leafStats = drawBranchLeaves(branch, leavesConfig, {
-                visibleLength,
-                targetCtx: ctx,
-                branchIndex: i,
-                nowMs: renderTimestampMs,
-              });
+              const leafStats = drawCommittedBranchLeavesFast(
+                branch,
+                leavesConfig,
+                completedLayer.ctx,
+                ctx,
+                i,
+                renderTimestampMs,
+              );
               if (perfEnabled) {
                 perfStats.leafDrawMs += Math.max(0, performance.now() - leafStartMs);
               }
@@ -17325,6 +17467,9 @@ function renderScene(options = {}) {
             perfStats.stemDrawMs += Math.max(0, performance.now() - stemStartMs);
           }
           completedLayer.committedBranchIds.add(branchRenderId);
+          if (shouldRenderLeaves) {
+            drawCommittedBranchLeavesFast(branch, leavesConfig, completedLayer.ctx, null, i, renderTimestampMs);
+          }
           // Draw once on this frame since layer blit already happened earlier.
           renderBranch(branch, {
             visibleLength,
@@ -17345,14 +17490,99 @@ function renderScene(options = {}) {
       if (visibleLength === null || visibleLength > 0) {
         activeBranches += 1;
       }
-      renderBranch(branch, {
-        visibleLength,
-        branchTextures,
-        leavesConfig,
-        branchIndex: i,
-        nowMs: renderTimestampMs,
-        perfStats,
-      });
+
+      const useIncrementalCache = (
+        useSingleCompletedLayer
+        && completedLayer
+        && useAnimation
+        && visibleLength !== null
+        && visibleLength > 0
+        && CONFIG.branchGrowth.useIncrementalStemCache !== false
+      );
+
+      if (useIncrementalCache) {
+        const branchRenderId = getBranchRenderId(branch);
+        const committedMap = completedLayer.committedStemEndByBranchId;
+        const previousCommitted = Number.isFinite(committedMap.get(branchRenderId))
+          ? committedMap.get(branchRenderId)
+          : 0;
+        const delta = visibleLength - previousCommitted;
+        if (delta > 1e-6) {
+          const stemStartMs = perfEnabled ? performance.now() : 0;
+          drawBrushAlongPath(
+            branch,
+            CONFIG.brush,
+            DISABLED_DEBUG_CONFIG,
+            branchTextures.defaultImage,
+            branchTextures.flippedImage,
+            visibleLength,
+            completedLayer.ctx,
+            { visibleStartLength: previousCommitted },
+          );
+          drawBrushAlongPath(
+            branch,
+            CONFIG.brush,
+            CONFIG.debug,
+            branchTextures.defaultImage,
+            branchTextures.flippedImage,
+            visibleLength,
+            ctx,
+            { visibleStartLength: previousCommitted },
+          );
+          if (perfEnabled) {
+            perfStats.stemDrawMs += Math.max(0, performance.now() - stemStartMs);
+          }
+          committedMap.set(branchRenderId, visibleLength);
+        }
+        if (shouldRenderLeaves) {
+          const earlyCommitEnabled = CONFIG.branchGrowth.earlyCommitEnabled !== false;
+          const earlyCommitThreshold = Number.isFinite(CONFIG.branchGrowth.earlyCommitThreshold)
+            ? clamp(CONFIG.branchGrowth.earlyCommitThreshold, 0, 1)
+            : 0.85;
+          const branchLength = branch.pathData && Number.isFinite(branch.pathData.totalLength)
+            ? branch.pathData.totalLength
+            : 0;
+          const useEarlyLeafBake = (
+            earlyCommitEnabled
+            && branchLength > 0
+            && visibleLength / branchLength >= earlyCommitThreshold
+          );
+          const leafStartMs = perfEnabled ? performance.now() : 0;
+          let leafStats;
+          if (useEarlyLeafBake) {
+            leafStats = drawCommittedBranchLeavesFast(
+              branch,
+              leavesConfig,
+              completedLayer.ctx,
+              ctx,
+              i,
+              renderTimestampMs,
+            );
+          } else {
+            leafStats = drawBranchLeaves(branch, leavesConfig, {
+              visibleLength,
+              targetCtx: ctx,
+              branchIndex: i,
+              nowMs: renderTimestampMs,
+              perfStats,
+            });
+          }
+          if (perfEnabled) {
+            perfStats.leafDrawMs += Math.max(0, performance.now() - leafStartMs);
+          }
+          perfStats.leavesDrawn += Number.isFinite(leafStats && leafStats.drawn) ? leafStats.drawn : 0;
+          perfStats.leavesCulled += Number.isFinite(leafStats && leafStats.culled) ? leafStats.culled : 0;
+        }
+      } else {
+        renderBranch(branch, {
+          visibleLength,
+          branchTextures,
+          leavesConfig,
+          branchIndex: i,
+          nowMs: renderTimestampMs,
+          perfStats,
+        });
+      }
     }
   }
 
