@@ -221,6 +221,59 @@
     },
   },
 
+  mastersound: {
+    enabled: true, // set to true to enable master sound system
+    // Parallel lists: each index corresponds to one sound effect
+    filePaths: [
+      // './sound1.mp3',
+      // './sound2.mp3',
+      // './sound3.mp3',
+      './woosh_fire.wav',
+      './pop.mp3',
+      './pop_jingle.mp3',
+      
+
+    ],
+    triggerFrames: [
+      // 150,
+      // 200,
+      // 300,
+      126,
+      222,
+      226,
+    ],
+    delaysMs: [
+      // 0,
+      // 100,
+      // 50,
+      0,
+      0,
+      0,
+    ],
+    volumes: [
+      // 1.0, // volume level (0.0 to 1.0)
+      // 0.8,
+      // 0.5,
+      0.5,
+      1,
+      1,
+
+    ],
+    enabledFlags: [
+      // 1, // 1 = enabled, 0 = disabled
+      // 1,
+      // 0,
+      1,
+      1,
+      1,
+    ],
+    backgroundMusic: {
+      enabled: false, // set to true to enable background music
+      filePath: './background_music.mp3', // path to background music file relative to script location
+      volume: 0.5, // volume level (0.0 to 1.0)
+    },
+  },
+
   heroPlaybackGate: {
     enabled: true,
     frameRate: 30,
@@ -246,6 +299,14 @@
       diameterRatio: 0.092, // 6.2% of rendered video size (min(width,height))
       hitMarginPercentOfButtonSize: 200, // 0..100 extra size percentage
       enableBeforeIntroPauseFrames: 10, // enable interaction this many frames before introPauseFrame
+      sound: {
+        enabled: true, // set to true to enable sound effect
+        // filePath: './open_win.wav', // path to sound file relative to script location
+        filePath: './open.mp3', // path to sound file relative to script location
+
+        delayMs: 0, // delay in milliseconds before playing sound
+        volume: 1.0, // volume level (0.0 to 1.0)
+      },
     },
     wiggleButton: {
       enabled: true,
@@ -783,7 +844,7 @@
     mixRatios: {
 
       lily: 1,
-      blue: 1,
+      blue: 0.8,
     },
     endpointDirectionTailLengthPx: 26,
     endpointDirectionSampleCount: 5,

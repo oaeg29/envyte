@@ -2526,6 +2526,12 @@ const STATE = {
   wash2LoopCounter: 0,
   wash2LastTriggeredLoopCounter: -1,
   wash2TriggeredOnce: false,
+  masterSound: {
+    triggeredFrames: new Set(),
+    lastFrame: null,
+    backgroundMusicAudio: null,
+    backgroundMusicStarted: false,
+  },
   flowerSystem: null,
   flowerInteractionRafId: null,
   flowerPerfLastLogMs: 0,
@@ -3515,6 +3521,180 @@ function isPointInsideOffshootCenterBlock(point, area) {
   );
 }
 
+function resolveMasterSoundConfig(configCandidate = CONFIG.mastersound) {
+  const safeConfig = isPlainObjectLiteral(configCandidate) ? configCandidate : {};
+  const rawFilePaths = Array.isArray(safeConfig.filePaths) ? safeConfig.filePaths : [];
+  const rawTriggerFrames = Array.isArray(safeConfig.triggerFrames) ? safeConfig.triggerFrames : [];
+  const rawDelaysMs = Array.isArray(safeConfig.delaysMs) ? safeConfig.delaysMs : [];
+  const rawVolumes = Array.isArray(safeConfig.volumes) ? safeConfig.volumes : [];
+  const rawEnabledFlags = Array.isArray(safeConfig.enabledFlags) ? safeConfig.enabledFlags : [];
+
+  const maxLength = Math.max(rawFilePaths.length, rawTriggerFrames.length, rawDelaysMs.length, rawVolumes.length, rawEnabledFlags.length);
+  const sounds = [];
+
+  for (let i = 0; i < maxLength; i += 1) {
+    const filePath = (
+      typeof rawFilePaths[i] === 'string'
+      && rawFilePaths[i].trim().length > 0
+    )
+      ? rawFilePaths[i].trim()
+      : '';
+    const triggerFrame = Number.isFinite(Number(rawTriggerFrames[i]))
+      ? Math.max(0, Math.floor(Number(rawTriggerFrames[i])))
+      : null;
+    const delayMs = Number.isFinite(Number(rawDelaysMs[i]))
+      ? Math.max(0, Number(rawDelaysMs[i]))
+      : 0;
+    const volume = clamp(
+      Number.isFinite(Number(rawVolumes[i])) ? Number(rawVolumes[i]) : 1.0,
+      0,
+      1,
+    );
+    const enabledFlag = rawEnabledFlags[i] === 1;
+
+    if (filePath.length > 0 && triggerFrame !== null) {
+      sounds.push({
+        filePath,
+        triggerFrame,
+        delayMs,
+        volume,
+        enabled: enabledFlag,
+      });
+    }
+  }
+
+  // Parse background music config
+  const safeBackgroundMusicConfig = isPlainObjectLiteral(safeConfig.backgroundMusic)
+    ? safeConfig.backgroundMusic
+    : {};
+  const backgroundMusic = {
+    enabled: safeBackgroundMusicConfig.enabled === true,
+    filePath: (
+      typeof safeBackgroundMusicConfig.filePath === 'string'
+      && safeBackgroundMusicConfig.filePath.trim().length > 0
+    )
+      ? safeBackgroundMusicConfig.filePath.trim()
+      : '',
+    volume: clamp(
+      Number.isFinite(Number(safeBackgroundMusicConfig.volume))
+        ? Number(safeBackgroundMusicConfig.volume)
+        : 0.5,
+      0,
+      1,
+    ),
+  };
+
+  return {
+    enabled: safeConfig.enabled === true,
+    sounds,
+    backgroundMusic,
+  };
+}
+
+function playSoundWithDelay(filePath, delayMs, volume = 1.0) {
+  const playAudio = () => {
+    try {
+      const audio = new Audio(filePath);
+      audio.volume = Math.max(0, Math.min(1, volume));
+      audio.play().catch((err) => {
+        console.warn(`Failed to play sound: ${filePath}`, err.message);
+      });
+    } catch (err) {
+      console.warn(`Failed to create audio for sound: ${filePath}`, err.message);
+    }
+  };
+
+  if (delayMs > 0) {
+    setTimeout(playAudio, delayMs);
+  } else {
+    playAudio();
+  }
+}
+
+function checkAndTriggerMasterSounds(currentFrame) {
+  const masterSoundConfig = resolveMasterSoundConfig();
+  if (!masterSoundConfig.enabled || !STATE.masterSound) {
+    return;
+  }
+
+  const masterSoundState = STATE.masterSound;
+
+  // Detect video loop by checking if current frame is less than previous frame
+  if (typeof masterSoundState.lastFrame === 'number' && currentFrame < masterSoundState.lastFrame) {
+    resetMasterSoundTriggeredFrames();
+  }
+  masterSoundState.lastFrame = currentFrame;
+
+  const sounds = masterSoundConfig.sounds;
+
+  for (let i = 0; i < sounds.length; i += 1) {
+    const sound = sounds[i];
+    if (!sound.enabled) {
+      continue;
+    }
+
+    // Check if this sound has already been triggered
+    if (masterSoundState.triggeredFrames.has(sound.triggerFrame)) {
+      continue;
+    }
+
+    // Check if current frame matches trigger frame
+    if (currentFrame === sound.triggerFrame) {
+      masterSoundState.triggeredFrames.add(sound.triggerFrame);
+      playSoundWithDelay(sound.filePath, sound.delayMs, sound.volume);
+    }
+  }
+}
+
+function resetMasterSoundTriggeredFrames() {
+  if (STATE.masterSound && STATE.masterSound.triggeredFrames) {
+    STATE.masterSound.triggeredFrames.clear();
+  }
+}
+
+function startBackgroundMusic() {
+  const masterSoundConfig = resolveMasterSoundConfig();
+  if (!masterSoundConfig.enabled || !masterSoundConfig.backgroundMusic.enabled) {
+    return;
+  }
+
+  if (!masterSoundConfig.backgroundMusic.filePath) {
+    console.warn('Background music file path is empty');
+    return;
+  }
+
+  if (STATE.masterSound.backgroundMusicStarted) {
+    return;
+  }
+
+  try {
+    const audio = new Audio(masterSoundConfig.backgroundMusic.filePath);
+    audio.loop = true;
+    audio.volume = masterSoundConfig.backgroundMusic.volume;
+    audio.play().catch((err) => {
+      console.warn('Failed to play background music:', err.message);
+    });
+
+    STATE.masterSound.backgroundMusicAudio = audio;
+    STATE.masterSound.backgroundMusicStarted = true;
+  } catch (err) {
+    console.warn('Failed to create background audio:', err.message);
+  }
+}
+
+function stopBackgroundMusic() {
+  if (STATE.masterSound.backgroundMusicAudio) {
+    try {
+      STATE.masterSound.backgroundMusicAudio.pause();
+      STATE.masterSound.backgroundMusicAudio.currentTime = 0;
+      STATE.masterSound.backgroundMusicAudio = null;
+    } catch (err) {
+      console.warn('Failed to stop background music:', err.message);
+    }
+  }
+  STATE.masterSound.backgroundMusicStarted = false;
+}
+
 function resolveHeroPlaybackGateConfig(configCandidate = CONFIG.heroPlaybackGate) {
   const safeConfig = isPlainObjectLiteral(configCandidate) ? configCandidate : {};
   const safeLegacyButtonConfig = isPlainObjectLiteral(safeConfig.button) ? safeConfig.button : {};
@@ -3557,6 +3737,7 @@ function resolveHeroPlaybackGateConfig(configCandidate = CONFIG.heroPlaybackGate
   const monitorUseVideoFrameCallback = safeConfig.monitorUseVideoFrameCallback !== false;
   const postButtonPauseFrame = Math.max(introPauseFrame, postButtonPauseFrameRaw);
   const growthStartFrame = Math.min(growthStartFrameRaw, postButtonPauseFrame);
+  const safeOpenButtonSoundConfig = isPlainObjectLiteral(safeOpenButtonConfig.sound) ? safeOpenButtonConfig.sound : {};
   const openButton = {
     centerXRatio: clamp(
       Number.isFinite(Number(safeOpenButtonConfig.centerXRatio)) ? Number(safeOpenButtonConfig.centerXRatio) : 0.498,
@@ -3582,6 +3763,23 @@ function resolveHeroPlaybackGateConfig(configCandidate = CONFIG.heroPlaybackGate
     enableBeforeIntroPauseFrames: Number.isFinite(Number(safeOpenButtonConfig.enableBeforeIntroPauseFrames))
       ? Math.max(0, Math.floor(Number(safeOpenButtonConfig.enableBeforeIntroPauseFrames)))
       : 10,
+    sound: {
+      enabled: safeOpenButtonSoundConfig.enabled === true,
+      filePath: (
+        typeof safeOpenButtonSoundConfig.filePath === 'string'
+        && safeOpenButtonSoundConfig.filePath.trim().length > 0
+      )
+        ? safeOpenButtonSoundConfig.filePath.trim()
+        : '',
+      delayMs: Number.isFinite(Number(safeOpenButtonSoundConfig.delayMs))
+        ? Math.max(0, Number(safeOpenButtonSoundConfig.delayMs))
+        : 0,
+      volume: clamp(
+        Number.isFinite(Number(safeOpenButtonSoundConfig.volume)) ? Number(safeOpenButtonSoundConfig.volume) : 1.0,
+        0,
+        1,
+      ),
+    },
   };
   const openButtonDebug = {
     enabled: safeOpenButtonDebugConfig.enabled === true,
@@ -6294,6 +6492,9 @@ function runHeroPlaybackGateMonitorStep(
   if (enforceHeroPlaybackGatePauseFrames(currentFrame, gateConfig)) {
     return;
   }
+
+  checkAndTriggerMasterSounds(currentFrame);
+
   maybeRenderHeroPlaybackGateVisuals(currentFrame, gateConfig, nowMs);
 
   if (video && video.paused !== true) {
@@ -6431,9 +6632,35 @@ function tryHandleHeroPlaybackOpenButtonClick(event) {
   }
   ensureHeroPlaybackGateMonitorRunning();
   renderScene({ skipAutoStart: true });
+  preloadSwipeSectionsOverlayImages();
   if (event && typeof event.preventDefault === 'function') {
     event.preventDefault();
   }
+
+  // Play sound effect if configured
+  const buttonConfig = gateConfig.openButton;
+  if (buttonConfig && buttonConfig.sound && buttonConfig.sound.enabled === true) {
+    const soundConfig = buttonConfig.sound;
+    if (soundConfig.filePath && soundConfig.filePath.length > 0) {
+      const playSound = () => {
+        try {
+          const audio = new Audio(soundConfig.filePath);
+          audio.volume = Math.max(0, Math.min(1, soundConfig.volume || 1.0));
+          audio.play().catch((err) => {
+            console.warn('Failed to play open button sound:', err.message);
+          });
+        } catch (err) {
+          console.warn('Failed to create audio for open button sound:', err.message);
+        }
+      };
+      if (soundConfig.delayMs > 0) {
+        setTimeout(playSound, soundConfig.delayMs);
+      } else {
+        playSound();
+      }
+    }
+  }
+
   return true;
 }
 
@@ -6609,6 +6836,13 @@ function startHeroPlaybackGateFlow(options = null) {
           });
         }
       }, 180);
+    });
+  }
+  if (playbackPromise && typeof playbackPromise.then === 'function') {
+    playbackPromise.then(() => {
+      startBackgroundMusic();
+    }).catch(() => {
+      // If play fails, don't start background music
     });
   }
   ensureHeroPlaybackGateMonitorRunning();
