@@ -7150,6 +7150,18 @@ function isSpriteCircleFullyInsideHiddenBand(centerX, centerY, radius, hiddenBan
   );
 }
 
+function isSpriteCircleFullyInsideAnyHiddenBand(centerX, centerY, radius, hiddenBands, innerPaddingPx = 0) {
+  if (!Array.isArray(hiddenBands)) {
+    return false;
+  }
+  for (let i = 0; i < hiddenBands.length; i += 1) {
+    if (isSpriteCircleFullyInsideHiddenBand(centerX, centerY, radius, hiddenBands[i], innerPaddingPx)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function buildViewportSideBands(cssWidth, paddingPx) {
   const w = Number.isFinite(cssWidth) ? Math.max(0, cssWidth) : 0;
   const p = Number.isFinite(paddingPx) ? paddingPx : 0;
@@ -13684,16 +13696,8 @@ function drawBranchLeaves(branch, leavesConfig, renderOptions = {}) {
   )
     ? renderOptions.hiddenSpriteCullDebugBudget
     : null;
-  const skipFullyHiddenInBand = renderOptions.skipFullyHiddenInBand === true
-    && hiddenBand
-    && Number.isFinite(hiddenBand.centerX)
-    && resolveHiddenBandEffectiveHalfWidthForYRange(hiddenBand, 0, STATE.viewportHeight) > hiddenSpriteCullInnerPaddingPx;
-  const viewportLeftBand = renderOptions.viewportLeftBand && typeof renderOptions.viewportLeftBand === 'object'
-    ? renderOptions.viewportLeftBand
-    : null;
-  const viewportRightBand = renderOptions.viewportRightBand && typeof renderOptions.viewportRightBand === 'object'
-    ? renderOptions.viewportRightBand
-    : null;
+  const hiddenBands = Array.isArray(renderOptions.hiddenBands) ? renderOptions.hiddenBands : (hiddenBand ? [hiddenBand] : []);
+  const skipFullyHiddenInBand = renderOptions.skipFullyHiddenInBand === true && hiddenBands.length > 0;
   let drawn = 0;
   let culled = 0;
   let skippedHidden = 0;
@@ -13731,11 +13735,11 @@ function drawBranchLeaves(branch, leavesConfig, renderOptions = {}) {
     const spriteCenterX = leaf.x + (centerLocalX * drawCos) - (centerLocalY * drawSin);
     const spriteCenterY = leaf.y + (centerLocalX * drawSin) + (centerLocalY * drawCos);
     if (skipFullyHiddenInBand) {
-      const hiddenByOverlayBand = isSpriteCircleFullyInsideHiddenBand(
+      const hiddenByBand = isSpriteCircleFullyInsideAnyHiddenBand(
         spriteCenterX,
         spriteCenterY,
         spriteRadius,
-        hiddenBand,
+        hiddenBands,
         hiddenSpriteCullInnerPaddingPx,
       );
       drawHiddenSpriteCullDebugCircle(
@@ -13743,22 +13747,14 @@ function drawBranchLeaves(branch, leavesConfig, renderOptions = {}) {
         spriteCenterX,
         spriteCenterY,
         spriteRadius,
-        hiddenByOverlayBand,
+        hiddenByBand,
         hiddenSpriteCullDebug,
         hiddenSpriteCullDebugBudget,
       );
-      if (hiddenByOverlayBand) {
+      if (hiddenByBand) {
         skippedHidden += 1;
         continue;
       }
-    }
-    if (viewportLeftBand && isSpriteCircleFullyInsideHiddenBand(spriteCenterX, spriteCenterY, spriteRadius, viewportLeftBand, 0)) {
-      skippedHidden += 1;
-      continue;
-    }
-    if (viewportRightBand && isSpriteCircleFullyInsideHiddenBand(spriteCenterX, spriteCenterY, spriteRadius, viewportRightBand, 0)) {
-      skippedHidden += 1;
-      continue;
     }
     const sourceRect = getLeafSpriteSourceRect(leavesConfig, leaf.col, leaf.row);
     targetCtx.translate(leaf.x, leaf.y);
@@ -13780,7 +13776,7 @@ function drawBranchLeaves(branch, leavesConfig, renderOptions = {}) {
   return { drawn, culled, skippedHidden };
 }
 
-function drawLeafOverlayFast(leavesConfig, nowMs, targetCtx = ctx, viewportLeftBand = null, viewportRightBand = null) {
+function drawLeafOverlayFast(leavesConfig, nowMs, targetCtx = ctx, hiddenBands = []) {
   if (!leavesConfig || !leavesConfig.enabled || !STATE.leafImage || !targetCtx) {
     return { drawn: 0, culled: 0 };
   }
@@ -13797,7 +13793,7 @@ function drawLeafOverlayFast(leavesConfig, nowMs, targetCtx = ctx, viewportLeftB
     const drawSize = Number.isFinite(leaf.drawSize) ? Math.max(1, leaf.drawSize) : leavesConfig.drawSize;
     const drawX = -drawSize * 0.5;
     const drawY = -drawSize + ((2.2 / leavesConfig.spriteCellHeight) * drawSize);
-    if (viewportLeftBand || viewportRightBand) {
+    if (hiddenBands.length > 0) {
       const spriteRadius = Math.hypot(drawSize * 0.5, drawSize * 0.5);
       const centerLocalX = drawX + (drawSize * 0.5);
       const centerLocalY = drawY + (drawSize * 0.5);
@@ -13806,11 +13802,7 @@ function drawLeafOverlayFast(leavesConfig, nowMs, targetCtx = ctx, viewportLeftB
       const drawSin = Math.sin(rotRad);
       const spriteCenterX = leaf.x + (centerLocalX * drawCos) - (centerLocalY * drawSin);
       const spriteCenterY = leaf.y + (centerLocalX * drawSin) + (centerLocalY * drawCos);
-      if (viewportLeftBand && isSpriteCircleFullyInsideHiddenBand(spriteCenterX, spriteCenterY, spriteRadius, viewportLeftBand, 0)) {
-        culled += 1;
-        continue;
-      }
-      if (viewportRightBand && isSpriteCircleFullyInsideHiddenBand(spriteCenterX, spriteCenterY, spriteRadius, viewportRightBand, 0)) {
+      if (isSpriteCircleFullyInsideAnyHiddenBand(spriteCenterX, spriteCenterY, spriteRadius, hiddenBands, 0)) {
         culled += 1;
         continue;
       }
@@ -13844,7 +13836,7 @@ function drawLeafOverlayFast(leavesConfig, nowMs, targetCtx = ctx, viewportLeftB
   return { drawn, culled };
 }
 
-function drawCommittedBranchLeavesFast(branch, leavesConfig, completedLayerCtx, mainCtx, branchIndex, nowMs, viewportLeftBand = null, viewportRightBand = null) {
+function drawCommittedBranchLeavesFast(branch, leavesConfig, completedLayerCtx, mainCtx, branchIndex, nowMs, hiddenBands = []) {
   if (!branch || !leavesConfig || !leavesConfig.enabled || !STATE.leafImage) {
     return { drawn: 0, culled: 0 };
   }
@@ -13871,7 +13863,7 @@ function drawCommittedBranchLeavesFast(branch, leavesConfig, completedLayerCtx, 
     const drawX = -drawSize * 0.5;
     const drawY = -drawSize + ((2.2 / leavesConfig.spriteCellHeight) * drawSize);
 
-    if (viewportLeftBand || viewportRightBand) {
+    if (hiddenBands.length > 0) {
       const spriteRadius = Math.hypot(drawSize * 0.5, drawSize * 0.5);
       const centerLocalX = drawX + (drawSize * 0.5);
       const centerLocalY = drawY + (drawSize * 0.5);
@@ -13880,11 +13872,7 @@ function drawCommittedBranchLeavesFast(branch, leavesConfig, completedLayerCtx, 
       const drawSin = Math.sin(rotRad);
       const spriteCenterX = leaf.x + (centerLocalX * drawCos) - (centerLocalY * drawSin);
       const spriteCenterY = leaf.y + (centerLocalX * drawSin) + (centerLocalY * drawCos);
-      if (viewportLeftBand && isSpriteCircleFullyInsideHiddenBand(spriteCenterX, spriteCenterY, spriteRadius, viewportLeftBand, 0)) {
-        culled += 1;
-        continue;
-      }
-      if (viewportRightBand && isSpriteCircleFullyInsideHiddenBand(spriteCenterX, spriteCenterY, spriteRadius, viewportRightBand, 0)) {
+      if (isSpriteCircleFullyInsideAnyHiddenBand(spriteCenterX, spriteCenterY, spriteRadius, hiddenBands, 0)) {
         culled += 1;
         continue;
       }
@@ -17458,12 +17446,7 @@ function renderBranch(branch, renderOptions = {}) {
   )
     ? renderOptions.hiddenSpriteCullDebugBudget
     : null;
-  const viewportLeftBand = renderOptions.viewportLeftBand && typeof renderOptions.viewportLeftBand === 'object'
-    ? renderOptions.viewportLeftBand
-    : null;
-  const viewportRightBand = renderOptions.viewportRightBand && typeof renderOptions.viewportRightBand === 'object'
-    ? renderOptions.viewportRightBand
-    : null;
+  const hiddenBands = Array.isArray(renderOptions.hiddenBands) ? renderOptions.hiddenBands : (hiddenBand ? [hiddenBand] : []);
   const branchTextures = renderOptions.branchTextures || getBranchStemTextures(branch, CONFIG.brush);
   if (!branchTextures || !branchTextures.defaultImage) {
     return { backSkippedStems: 0, backSkippedLeaves: 0 };
@@ -17495,13 +17478,12 @@ function renderBranch(branch, renderOptions = {}) {
     branchIndex,
     nowMs,
     hiddenBand,
+    hiddenBands,
     skipFullyHiddenInBand,
     hiddenSpriteCullInnerPaddingPx,
     hiddenSpriteCullRadiusScale,
     hiddenSpriteCullDebug,
     hiddenSpriteCullDebugBudget,
-    viewportLeftBand,
-    viewportRightBand,
   });
   if (perfStats) {
     if (leafStartMs > 0) {
@@ -17574,12 +17556,7 @@ function drawOverlayBranchRangeWithStemCache(options = {}) {
   )
     ? options.hiddenSpriteCullDebugBudget
     : null;
-  const viewportLeftBand = options.viewportLeftBand && typeof options.viewportLeftBand === 'object'
-    ? options.viewportLeftBand
-    : null;
-  const viewportRightBand = options.viewportRightBand && typeof options.viewportRightBand === 'object'
-    ? options.viewportRightBand
-    : null;
+  const hiddenBands = Array.isArray(options.hiddenBands) ? options.hiddenBands : (hiddenBand ? [hiddenBand] : []);
   if (!branch || !branch.pathData || !branchTextures || !branchTextures.defaultImage || !targetCtx) {
     return;
   }
@@ -17673,13 +17650,12 @@ function drawOverlayBranchRangeWithStemCache(options = {}) {
     branchIndex,
     nowMs,
     hiddenBand,
+    hiddenBands,
     skipFullyHiddenInBand,
     hiddenSpriteCullInnerPaddingPx,
     hiddenSpriteCullRadiusScale,
     hiddenSpriteCullDebug,
     hiddenSpriteCullDebugBudget,
-    viewportLeftBand,
-    viewportRightBand,
   });
   if (perfStats) {
     if (leafStartMs > 0) {
@@ -17747,10 +17723,10 @@ function renderScene(options = {}) {
   const viewportSideBands = viewportSideCullEnabled
     ? buildViewportSideBands(STATE.viewportWidth, viewportSideCullPaddingPx)
     : null;
-  if (viewportSideBands && !renderScene._sideBandLogged) {
-    renderScene._sideBandLogged = true;
-    console.log('[sideBands] w=', STATE.viewportWidth, 'p=', viewportSideCullPaddingPx, 'left.centerX=', viewportSideBands.leftBand.centerX, 'left.halfW=', viewportSideBands.leftBand.topHalfWidthPx, 'right.centerX=', viewportSideBands.rightBand.centerX);
-  }
+  const hiddenBands = [
+    ...(hiddenBand ? [hiddenBand] : []),
+    ...(viewportSideBands ? [viewportSideBands.leftBand, viewportSideBands.rightBand] : []),
+  ];
   const hiddenSpriteCullDebug = (overlayWrapActive && overlayWrapConfig.debugHiddenSpriteCullCirclesEnabled === true)
     ? {
       enabled: true,
@@ -17813,13 +17789,20 @@ function renderScene(options = {}) {
   let completedLayer = null;
   let completedLayerBack = null;
   let completedLayerFront = null;
+  const viewportSideBandKey = viewportSideBands
+    ? `${STATE.viewportWidth}:${viewportSideCullPaddingPx}`
+    : '';
   if (useSingleCompletedLayer) {
     completedLayer = ensureCompletedBranchLayer('single');
-    if (completedLayer.leavesConfigKey !== leavesConfig.cacheKey) {
+    if (
+      completedLayer.leavesConfigKey !== leavesConfig.cacheKey
+      || completedLayer.viewportSideBandKey !== viewportSideBandKey
+    ) {
       invalidateCompletedBranchLayer('single');
       completedLayer = ensureCompletedBranchLayer('single');
     }
     completedLayer.leavesConfigKey = leavesConfig.cacheKey;
+    completedLayer.viewportSideBandKey = viewportSideBandKey;
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.drawImage(completedLayer.canvas, 0, 0);
@@ -17831,6 +17814,19 @@ function renderScene(options = {}) {
   } else if (useDualCompletedLayer) {
     completedLayerBack = ensureCompletedBranchLayer('back');
     completedLayerFront = ensureCompletedBranchLayer('front');
+    if (
+      completedLayerBack.leavesConfigKey !== leavesConfig.cacheKey
+      || completedLayerBack.viewportSideBandKey !== viewportSideBandKey
+    ) {
+      invalidateCompletedBranchLayer('back');
+      invalidateCompletedBranchLayer('front');
+      completedLayerBack = ensureCompletedBranchLayer('back');
+      completedLayerFront = ensureCompletedBranchLayer('front');
+    }
+    completedLayerBack.leavesConfigKey = leavesConfig.cacheKey;
+    completedLayerBack.viewportSideBandKey = viewportSideBandKey;
+    completedLayerFront.leavesConfigKey = leavesConfig.cacheKey;
+    completedLayerFront.viewportSideBandKey = viewportSideBandKey;
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.drawImage(completedLayerBack.canvas, 0, 0);
@@ -17954,13 +17950,12 @@ function renderScene(options = {}) {
           cacheLayer: completedLayerBack,
           perfStats,
           hiddenBand,
+          hiddenBands,
           skipFullyHiddenInBand: overlayWrapConfig.skipHiddenBackDrawEnabled === true,
           hiddenSpriteCullInnerPaddingPx: overlayWrapConfig.spriteHiddenCullInnerPaddingPx,
           hiddenSpriteCullRadiusScale: overlayWrapConfig.spriteHiddenCullRadiusScale,
           hiddenSpriteCullDebug,
           hiddenSpriteCullDebugBudget,
-          viewportLeftBand: viewportSideBands && viewportSideBands.leftBand,
-          viewportRightBand: viewportSideBands && viewportSideBands.rightBand,
         });
         drawOverlayBranchRangeWithStemCache({
           branch,
@@ -17975,6 +17970,7 @@ function renderScene(options = {}) {
           cacheLayer: completedLayerFront,
           perfStats,
           hiddenBand: null,
+          hiddenBands: viewportSideBands ? [viewportSideBands.leftBand, viewportSideBands.rightBand] : [],
           skipFullyHiddenInBand: false,
         });
       } else {
@@ -17988,13 +17984,12 @@ function renderScene(options = {}) {
           targetCtx: ctx,
           perfStats,
           hiddenBand,
+          hiddenBands,
           skipFullyHiddenInBand: overlayWrapConfig.skipHiddenBackDrawEnabled === true,
           hiddenSpriteCullInnerPaddingPx: overlayWrapConfig.spriteHiddenCullInnerPaddingPx,
           hiddenSpriteCullRadiusScale: overlayWrapConfig.spriteHiddenCullRadiusScale,
           hiddenSpriteCullDebug,
           hiddenSpriteCullDebugBudget,
-          viewportLeftBand: viewportSideBands && viewportSideBands.leftBand,
-          viewportRightBand: viewportSideBands && viewportSideBands.rightBand,
         });
         if (frontCtx) {
           renderBranch(branch, {
@@ -18007,9 +18002,8 @@ function renderScene(options = {}) {
             targetCtx: frontCtx,
             perfStats,
             hiddenBand: null,
+            hiddenBands: viewportSideBands ? [viewportSideBands.leftBand, viewportSideBands.rightBand] : [],
             skipFullyHiddenInBand: false,
-            viewportLeftBand: viewportSideBands && viewportSideBands.leftBand,
-            viewportRightBand: viewportSideBands && viewportSideBands.rightBand,
           });
         }
       }
@@ -18023,8 +18017,7 @@ function renderScene(options = {}) {
       leavesConfig,
       renderTimestampMs,
       ctx,
-      viewportSideBands && viewportSideBands.leftBand,
-      viewportSideBands && viewportSideBands.rightBand,
+      hiddenBands,
     );
     if (perfEnabled) {
       perfStats.leafDrawMs += Math.max(0, performance.now() - leafStartMs);
@@ -18058,8 +18051,7 @@ function renderScene(options = {}) {
                 ctx,
                 i,
                 renderTimestampMs,
-                viewportSideBands && viewportSideBands.leftBand,
-                viewportSideBands && viewportSideBands.rightBand,
+                hiddenBands,
               );
               if (perfEnabled) {
                 perfStats.leafDrawMs += Math.max(0, performance.now() - leafStartMs);
@@ -18097,8 +18089,7 @@ function renderScene(options = {}) {
               null,
               i,
               renderTimestampMs,
-              viewportSideBands && viewportSideBands.leftBand,
-              viewportSideBands && viewportSideBands.rightBand,
+              hiddenBands,
             );
           }
           // Draw once on this frame since layer blit already happened earlier.
@@ -18109,8 +18100,7 @@ function renderScene(options = {}) {
             branchIndex: i,
             nowMs: renderTimestampMs,
             perfStats,
-            viewportLeftBand: viewportSideBands && viewportSideBands.leftBand,
-            viewportRightBand: viewportSideBands && viewportSideBands.rightBand,
+            hiddenBands,
           });
           continue;
         }
@@ -18190,8 +18180,7 @@ function renderScene(options = {}) {
               ctx,
               i,
               renderTimestampMs,
-              viewportSideBands && viewportSideBands.leftBand,
-              viewportSideBands && viewportSideBands.rightBand,
+              hiddenBands,
             );
           } else {
             leafStats = drawBranchLeaves(branch, leavesConfig, {
@@ -18200,8 +18189,8 @@ function renderScene(options = {}) {
               branchIndex: i,
               nowMs: renderTimestampMs,
               perfStats,
-              viewportLeftBand: viewportSideBands && viewportSideBands.leftBand,
-              viewportRightBand: viewportSideBands && viewportSideBands.rightBand,
+              hiddenBands,
+              skipFullyHiddenInBand: true,
             });
           }
           if (perfEnabled) {
@@ -18218,8 +18207,8 @@ function renderScene(options = {}) {
           branchIndex: i,
           nowMs: renderTimestampMs,
           perfStats,
-          viewportLeftBand: viewportSideBands && viewportSideBands.leftBand,
-          viewportRightBand: viewportSideBands && viewportSideBands.rightBand,
+          hiddenBands,
+          skipFullyHiddenInBand: true,
         });
       }
     }
@@ -18271,12 +18260,11 @@ function renderScene(options = {}) {
           clearFront: false,
           branchFilter: backBranchFilter,
           hiddenBand,
+          hiddenBands,
           skipHiddenBackDrawEnabled: overlayWrapConfig.skipHiddenBackDrawEnabled === true,
           hiddenSpriteCullInnerPaddingPx: overlayWrapConfig.spriteHiddenCullInnerPaddingPx,
           hiddenSpriteCullRadiusScale: overlayWrapConfig.spriteHiddenCullRadiusScale,
           hiddenSpriteCullDebug,
-          viewportLeftBand: viewportSideBands && viewportSideBands.leftBand,
-          viewportRightBand: viewportSideBands && viewportSideBands.rightBand,
         },
         false,
       );
@@ -18297,8 +18285,7 @@ function renderScene(options = {}) {
             layerName: 'front',
             skipUpdate: true,
             branchFilter: frontBranchFilter,
-            viewportLeftBand: viewportSideBands && viewportSideBands.leftBand,
-            viewportRightBand: viewportSideBands && viewportSideBands.rightBand,
+            hiddenBands: viewportSideBands ? [viewportSideBands.leftBand, viewportSideBands.rightBand] : [],
           },
           true,
         );
@@ -18318,8 +18305,7 @@ function renderScene(options = {}) {
           layerName: 'back',
           clearFront: true,
           branchFilter: isBranchFlowerEndpointVisible,
-          viewportLeftBand: viewportSideBands && viewportSideBands.leftBand,
-          viewportRightBand: viewportSideBands && viewportSideBands.rightBand,
+          hiddenBands,
         },
       );
       if (flowerTiming) {

@@ -181,7 +181,7 @@
       },
     ],
     debug: {
-      enabled: true,
+      enabled: false,
       drawOnFrontLayer: true,
       strokeStyle: 'rgba(255, 120, 70, 0.95)',
       fillStyle: 'rgba(255, 120, 70, 0.12)',
@@ -844,7 +844,7 @@
     leafSpriteViewportCullPaddingPx: -50, // +100 = render 100px outside viewport, -100 = cull 100px inside viewport (aggressive)
     flowerViewportCullingEnabled: true,
     flowerSpriteViewportCullingEnabled: true, // Enable per-petal viewport culling
-    flowerSpriteViewportCullPaddingPx: -60, // +100 = cull 100px outside viewport (prevent pop-in), -50 = cull 50px inside viewport (aggressive)
+    flowerSpriteViewportCullPaddingPx: 10, // +100 = cull 100px outside viewport (prevent pop-in), -50 = cull 50px inside viewport (aggressive)
     swayFastPathEnabled: true,
     swayPerfLogEnabled: false,
 

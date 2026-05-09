@@ -262,6 +262,18 @@
     );
   }
 
+  function isSpriteCircleFullyInsideAnyHiddenBand(centerX, centerY, radius, hiddenBands, paddingPx = 0) {
+    if (!Array.isArray(hiddenBands)) {
+      return false;
+    }
+    for (let _i = 0; _i < hiddenBands.length; _i += 1) {
+      if (isSpriteCircleFullyHiddenInBand(centerX, centerY, radius, hiddenBands[_i], paddingPx)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   function resolveSpriteCircleCenterFromDrawTransformInto(
     anchorX,
     anchorY,
@@ -1664,10 +1676,7 @@
     )
       ? drawContext
       : null;
-    const viewportLeftBand = drawContext && drawContext.viewportLeftBand
-      && typeof drawContext.viewportLeftBand === 'object' ? drawContext.viewportLeftBand : null;
-    const viewportRightBand = drawContext && drawContext.viewportRightBand
-      && typeof drawContext.viewportRightBand === 'object' ? drawContext.viewportRightBand : null;
+    const hiddenBands = Array.isArray(drawContext && drawContext.hiddenBands) ? drawContext.hiddenBands : [];
     const hiddenRadiusScale = hiddenSpriteCullContext
       ? sanitizeHiddenSpriteCullRadiusScale(hiddenSpriteCullContext.hiddenRadiusScale, 1)
       : 1;
@@ -1730,7 +1739,7 @@
             continue;
           }
         }
-        if (viewportLeftBand || viewportRightBand) {
+        if (hiddenBands.length > 0) {
           resolveSpriteCircleCenterFromDrawTransformInto(
             x,
             y,
@@ -1741,10 +1750,7 @@
             drawSize,
             centerScratch,
           );
-          if (
-            (viewportLeftBand && isSpriteCircleFullyHiddenInBand(centerScratch.x, centerScratch.y, spriteRadius, viewportLeftBand, 0))
-            || (viewportRightBand && isSpriteCircleFullyHiddenInBand(centerScratch.x, centerScratch.y, spriteRadius, viewportRightBand, 0))
-          ) {
+          if (isSpriteCircleFullyInsideAnyHiddenBand(centerScratch.x, centerScratch.y, spriteRadius, hiddenBands, 0)) {
             continue;
           }
         }
@@ -1904,7 +1910,7 @@
           continue;
         }
       }
-      if (viewportLeftBand || viewportRightBand) {
+      if (hiddenBands.length > 0) {
         resolveSpriteCircleCenterFromDrawTransformInto(
           anchorX,
           anchorY,
@@ -1915,10 +1921,7 @@
           drawSize,
           centerScratch,
         );
-        if (
-          (viewportLeftBand && isSpriteCircleFullyHiddenInBand(centerScratch.x, centerScratch.y, spriteRadius, viewportLeftBand, 0))
-          || (viewportRightBand && isSpriteCircleFullyHiddenInBand(centerScratch.x, centerScratch.y, spriteRadius, viewportRightBand, 0))
-        ) {
+        if (isSpriteCircleFullyInsideAnyHiddenBand(centerScratch.x, centerScratch.y, spriteRadius, hiddenBands, 0)) {
           continue;
         }
       }
@@ -2034,10 +2037,7 @@
     )
       ? drawContext
       : null;
-    const viewportLeftBand = drawContext && drawContext.viewportLeftBand
-      && typeof drawContext.viewportLeftBand === 'object' ? drawContext.viewportLeftBand : null;
-    const viewportRightBand = drawContext && drawContext.viewportRightBand
-      && typeof drawContext.viewportRightBand === 'object' ? drawContext.viewportRightBand : null;
+    const hiddenBands = Array.isArray(drawContext && drawContext.hiddenBands) ? drawContext.hiddenBands : [];
     const hiddenRadiusScale = hiddenSpriteCullContext
       ? sanitizeHiddenSpriteCullRadiusScale(hiddenSpriteCullContext.hiddenRadiusScale, 1)
       : 1;
@@ -2133,10 +2133,7 @@
           continue;
         }
       }
-      if (
-        (viewportLeftBand && isSpriteCircleFullyHiddenInBand(x, y, spriteRadius, viewportLeftBand, 0))
-        || (viewportRightBand && isSpriteCircleFullyHiddenInBand(x, y, spriteRadius, viewportRightBand, 0))
-      ) {
+      if (hiddenBands.length > 0 && isSpriteCircleFullyInsideAnyHiddenBand(x, y, spriteRadius, hiddenBands, 0)) {
         continue;
       }
 
@@ -5042,6 +5039,7 @@
       app,
       hiddenSpriteCullContext = null,
       viewportCullContext = null,
+      hiddenBands = [],
     ) {
       if (!flower) {
         return false;
@@ -5155,15 +5153,8 @@
               continue;
             }
           }
-          if (viewportCullContext) {
-            if (isSpriteCircleOutsideViewport(
-              x,
-              y,
-              spriteRadius,
-              viewportCullContext.viewportBounds,
-            )) {
-              continue;
-            }
+          if (hiddenBands.length > 0 && isSpriteCircleFullyInsideAnyHiddenBand(x, y, spriteRadius, hiddenBands, 0)) {
+            continue;
           }
           const sprite = acquirePixiSprite(layerName, texture, app);
           if (!sprite) {
@@ -5402,7 +5393,7 @@
             continue;
           }
         }
-        if (viewportCullContext) {
+        if (hiddenBands.length > 0) {
           resolveSpriteCircleCenterFromDrawTransformInto(
             anchorWorldX,
             anchorWorldY,
@@ -5413,12 +5404,7 @@
             drawSize,
             centerScratch,
           );
-          if (isSpriteCircleOutsideViewport(
-            centerScratch.x,
-            centerScratch.y,
-            spriteRadius,
-            viewportCullContext.viewportBounds,
-          )) {
+          if (isSpriteCircleFullyInsideAnyHiddenBand(centerScratch.x, centerScratch.y, spriteRadius, hiddenBands, 0)) {
             continue;
           }
         }
@@ -5496,10 +5482,12 @@
       const hiddenSpriteCullRadiusScale = safeDrawOptions
         ? sanitizeHiddenSpriteCullRadiusScale(safeDrawOptions.hiddenSpriteCullRadiusScale, 1)
         : 1;
+      const hiddenBands = Array.isArray(safeDrawOptions && safeDrawOptions.hiddenBands)
+        ? safeDrawOptions.hiddenBands
+        : (hiddenBand ? [hiddenBand] : []);
       const skipHiddenInBand = safeDrawOptions
         && safeDrawOptions.skipHiddenBackDrawEnabled === true
-        && hiddenBand
-        && Number.isFinite(hiddenBand.centerX);
+        && hiddenBands.length > 0;
       const hiddenSpriteCullDebugConfig = resolveHiddenSpriteCullDebugConfig(
         safeDrawOptions ? safeDrawOptions.hiddenSpriteCullDebug : null,
       );
@@ -5521,16 +5509,7 @@
         }
         : null;
 
-      const viewportCullEnabled = safeDrawOptions && safeDrawOptions.viewportCullEnabled === true;
-      const viewportCullPaddingPx = safeDrawOptions && Number.isFinite(safeDrawOptions.viewportCullPaddingPx)
-        ? safeDrawOptions.viewportCullPaddingPx
-        : 0;
-      const viewportCullContext = viewportCullEnabled
-        ? {
-          viewportCullEnabled: true,
-          viewportBounds: resolveFlowerSpriteViewportCullBounds(layerCanvas, viewportCullPaddingPx),
-        }
-        : null;
+      const viewportCullContext = null;
 
       if (hiddenSpriteCullContext && hiddenSpriteCullDebugConfig.enabled) {
         const debugGraphics = ensurePixiHiddenCullDebugGraphics(layerName, app);
@@ -5617,6 +5596,7 @@
               app,
               hiddenSpriteCullContext,
               viewportCullContext,
+              hiddenBands,
             )
           ) {
             drawnCount += 1;
@@ -5717,6 +5697,9 @@
       const hiddenBand = safeDrawOptions && safeDrawOptions.hiddenBand && typeof safeDrawOptions.hiddenBand === 'object'
         ? safeDrawOptions.hiddenBand
         : null;
+      const hiddenBands = Array.isArray(safeDrawOptions && safeDrawOptions.hiddenBands)
+        ? safeDrawOptions.hiddenBands
+        : (hiddenBand ? [hiddenBand] : []);
       const hiddenSpriteCullInnerPaddingPx = safeDrawOptions
         && Number.isFinite(Number(safeDrawOptions.hiddenSpriteCullInnerPaddingPx))
         ? Math.max(0, Number(safeDrawOptions.hiddenSpriteCullInnerPaddingPx))
@@ -5726,8 +5709,7 @@
         : 1;
       const skipHiddenInBand = safeDrawOptions
         && safeDrawOptions.skipHiddenBackDrawEnabled === true
-        && hiddenBand
-        && Number.isFinite(hiddenBand.centerX);
+        && hiddenBands.length > 0;
       const hiddenSpriteCullDebugConfig = resolveHiddenSpriteCullDebugConfig(
         safeDrawOptions ? safeDrawOptions.hiddenSpriteCullDebug : null,
       );
@@ -5747,20 +5729,10 @@
         }
         : null;
 
-      const viewportLeftBand = safeDrawOptions && safeDrawOptions.viewportLeftBand
-        && typeof safeDrawOptions.viewportLeftBand === 'object'
-        ? safeDrawOptions.viewportLeftBand
-        : null;
-      const viewportRightBand = safeDrawOptions && safeDrawOptions.viewportRightBand
-        && typeof safeDrawOptions.viewportRightBand === 'object'
-        ? safeDrawOptions.viewportRightBand
-        : null;
-
-      const drawContext = (hiddenSpriteCullDrawContext || viewportLeftBand || viewportRightBand)
+      const drawContext = (hiddenSpriteCullDrawContext || hiddenBands.length > 0)
         ? {
           ...hiddenSpriteCullDrawContext,
-          viewportLeftBand,
-          viewportRightBand,
+          hiddenBands,
         }
         : null;
 
@@ -5835,31 +5807,23 @@
             flower.renderHoverInfluence = Number.isFinite(flower.hoverInfluence) ? flower.hoverInfluence : 0;
             flower.renderMotionTime = Number.isFinite(flower.motionTime) ? flower.motionTime : 0;
           }
-          if (
-            viewportLeftBand
-            && isFlowerFullyHiddenInOverlayBand(flower, commonConfig, viewportLeftBand, 0)
-          ) {
-            culledCount += 1;
-            continue;
-          }
-          if (
-            viewportRightBand
-            && isFlowerFullyHiddenInOverlayBand(flower, commonConfig, viewportRightBand, 0)
-          ) {
-            culledCount += 1;
-            continue;
-          }
-          if (
-            skipHiddenInBand
-            && isFlowerFullyHiddenInOverlayBand(
-              flower,
-              commonConfig,
-              hiddenBand,
-              hiddenSpriteCullInnerPaddingPx,
-            )
-          ) {
-            skippedHiddenCount += 1;
-            continue;
+          if (hiddenBands.length > 0) {
+            let culledByBand = false;
+            for (let b = 0; b < hiddenBands.length; b += 1) {
+              const paddingPx = (skipHiddenInBand && b === 0 && hiddenBand) ? hiddenSpriteCullInnerPaddingPx : 0;
+              if (isFlowerFullyHiddenInOverlayBand(flower, commonConfig, hiddenBands[b], paddingPx)) {
+                if (skipHiddenInBand && b === 0 && hiddenBand) {
+                  skippedHiddenCount += 1;
+                } else {
+                  culledCount += 1;
+                }
+                culledByBand = true;
+                break;
+              }
+            }
+            if (culledByBand) {
+              continue;
+            }
           }
 
           const shouldBypassCacheForFlower = petalToggleActive && isLily;
