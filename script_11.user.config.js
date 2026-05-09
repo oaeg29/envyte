@@ -87,7 +87,7 @@
     // countPerSide: defaultCountPerSide,
     countPerSide: defaultCountPerSide,
 
-    sidePad: -0.12, // interpreted by sidePadBasis
+    sidePad: -0.14, // interpreted by sidePadBasis
     sidePadBasis: 'videoWidthRatio', // px | videoWidthRatio | viewportWidthRatio
     sideAnchorXMode: 'videoCenter', // viewportEdges | videoCenter
     sideMargin: 2,
