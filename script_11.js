@@ -2565,8 +2565,6 @@ const STATE = {
     lastFrame: null,
     backgroundMusicAudio: null,
     backgroundMusicStarted: false,
-    audioContext: null,
-    audioBuffers: new Map(),
   },
   flowerSystem: null,
   flowerInteractionRafId: null,
@@ -3660,90 +3658,17 @@ function resolveMasterSoundConfig(configCandidate = CONFIG.mastersound) {
   };
 }
 
-function getOrCreateAudioContext() {
-  if (!STATE.masterSound) {
-    return null;
-  }
-  if (!STATE.masterSound.audioContext) {
-    try {
-      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-      if (AudioContextClass) {
-        STATE.masterSound.audioContext = new AudioContextClass();
-      }
-    } catch (err) {
-      console.warn('Failed to create AudioContext:', err.message);
-    }
-  }
-  return STATE.masterSound.audioContext;
-}
-
-async function loadAudioBuffer(filePath) {
-  const audioContext = getOrCreateAudioContext();
-  if (!audioContext) {
-    return null;
-  }
-
-  const normalizedPath = normalizeHostedAssetPath(filePath);
-  const cacheKey = normalizedPath;
-
-  if (STATE.masterSound.audioBuffers.has(cacheKey)) {
-    return STATE.masterSound.audioBuffers.get(cacheKey);
-  }
-
-  try {
-    const response = await fetch(normalizedPath);
-    const arrayBuffer = await response.arrayBuffer();
-    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-    STATE.masterSound.audioBuffers.set(cacheKey, audioBuffer);
-    return audioBuffer;
-  } catch (err) {
-    console.warn(`Failed to load audio buffer: ${normalizedPath}`, err.message);
-    return null;
-  }
-}
-
 function playSoundWithDelay(filePath, delayMs, volume = 1.0, speed = 1.0) {
-  const playAudio = async () => {
+  const playAudio = () => {
     try {
-      const audioContext = getOrCreateAudioContext();
-      if (!audioContext) {
-        console.warn('AudioContext not available, falling back to HTML5 Audio');
-        const audio = new Audio(filePath);
-        audio.volume = Math.max(0, Math.min(1, volume));
-        audio.playbackRate = Math.max(0.1, Math.min(4.0, speed));
-        audio.play().catch((err) => {
-          console.warn(`Failed to play sound: ${filePath}`, err.message);
-        });
-        return;
-      }
-
-      if (audioContext.state === 'suspended') {
-        await audioContext.resume();
-      }
-
-      const audioBuffer = await loadAudioBuffer(filePath);
-      if (!audioBuffer) {
-        console.warn(`Failed to load audio buffer for: ${filePath}`);
-        return;
-      }
-
-      const source = audioContext.createBufferSource();
-      source.buffer = audioBuffer;
-      source.playbackRate.value = Math.max(0.1, Math.min(4.0, speed));
-
-      const gainNode = audioContext.createGain();
-      gainNode.gain.value = Math.max(0, Math.min(1, volume));
-
-      source.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-
-      source.start(0);
-      source.onended = () => {
-        source.disconnect();
-        gainNode.disconnect();
-      };
+      const audio = new Audio(filePath);
+      audio.volume = Math.max(0, Math.min(1, volume));
+      audio.playbackRate = Math.max(0.1, Math.min(4.0, speed));
+      audio.play().catch((err) => {
+        console.warn(`Failed to play sound: ${filePath}`, err.message);
+      });
     } catch (err) {
-      console.warn(`Failed to play sound: ${filePath}`, err.message);
+      console.warn(`Failed to create audio for sound: ${filePath}`, err.message);
     }
   };
 
@@ -3800,7 +3725,7 @@ function resetMasterSoundTriggeredFrames() {
   }
 }
 
-async function startBackgroundMusic() {
+function startBackgroundMusic() {
   const masterSoundConfig = resolveMasterSoundConfig();
   if (!masterSoundConfig.enabled || !masterSoundConfig.backgroundMusic.enabled) {
     return;
@@ -3816,60 +3741,25 @@ async function startBackgroundMusic() {
   }
 
   try {
-    const audioContext = getOrCreateAudioContext();
-    if (!audioContext) {
-      console.warn('AudioContext not available, falling back to HTML5 Audio for background music');
-      const audio = new Audio(masterSoundConfig.backgroundMusic.filePath);
-      audio.loop = true;
-      audio.volume = masterSoundConfig.backgroundMusic.volume;
-      audio.play().catch((err) => {
-        console.warn('Failed to play background music:', err.message);
-      });
-      STATE.masterSound.backgroundMusicAudio = audio;
-      STATE.masterSound.backgroundMusicStarted = true;
-      return;
-    }
+    const audio = new Audio(masterSoundConfig.backgroundMusic.filePath);
+    audio.loop = true;
+    audio.volume = masterSoundConfig.backgroundMusic.volume;
+    audio.play().catch((err) => {
+      console.warn('Failed to play background music:', err.message);
+    });
 
-    if (audioContext.state === 'suspended') {
-      await audioContext.resume();
-    }
-
-    const audioBuffer = await loadAudioBuffer(masterSoundConfig.backgroundMusic.filePath);
-    if (!audioBuffer) {
-      console.warn('Failed to load background music buffer');
-      return;
-    }
-
-    const source = audioContext.createBufferSource();
-    source.buffer = audioBuffer;
-    source.loop = true;
-
-    const gainNode = audioContext.createGain();
-    gainNode.gain.value = masterSoundConfig.backgroundMusic.volume;
-
-    source.connect(gainNode);
-    gainNode.connect(audioContext.destination);
-
-    source.start(0);
-
-    STATE.masterSound.backgroundMusicAudio = { source, gainNode };
+    STATE.masterSound.backgroundMusicAudio = audio;
     STATE.masterSound.backgroundMusicStarted = true;
   } catch (err) {
-    console.warn('Failed to start background music:', err.message);
+    console.warn('Failed to create background audio:', err.message);
   }
 }
 
 function stopBackgroundMusic() {
   if (STATE.masterSound.backgroundMusicAudio) {
     try {
-      const bgAudio = STATE.masterSound.backgroundMusicAudio;
-      if (bgAudio.source && typeof bgAudio.source.stop === 'function') {
-        bgAudio.source.stop();
-        bgAudio.source.disconnect();
-      }
-      if (bgAudio.gainNode) {
-        bgAudio.gainNode.disconnect();
-      }
+      STATE.masterSound.backgroundMusicAudio.pause();
+      STATE.masterSound.backgroundMusicAudio.currentTime = 0;
       STATE.masterSound.backgroundMusicAudio = null;
     } catch (err) {
       console.warn('Failed to stop background music:', err.message);
@@ -6960,7 +6850,22 @@ function tryHandleHeroPlaybackOpenButtonClick(event) {
   if (buttonConfig && buttonConfig.sound && buttonConfig.sound.enabled === true) {
     const soundConfig = buttonConfig.sound;
     if (soundConfig.filePath && soundConfig.filePath.length > 0) {
-      playSoundWithDelay(soundConfig.filePath, soundConfig.delayMs, soundConfig.volume || 1.0, 1.0);
+      const playSound = () => {
+        try {
+          const audio = new Audio(soundConfig.filePath);
+          audio.volume = Math.max(0, Math.min(1, soundConfig.volume || 1.0));
+          audio.play().catch((err) => {
+            console.warn('Failed to play open button sound:', err.message);
+          });
+        } catch (err) {
+          console.warn('Failed to create audio for open button sound:', err.message);
+        }
+      };
+      if (soundConfig.delayMs > 0) {
+        setTimeout(playSound, soundConfig.delayMs);
+      } else {
+        playSound();
+      }
     }
   }
 

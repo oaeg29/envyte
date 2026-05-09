@@ -91,8 +91,8 @@
     sidePadBasis: 'videoWidthRatio', // px | videoWidthRatio | viewportWidthRatio
     sideAnchorXMode: 'videoCenter', // viewportEdges | videoCenter
     sideMargin: 2,
-    // mode: 'explicitYRatios', // autoSpacing | explicitYRatios
-    mode: 'autoSpacing', // autoSpacing | explicitYRatios
+    mode: 'explicitYRatios', // autoSpacing | explicitYRatios
+    // mode: 'autoSpacing', // autoSpacing | explicitYRatios
 
     explicitYRatioBasis: 'video', // video | viewport
     explicitYRatios: [0.05, 0.1, 0.3, 0.5, 0.4 , 0.45, 0.89, 0.85, 0.9, 0.81, 0.75], // shared ratios for both sides (0..1 or 0..100)
