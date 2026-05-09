@@ -62,8 +62,8 @@ let valScaling = 0.01;
 const defaultCountPerSide = 9;
 const FILTER_CACHE_HUE_STEP_DEG = 2;
 const FILTER_CACHE_BRIGHTNESS_STEP = 0.02;
-const HERO_VIDEO_PATH_DEFAULT = './hero_vid_7.webm';
-const HERO_VIDEO_PATH_APPLE_SAFARI = './hero_vid_7_for_ios.mov';
+const HERO_VIDEO_PATH_DEFAULT = './hero_final_1500.webm';
+const HERO_VIDEO_PATH_APPLE_SAFARI = './hero_final_1500_foriOS.mov';
 const HERO_VIDEO_SOURCE_RUNTIME = {
   candidates: [],
   activeIndex: -1,
@@ -5723,9 +5723,13 @@ function onRsvpConfirmButtonClick(event) {
     return;
   }
 
-  setRsvpStatePatch({ confirmPressed: true });
-
   const submittedName = runtime ? runtime.name : '';
+
+  if (!submittedName || submittedName.trim() === '') {
+    return;
+  }
+
+  setRsvpStatePatch({ confirmPressed: true });
   const submittedRsvp = runtime ? sanitizeRsvpResponseValue(runtime.response, null) : null;
 
   const onSubmit = typeof confirmConfig.onSubmit === 'function' ? confirmConfig.onSubmit : null;

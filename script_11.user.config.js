@@ -85,7 +85,7 @@
 
   seeds: {
     countPerSide: defaultCountPerSide,
-    sidePad: -0.15, // interpreted by sidePadBasis
+    sidePad: -0.14, // interpreted by sidePadBasis
     sidePadBasis: 'videoWidthRatio', // px | videoWidthRatio | viewportWidthRatio
     sideAnchorXMode: 'videoCenter', // viewportEdges | videoCenter
     sideMargin: 2,
@@ -135,7 +135,7 @@
     pathGenerationMode: 'inherit', // inherit | random | manualTemplate
     templateIndexPool: [2], // e.g. [1, 4, 7] => randomly pick one for each offshoot
     centerBlockEnabled: true, // clip offshoot branches when they enter the center block area
-     centerBlockHalfWidthPxVideoHeightRatio: 0.182, // X half-width as ratio of sampled video height
+     centerBlockHalfWidthPxVideoHeightRatio: 0.17, // X half-width as ratio of sampled video height
     centerBlockHalfHeightAbovePxVideoHeightRatio: 0.8, // Y extent above center as ratio of sampled video height
     centerBlockHalfHeightBelowPxVideoHeightRatio: 0.8,  // Y extent below center as ratio of sampled video height
   },
@@ -225,7 +225,7 @@
     enabled: true,
     frameRate: 30,
     introPauseFrame: 125,
-    postButtonPauseFrame: 261,
+    postButtonPauseFrame: 273,
     growthStartFrame: 253,
     pauseGuardFrames: 2,
     startDelayAfterSplashDismissMs: 500,
@@ -492,15 +492,16 @@
     enabled: true,
     // Ordered page list used by section.pageIndex (1-based).
     pages: [
-      './test_page2.png',
+      './test_page.png',
       './page_2.1.png',
-      './page_3.png',
+      './page_3.2.png',
+      './page_4.png',
     ],
     // Section count is derived from this array length.
     sections: [
       {
         id: 'section-1',
-        frame: 261,
+        frame: 273,
         pageIndex: 1, // 1-based index into swipeSections.pages
         // Optional per-section Y placement override for centerOverlayImage.
         // Ratio uses the same video-size basis as centerOverlayImage.offsetYMode='videoSizeRatio'.
@@ -508,7 +509,7 @@
       },
       {
         id: 'section-2',
-        frame: 280,
+        frame: 300,
         pageIndex: 2,
         // centerOverlayOffsetYVideoHeightRatio: -0.0520833333 + -0.095, // example of a per-section Y offset tweak
         centerOverlayOffsetYVideoHeightRatio: -0.0520833333, // example of a per-section Y offset tweak
@@ -544,14 +545,14 @@
       },
       {
         id: 'section-3',
-        frame: 304,
+        frame: 327,
         pageIndex: 3,
         centerOverlayOffsetYVideoHeightRatio: -0.0520833333,
       },
       {
         id: 'section-4',
-        frame: 330,
-        pageIndex: 1,
+        frame: 354,
+        pageIndex: 4,
         centerOverlayOffsetYVideoHeightRatio: -0.0520833333,
       },
     ],
