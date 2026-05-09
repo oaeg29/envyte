@@ -268,12 +268,12 @@
       // 1.0, // volume level (0.0 to 1.0)
       // 0.8,
       // 0.5,
-      0.05,
-      0.02,
-      0.02,
-      0.13,
-      0.01,
-      0.2,
+      0.05/10,
+      0.03/10,
+      0.02/10,
+      0.13/10,
+      0.01/10,
+      0.2/10,
 
     ],
     speeds: [
@@ -282,8 +282,8 @@
       // 0.8,
       1.0,
       1.0,
-      0.2,
-      0.2,
+      0.6,
+      0.5,
       1.3,
       1,
     ],
@@ -303,7 +303,7 @@
       // filePath: './moon_song.wav', // path to background music file relative to script location
       filePath: './viramiller_dream.mp3', // path to background music file relative to script location
 
-      volume: 0.4, // volume level (0.0 to 1.0)
+      volume: 0.2/5, // volume level (0.0 to 1.0)
     },
   },
 
@@ -338,7 +338,7 @@
         filePath: './click_2.wav', // path to sound file relative to script location
 
         delayMs: 0, // delay in milliseconds before playing sound
-        volume: 0.01, // volume level (0.0 to 1.0)
+        volume: 0.01/10, // volume level (0.0 to 1.0)
       },
     },
     wiggleButton: {
