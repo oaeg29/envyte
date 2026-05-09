@@ -1,6 +1,7 @@
 /* Make the canvas fill the entire viewport and sit under content */
 :root {
-  --viewport-relative166-extra-height: 22px;
+  --viewport-relative166-extra-height: 55px;
+  --page-vertical-shift: -27.5vh;
   --app-viewport-height: calc(100vh + var(--viewport-relative166-extra-height));
   --app-viewport-width: 100vw;
   --app-viewport-offset-left: 0px;
@@ -28,6 +29,7 @@
 @supports (height: 100dvh) and (not (-webkit-touch-callout: default)) {
   :root {
     --app-viewport-height: 100dvh;
+    --page-vertical-shift: 0;
   }
 }
 
@@ -56,6 +58,7 @@ html.ios-safari-top-tint-fallback body {
 
 body {
   position: relative;
+  margin-top: var(--page-vertical-shift);
   background-color: var(--safari-top-tint, var(--app-page-bg-solid));
   background-image: none;
 }
