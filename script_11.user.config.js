@@ -821,11 +821,11 @@
     centerHalfWidthPxVideoHeightRatio: 0.179, // 16.2760416667% of rendered hero video height
     centerHalfWidthPxVideoHeightRatioBottom: 0.2, // second width ratio used below the switch Y
     centerHalfWidthSwitchYVideoHeightRatio: 0.78, // switch Y as % of initially sampled video height (0..1 or 0..100)
-    centerHalfWidthPx: 50, // fallback when video size is unavailable
+    centerHalfWidthPx: 60, // fallback when video size is unavailable
     skipHiddenBackDrawEnabled: true,
-    spriteHiddenCullInnerPaddingPx: 15,
-    spriteHiddenCullRadiusScale: 0.2, // 0.05..1 scales the hidden-cull test circle radius
-    debugHiddenSpriteCullCirclesEnabled: false,
+    spriteHiddenCullInnerPaddingPx: 10,
+    spriteHiddenCullRadiusScale: 0.5, // 0.05..1 scales the hidden-cull test circle radius
+    debugHiddenSpriteCullCirclesEnabled: true,
     debugHiddenSpriteCullCirclesMode: 'culled', // culled | all
     debugHiddenSpriteCullCirclesMaxPerFrame: 400,
     debugHiddenSpriteCullCircleStrokeVisible: 'rgba(90, 220, 120, 0.55)',

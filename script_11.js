@@ -3153,9 +3153,12 @@ function buildHeroVideoReferenceRectSnapshot() {
   const viewportWidth = Number.isFinite(STATE.viewportWidth) && STATE.viewportWidth > 0
     ? STATE.viewportWidth
     : (Number.isFinite(window.innerWidth) && window.innerWidth > 0 ? window.innerWidth : 0);
+  const vvHeight = window.visualViewport && Number.isFinite(Number(window.visualViewport.height)) && Number(window.visualViewport.height) > 0
+    ? Number(window.visualViewport.height)
+    : 0;
   const viewportHeight = Number.isFinite(STATE.viewportHeight) && STATE.viewportHeight > 0
     ? STATE.viewportHeight
-    : (Number.isFinite(window.innerHeight) && window.innerHeight > 0 ? window.innerHeight : 0);
+    : (vvHeight > 0 ? vvHeight : (Number.isFinite(window.innerHeight) && window.innerHeight > 0 ? window.innerHeight : 0));
   if (viewportWidth <= 0 || viewportHeight <= 0) {
     return null;
   }
