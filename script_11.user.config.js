@@ -831,7 +831,7 @@
     dprStrength: 0.14, // mild; > baseline shrinks slightly, < baseline grows slightly
     dprMultiplierClamp: [0.92, 1.08],
     landscapeModifierEnabled: true,
-    landscapeMultiplier: 1.5, // applied only when viewportWidth > viewportHeight
+    landscapeMultiplier: 1.1, // applied only when viewportWidth > viewportHeight
     finalScaleClamp: [0.25, 10],
   },
 
@@ -935,12 +935,12 @@
     singleType: 'lily',
     mixRatios: {
 
-      lily: 1,
+      lily: 0.8,
       blue: 0.5,
     },
     endpointDirectionTailLengthPx: 26,
     endpointDirectionSampleCount: 5,
-    drawSize: 67,
+    drawSize: 75,
     swayInteractionRadiusFactor: 3.1,
     swayRiseSpeed: 5.5,
     swayFallSpeed: 0.1,
@@ -1053,7 +1053,7 @@
           7: { 1: { right: 0, left: 0 }, 2: { right: 0, left: 0 }, 3: { right: 0, left: 0 } },
           8: { 1: { right: 0, left: 0 }, 2: { right: 0, left: 0 }, 3: { right: 0, left: 0 } },
         },
-        hoverAmplitudeDegRange: [2, 12],
+        hoverAmplitudeDegRange: [2, 15],
         hoverSpeedRange: [2.2, 4.2],
       },
       blue: {
@@ -1069,7 +1069,7 @@
         spriteScale: 8.3333333,
         spriteCols: 10,
         spriteRows: 10,
-        baseSize: 50, // circle radius in px for point cloud generation
+        baseSize: 59, // circle radius in px for point cloud generation
         density: 130, // fixed number of points per flower
         centerBiasExponent: 1, // larger = stronger center clustering
         pointDrawSize: 40,
@@ -1090,8 +1090,8 @@
           positionEaseInPower: 3, // used by easeIn/easeInOut entry-half; defaults to positionEasePower
           positionEaseOutPower: 4, // used by easeOut/easeInOut exit-half; defaults to positionEasePower
         },
-        hoverAmplitudeDegRange: [2, 6],
-        hoverSpeedRange: [2.2, 4.2],
+        hoverAmplitudeDegRange: [2, 27],
+        hoverSpeedRange: [0.8, 3.2],
       },
     },
   },
@@ -1121,7 +1121,7 @@
     swayFallSpeed: 0.5,
     swayEpsilon: 0.0008,
     mouseSpeedSwayAffect: 0.7,
-    swayAmplitudeDegRange: [-20.8, 25.6],
+    swayAmplitudeDegRange: [-30.8, 35.6],
     swaySpeedRange: [1.9, 2.8],
     countRange: [1, 4],
     spawnTMin: 0.01,
@@ -1156,7 +1156,7 @@
 
   global.STEM_WARP_USER_CONFIG = createStemWarpUserConfig({
     gradient: undefined,
-    valScaling: 0.0001,
+    valScaling: 0,
     defaultCountPerSide: 22,
   });
 })(typeof window !== 'undefined' ? window : globalThis);

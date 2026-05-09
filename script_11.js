@@ -6086,6 +6086,22 @@ function onRsvpNameInputEvent() {
   setRsvpStatePatch({ name: nextName });
 }
 
+function onRsvpNameInputFocus() {
+  // No action needed on focus; iOS Safari handles zoom automatically
+}
+
+function onRsvpNameInputBlur() {
+  // iOS Safari leaves the page scrolled when the keyboard dismisses,
+  // leaving a white bar at the bottom. Force scroll reset after keyboard animation.
+  if (window && typeof window.setTimeout === 'function') {
+    window.setTimeout(() => {
+      if (window && typeof window.scrollTo === 'function') {
+        window.scrollTo(0, 0);
+      }
+      runCoalescedViewportResync('rsvp-input-blur');
+    }, 150);
+  }
+}
 
 function onRsvpButtonHoverEvent(event, isEntering) {
   const target = event && event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
@@ -6188,6 +6204,8 @@ function onRsvpConfirmButtonClick(event) {
 function setupRsvpLayerEventHandlers() {
   rsvpNameInput.addEventListener('input', onRsvpNameInputEvent);
   rsvpNameInput.addEventListener('change', onRsvpNameInputEvent);
+  rsvpNameInput.addEventListener('focus', onRsvpNameInputFocus);
+  rsvpNameInput.addEventListener('blur', onRsvpNameInputBlur);
   rsvpYesButton.addEventListener('mouseenter', (event) => onRsvpButtonHoverEvent(event, true));
   rsvpYesButton.addEventListener('mouseleave', (event) => onRsvpButtonHoverEvent(event, false));
   rsvpNoButton.addEventListener('mouseenter', (event) => onRsvpButtonHoverEvent(event, true));
