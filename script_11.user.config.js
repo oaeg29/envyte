@@ -196,7 +196,7 @@
     enabled: true,
     mode: 'linearBySeedY', // simultaneous | linearBySeedY
     linearSweepDirection: 'up', // down (top->bottom) | up (bottom->top)
-    linearSweepDurationSec: 12, // sweep time across root seed Y range
+    linearSweepDurationSec: 8, // sweep time across root seed Y range
     speedMode: 'rate', // duration | rate
     totalDurationSec: 1.5,
     pixelsPerSecond: 50,
@@ -291,19 +291,19 @@
       // 1, // 1 = enabled, 0 = disabled
       // 1,
       // 0,
-      1,
-      1,
-      1,
-      1,
-      1,
-      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
     ],
     backgroundMusic: {
       enabled: true, // set to true to enable background music
       // filePath: './moon_song.wav', // path to background music file relative to script location
       filePath: './viramiller_dream.mp3', // path to background music file relative to script location
 
-      volume: 0.2/5, // volume level (0.0 to 1.0)
+      volume: 1, // volume level (0.0 to 1.0)
     },
   },
 
@@ -333,7 +333,7 @@
       hitMarginPercentOfButtonSize: 200, // 0..100 extra size percentage
       enableBeforeIntroPauseFrames: 10, // enable interaction this many frames before introPauseFrame
       sound: {
-        enabled: true, // set to true to enable sound effect
+        enabled: false, // set to true to enable sound effect
         // filePath: './open_win.wav', // path to sound file relative to script location
         filePath: './click_2.wav', // path to sound file relative to script location
 
@@ -686,7 +686,7 @@
       widthVideoHeightRatio: 0.07,
       scale: 2,
       offsetXVideoHeightRatio: 0,
-      offsetYVideoHeightRatio: 0.15,
+      offsetYVideoHeightRatio: 0.18,
       bottomMarginPx: 10,
       jumpDelayMs: 3000,
       jumpDistancePx: 10,

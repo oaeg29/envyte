@@ -364,6 +364,7 @@ body.ios26-fixed-workaround video,
 body.ios26-fixed-workaround #centerOverlayImage,
 body.ios26-fixed-workaround #centerOverlayImageAlt,
 body.ios26-fixed-workaround #rsvpLayer,
+body.ios26-fixed-workaround #scrollHintLayer,
 body.ios26-fixed-workaround #section2ButtonLayer,
 body.ios26-fixed-workaround #loadingScreen {
   position: absolute;
@@ -408,6 +409,7 @@ body[data-viewport-layout-mode="relativeAdjustable"] video,
 body[data-viewport-layout-mode="relativeAdjustable"] #centerOverlayImage,
 body[data-viewport-layout-mode="relativeAdjustable"] #centerOverlayImageAlt,
 body[data-viewport-layout-mode="relativeAdjustable"] #rsvpLayer,
+body[data-viewport-layout-mode="relativeAdjustable"] #scrollHintLayer,
 body[data-viewport-layout-mode="relativeAdjustable"] #section2ButtonLayer,
 body[data-viewport-layout-mode="relativeAdjustable"] #loadingScreen,
 body[data-viewport-layout-mode="relative166"] #myCanvas,
@@ -420,6 +422,7 @@ body[data-viewport-layout-mode="relative166"] video,
 body[data-viewport-layout-mode="relative166"] #centerOverlayImage,
 body[data-viewport-layout-mode="relative166"] #centerOverlayImageAlt,
 body[data-viewport-layout-mode="relative166"] #rsvpLayer,
+body[data-viewport-layout-mode="relative166"] #scrollHintLayer,
 body[data-viewport-layout-mode="relative166"] #section2ButtonLayer,
 body[data-viewport-layout-mode="relative166"] #loadingScreen {
   position: absolute;
@@ -529,6 +532,49 @@ body[data-viewport-layout-mode="relative166"] #loadingScreen {
   display: none;
 }
 
+#clickToStartScreen {
+  position: fixed;
+  top: var(--app-viewport-offset-top);
+  left: var(--app-viewport-offset-left);
+  width: var(--app-viewport-width);
+  height: var(--app-viewport-height);
+  z-index: 19999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: var(--loading-edge-padding, 30px);
+  background-color: var(--loading-background-color, #ffffff);
+  background-image: none;
+  color: var(--loading-text-color, #000000);
+  font: var(--loading-font-weight, 100)
+    var(--loading-font-size, 17px) / var(--loading-line-height, 1.2)
+    var(--loading-font-family, "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, "Times New Roman", serif);
+  text-align: center;
+  cursor: pointer;
+  opacity: 1;
+  transition: opacity 220ms ease;
+  isolation: isolate;
+}
+
+#clickToStartScreen.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+#clickToStartScreen.is-gone {
+  display: none;
+}
+
+#clickToStartMessage {
+  max-width: 100%;
+  letter-spacing: 0.03em;
+  text-transform: lowercase;
+  text-shadow: var(--loading-text-shadow, none);
+  overflow-wrap: break-word;
+  white-space: pre-line;
+}
+
 .loading-card {
   max-width: min(100%, var(--loading-message-max-width, 300px));
   padding: 0;
@@ -629,6 +675,24 @@ body[data-viewport-layout-mode="relative166"] #loadingScreen {
     opacity: 0;
     transform: translateY(-3px);
   }
+}
+
+#scrollHintLayer {
+  position: fixed;
+  top: var(--app-viewport-offset-top);
+  left: var(--app-viewport-offset-left);
+  width: var(--app-viewport-width);
+  height: var(--app-viewport-height);
+  pointer-events: none;
+  z-index: 10000;
+}
+
+#scrollHintLayer img {
+  position: absolute;
+}
+
+#scrollHintLayer .scrollHintDebugRect {
+  position: absolute;
 }
 
 #section2ButtonLayer {

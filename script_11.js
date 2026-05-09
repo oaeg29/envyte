@@ -36,6 +36,7 @@ const video = document.createElement('video');
 const centerOverlayImageLayer = document.createElement('img');
 const centerOverlayImageLayerAlt = document.createElement('img');
 const centerOverlayImageLayers = [centerOverlayImageLayer, centerOverlayImageLayerAlt];
+const swipeSectionsScrollHintWrapperLayer = document.createElement('div');
 const swipeSectionsScrollHintLayer = document.createElement('img');
 const swipeSectionsScrollHintDebugRect = document.createElement('div');
 const rsvpLayer = document.createElement('div');
@@ -65,7 +66,7 @@ const defaultCountPerSide = 9;
 const FILTER_CACHE_HUE_STEP_DEG = 2;
 const FILTER_CACHE_BRIGHTNESS_STEP = 0.02;
 const HERO_VIDEO_PATH_DEFAULT = './hero_final_1500.webm';
-const HERO_VIDEO_PATH_APPLE_SAFARI = './hero_final_1500_foriOS.mov';
+const HERO_VIDEO_PATH_APPLE_SAFARI = './hero_1500_foriOS.mov';
 const HERO_VIDEO_SOURCE_RUNTIME = {
   candidates: [],
   activeIndex: -1,
@@ -1791,14 +1792,14 @@ function tryAdvanceHeroVideoSourceCandidate(reason = 'unknown') {
 function configureHeroVideoElement() {
   video.controls = false;
   video.preload = 'auto';
-  video.defaultMuted = true;
-  video.muted = true;
+  video.defaultMuted = false;
+  video.muted = false;
   video.autoplay = false;
   video.playsInline = true;
   video.loop = true;
   video.disablePictureInPicture = true;
   video.controlsList = 'nodownload noplaybackrate noremoteplayback nofullscreen';
-  video.setAttribute('muted', '');
+  video.removeAttribute('muted');
   video.setAttribute('playsinline', '');
   video.setAttribute('webkit-playsinline', '');
   video.setAttribute('loop', '');
@@ -2252,6 +2253,19 @@ async function runHeroVideoDebugCycle(debugConfig = resolveHeroVideoDebugConfig(
 }
 
 configureHeroVideoElement();
+
+// Set up click-to-start screen
+const clickToStartScreen = document.getElementById('clickToStartScreen');
+if (clickToStartScreen) {
+  clickToStartScreen.addEventListener('click', function(event) {
+    clickToStartScreen.classList.add('is-hidden');
+    setTimeout(() => {
+      clickToStartScreen.classList.add('is-gone');
+    }, 220);
+    tryResumeHeroVideoPlaybackFromUserGesture(event);
+    startBackgroundMusic();
+  });
+}
 centerOverlayImageLayer.id = 'centerOverlayImage';
 centerOverlayImageLayer.alt = '';
 centerOverlayImageLayer.draggable = false;
@@ -2329,8 +2343,11 @@ document.body.appendChild(wash2Layer);
 document.body.appendChild(video);  // Adds it to the page
 document.body.appendChild(centerOverlayImageLayer);
 document.body.appendChild(centerOverlayImageLayerAlt);
-document.body.appendChild(swipeSectionsScrollHintLayer);
-document.body.appendChild(swipeSectionsScrollHintDebugRect);
+swipeSectionsScrollHintWrapperLayer.id = 'scrollHintLayer';
+swipeSectionsScrollHintWrapperLayer.setAttribute('aria-hidden', 'true');
+swipeSectionsScrollHintWrapperLayer.appendChild(swipeSectionsScrollHintLayer);
+swipeSectionsScrollHintWrapperLayer.appendChild(swipeSectionsScrollHintDebugRect);
+document.body.appendChild(swipeSectionsScrollHintWrapperLayer);
 document.body.appendChild(rsvpLayer);
 document.body.appendChild(section2ButtonLayer);
 // Keep front overlay canvas in root stacking context so it can render above the video.
@@ -2724,6 +2741,7 @@ const STATE = {
       jumpAnimation: null,
       currentSectionId: '',
       section1InitialJumpTriggered: false,
+      visibleSinceMs: 0,
     },
     rsvp: {
       initialized: false,
@@ -6625,9 +6643,9 @@ function tryResumeHeroVideoPlaybackFromUserGesture(event) {
   }
   gateState.awaitingUserPlaybackStart = false;
   gateState.stage = 'introPlaying';
-  video.defaultMuted = true;
-  video.muted = true;
-  video.setAttribute('muted', '');
+  video.defaultMuted = false;
+  video.muted = false;
+  video.removeAttribute('muted');
   const playbackPromise = video.play();
   if (playbackPromise && typeof playbackPromise.catch === 'function') {
     playbackPromise.catch(() => {
@@ -15441,7 +15459,9 @@ function handleSwipeSectionsScrollHintOnActiveSectionChange(section, sectionInde
 
 function syncSwipeSectionsScrollHintLayer(nowMs = performance.now()) {
   const scrollHintConfig = resolveSwipeSectionsConfig().scrollHint;
+  const scrollHintState = STATE && STATE.swipeSections && STATE.swipeSections.scrollHint ? STATE.swipeSections.scrollHint : null;
   if (!scrollHintConfig || scrollHintConfig.enabled !== true) {
+    if (scrollHintState) scrollHintState.visibleSinceMs = 0;
     swipeSectionsScrollHintLayer.style.display = 'none';
     swipeSectionsScrollHintDebugRect.style.display = 'none';
     return;
@@ -15452,6 +15472,7 @@ function syncSwipeSectionsScrollHintLayer(nowMs = performance.now()) {
     ? heroPlaybackGateConfig.postButtonPauseFrame
     : 273;
   if (currentFrame < postButtonPauseFrame) {
+    if (scrollHintState) scrollHintState.visibleSinceMs = 0;
     swipeSectionsScrollHintLayer.style.display = 'none';
     swipeSectionsScrollHintDebugRect.style.display = 'none';
     return;
@@ -15473,6 +15494,7 @@ function syncSwipeSectionsScrollHintLayer(nowMs = performance.now()) {
     ? swipeConfig.sections[activeSectionIndex]
     : null;
   if (!activeSection || scrollHintConfig.visibleSectionIds.indexOf(activeSection.id) < 0) {
+    if (scrollHintState) scrollHintState.visibleSinceMs = 0;
     swipeSectionsScrollHintLayer.style.display = 'none';
     swipeSectionsScrollHintDebugRect.style.display = 'none';
     return;
@@ -15535,7 +15557,6 @@ function syncSwipeSectionsScrollHintLayer(nowMs = performance.now()) {
   const aspectRatio = naturalWidthPx > 0 ? naturalHeightPx / naturalWidthPx : 1;
   const scaledHeightPx = scaledWidthPx * aspectRatio;
 
-  swipeSectionsScrollHintLayer.style.position = 'fixed';
   swipeSectionsScrollHintLayer.style.left = `${centerX}px`;
   swipeSectionsScrollHintLayer.style.top = `${videoBottom - extraOffsetY - jumpOffsetPx}px`;
   swipeSectionsScrollHintLayer.style.bottom = '';
@@ -15544,15 +15565,28 @@ function syncSwipeSectionsScrollHintLayer(nowMs = performance.now()) {
   swipeSectionsScrollHintLayer.style.width = `${widthPx}px`;
   swipeSectionsScrollHintLayer.style.height = 'auto';
   swipeSectionsScrollHintLayer.style.display = 'block';
-  swipeSectionsScrollHintLayer.style.opacity = '1';
-  swipeSectionsScrollHintLayer.style.visibility = 'visible';
+
+  const overlayConfig = resolveCenterOverlayImageConfig();
+  const opacityMultiplier = clamp(Number(swipeState ? swipeState.overlayOpacityMultiplier : 1), 0, 1);
+  if (scrollHintState) {
+    if (scrollHintState.visibleSinceMs <= 0) {
+      scrollHintState.visibleSinceMs = Number.isFinite(nowMs) ? nowMs : performance.now();
+    }
+  }
+  let opacity = overlayConfig.maxOpacity;
+  if (overlayConfig.fadeInEnabled && overlayConfig.fadeInDurationSec > 1e-6 && scrollHintState) {
+    const fadeElapsedSec = Math.max(0, (nowMs - scrollHintState.visibleSinceMs) / 1000);
+    opacity = overlayConfig.maxOpacity * clamp(fadeElapsedSec / overlayConfig.fadeInDurationSec, 0, 1);
+  }
+  opacity *= opacityMultiplier;
+
+  swipeSectionsScrollHintLayer.style.opacity = String(opacity);
+  swipeSectionsScrollHintLayer.style.visibility = opacity > 1e-6 ? 'visible' : 'hidden';
   swipeSectionsScrollHintLayer.style.pointerEvents = 'none';
-  swipeSectionsScrollHintLayer.style.zIndex = '10000';
 
   // Debug rect
   const debugEnabled = scrollHintConfig.debug && scrollHintConfig.debug.enabled === true;
   if (debugEnabled) {
-    swipeSectionsScrollHintDebugRect.style.position = 'fixed';
     swipeSectionsScrollHintDebugRect.style.left = `${centerX}px`;
     swipeSectionsScrollHintDebugRect.style.top = `${videoBottom - extraOffsetY - jumpOffsetPx - scaledHeightPx}px`;
     swipeSectionsScrollHintDebugRect.style.bottom = '';
@@ -16911,6 +16945,7 @@ function ensureScrollStageLayoutStructure() {
     video,
     centerOverlayImageLayer,
     centerOverlayImageLayerAlt,
+    swipeSectionsScrollHintWrapperLayer,
     rsvpLayer,
     frontCanvas,
     flowersFrontCanvas,
@@ -16946,6 +16981,7 @@ function ensureRootBackgroundLayoutStructure() {
     video,
     centerOverlayImageLayer,
     centerOverlayImageLayerAlt,
+    swipeSectionsScrollHintWrapperLayer,
     rsvpLayer,
     frontCanvas,
     flowersFrontCanvas,
