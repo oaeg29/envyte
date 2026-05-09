@@ -1664,12 +1664,10 @@
     )
       ? drawContext
       : null;
-    const viewportCullContext = (
-      drawContext
-      && drawContext.viewportCullEnabled === true
-    )
-      ? drawContext
-      : null;
+    const viewportLeftBand = drawContext && drawContext.viewportLeftBand
+      && typeof drawContext.viewportLeftBand === 'object' ? drawContext.viewportLeftBand : null;
+    const viewportRightBand = drawContext && drawContext.viewportRightBand
+      && typeof drawContext.viewportRightBand === 'object' ? drawContext.viewportRightBand : null;
     const hiddenRadiusScale = hiddenSpriteCullContext
       ? sanitizeHiddenSpriteCullRadiusScale(hiddenSpriteCullContext.hiddenRadiusScale, 1)
       : 1;
@@ -1732,7 +1730,7 @@
             continue;
           }
         }
-        if (viewportCullContext) {
+        if (viewportLeftBand || viewportRightBand) {
           resolveSpriteCircleCenterFromDrawTransformInto(
             x,
             y,
@@ -1743,12 +1741,10 @@
             drawSize,
             centerScratch,
           );
-          if (isSpriteCircleOutsideViewport(
-            centerScratch.x,
-            centerScratch.y,
-            spriteRadius,
-            viewportCullContext.viewportBounds,
-          )) {
+          if (
+            (viewportLeftBand && isSpriteCircleFullyHiddenInBand(centerScratch.x, centerScratch.y, spriteRadius, viewportLeftBand, 0))
+            || (viewportRightBand && isSpriteCircleFullyHiddenInBand(centerScratch.x, centerScratch.y, spriteRadius, viewportRightBand, 0))
+          ) {
             continue;
           }
         }
@@ -1908,7 +1904,7 @@
           continue;
         }
       }
-      if (viewportCullContext) {
+      if (viewportLeftBand || viewportRightBand) {
         resolveSpriteCircleCenterFromDrawTransformInto(
           anchorX,
           anchorY,
@@ -1919,12 +1915,10 @@
           drawSize,
           centerScratch,
         );
-        if (isSpriteCircleOutsideViewport(
-          centerScratch.x,
-          centerScratch.y,
-          spriteRadius,
-          viewportCullContext.viewportBounds,
-        )) {
+        if (
+          (viewportLeftBand && isSpriteCircleFullyHiddenInBand(centerScratch.x, centerScratch.y, spriteRadius, viewportLeftBand, 0))
+          || (viewportRightBand && isSpriteCircleFullyHiddenInBand(centerScratch.x, centerScratch.y, spriteRadius, viewportRightBand, 0))
+        ) {
           continue;
         }
       }
@@ -2040,12 +2034,10 @@
     )
       ? drawContext
       : null;
-    const viewportCullContext = (
-      drawContext
-      && drawContext.viewportCullEnabled === true
-    )
-      ? drawContext
-      : null;
+    const viewportLeftBand = drawContext && drawContext.viewportLeftBand
+      && typeof drawContext.viewportLeftBand === 'object' ? drawContext.viewportLeftBand : null;
+    const viewportRightBand = drawContext && drawContext.viewportRightBand
+      && typeof drawContext.viewportRightBand === 'object' ? drawContext.viewportRightBand : null;
     const hiddenRadiusScale = hiddenSpriteCullContext
       ? sanitizeHiddenSpriteCullRadiusScale(hiddenSpriteCullContext.hiddenRadiusScale, 1)
       : 1;
@@ -2141,15 +2133,11 @@
           continue;
         }
       }
-      if (viewportCullContext) {
-        if (isSpriteCircleOutsideViewport(
-          x,
-          y,
-          spriteRadius,
-          viewportCullContext.viewportBounds,
-        )) {
-          continue;
-        }
+      if (
+        (viewportLeftBand && isSpriteCircleFullyHiddenInBand(x, y, spriteRadius, viewportLeftBand, 0))
+        || (viewportRightBand && isSpriteCircleFullyHiddenInBand(x, y, spriteRadius, viewportRightBand, 0))
+      ) {
+        continue;
       }
 
       if (Math.abs(spriteAngle) > 1e-8) {
@@ -5759,21 +5747,20 @@
         }
         : null;
 
-      const viewportCullEnabled = safeDrawOptions && safeDrawOptions.viewportCullEnabled === true;
-      const viewportCullPaddingPx = safeDrawOptions && Number.isFinite(safeDrawOptions.viewportCullPaddingPx)
-        ? safeDrawOptions.viewportCullPaddingPx
-        : 0;
-      const viewportCullDrawContext = viewportCullEnabled
-        ? {
-          viewportCullEnabled: true,
-          viewportBounds: resolveFlowerSpriteViewportCullBounds(ctx, viewportCullPaddingPx),
-        }
+      const viewportLeftBand = safeDrawOptions && safeDrawOptions.viewportLeftBand
+        && typeof safeDrawOptions.viewportLeftBand === 'object'
+        ? safeDrawOptions.viewportLeftBand
+        : null;
+      const viewportRightBand = safeDrawOptions && safeDrawOptions.viewportRightBand
+        && typeof safeDrawOptions.viewportRightBand === 'object'
+        ? safeDrawOptions.viewportRightBand
         : null;
 
-      const drawContext = hiddenSpriteCullDrawContext || viewportCullDrawContext
+      const drawContext = (hiddenSpriteCullDrawContext || viewportLeftBand || viewportRightBand)
         ? {
           ...hiddenSpriteCullDrawContext,
-          ...viewportCullDrawContext,
+          viewportLeftBand,
+          viewportRightBand,
         }
         : null;
 
@@ -5848,7 +5835,17 @@
             flower.renderHoverInfluence = Number.isFinite(flower.hoverInfluence) ? flower.hoverInfluence : 0;
             flower.renderMotionTime = Number.isFinite(flower.motionTime) ? flower.motionTime : 0;
           }
-          if (isFlowerOutsideViewport(ctx, flower, commonConfig)) {
+          if (
+            viewportLeftBand
+            && isFlowerFullyHiddenInOverlayBand(flower, commonConfig, viewportLeftBand, 0)
+          ) {
+            culledCount += 1;
+            continue;
+          }
+          if (
+            viewportRightBand
+            && isFlowerFullyHiddenInOverlayBand(flower, commonConfig, viewportRightBand, 0)
+          ) {
             culledCount += 1;
             continue;
           }

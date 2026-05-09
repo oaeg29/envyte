@@ -181,7 +181,7 @@
       },
     ],
     debug: {
-      enabled: false,
+      enabled: true,
       drawOnFrontLayer: true,
       strokeStyle: 'rgba(255, 120, 70, 0.95)',
       fillStyle: 'rgba(255, 120, 70, 0.12)',
@@ -218,7 +218,7 @@
     bindings: {
       1: 0,
       2: 130,
-      3: 261,
+      3: 273,
       4: null,
       5: null,
       6: null,
@@ -680,6 +680,22 @@
       fadeInDurationMs: 230,
       swapNearTargetProgress: 0.85, // 0..1; when the target image path swaps during section travel
     },
+    scrollHint: {
+      enabled: true,
+      spritePath: './scroll_4_more.png',
+      maxWidthPx: 48,
+      scale: 2,
+      offsetXVideoHeightRatio: 0,
+      offsetYVideoHeightRatio: 0.08,
+      bottomMarginPx: 10,
+      jumpDelayMs: 3000,
+      jumpDistancePx: 10,
+      jumpDurationMs: 250,
+      visibleSectionIds: ['section-1', 'section-2', 'section-3'],
+      debug: {
+        enabled: false,
+      },
+    },
     rsvp: {
       enabled: true,
       sectionId: 'section-3',
@@ -825,11 +841,11 @@
     swayMode: 'wind', // always | influence | wind
     maxSwayFps: 24, // <=0 disables cap for interaction-only render loop
     leafViewportCullingEnabled: true,
-    leafSpriteViewportCullPaddingPx: 0, // +100 = render 100px outside viewport, -100 = cull 100px inside viewport (aggressive)
+    leafSpriteViewportCullPaddingPx: -50, // +100 = render 100px outside viewport, -100 = cull 100px inside viewport (aggressive)
     flowerViewportCullingEnabled: true,
     flowerSpriteViewportCullingEnabled: true, // Enable per-petal viewport culling
-    flowerSpriteViewportCullPaddingPx: 10, // +100 = cull 100px outside viewport (prevent pop-in), -50 = cull 50px inside viewport (aggressive)
-    swayFastPathEnabled: false,
+    flowerSpriteViewportCullPaddingPx: -60, // +100 = cull 100px outside viewport (prevent pop-in), -50 = cull 50px inside viewport (aggressive)
+    swayFastPathEnabled: true,
     swayPerfLogEnabled: false,
 
     wind: {

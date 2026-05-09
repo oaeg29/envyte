@@ -229,6 +229,18 @@ video {
   z-index: 12;
 }
 
+.scrollHintDebugRect {
+  position: fixed;
+  margin: 0;
+  padding: 0;
+  border: 2px solid rgba(255, 0, 0, 0.95);
+  box-sizing: border-box;
+  pointer-events: none;
+  display: none;
+  visibility: hidden;
+  z-index: 9999;
+}
+
 #rsvpNameInput {
   position: absolute;
   transform: translate(-50%, -50%);

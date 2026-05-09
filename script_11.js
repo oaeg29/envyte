@@ -36,6 +36,8 @@ const video = document.createElement('video');
 const centerOverlayImageLayer = document.createElement('img');
 const centerOverlayImageLayerAlt = document.createElement('img');
 const centerOverlayImageLayers = [centerOverlayImageLayer, centerOverlayImageLayerAlt];
+const swipeSectionsScrollHintLayer = document.createElement('img');
+const swipeSectionsScrollHintDebugRect = document.createElement('div');
 const rsvpLayer = document.createElement('div');
 const rsvpNameInput = document.createElement('input');
 const rsvpYesButton = document.createElement('button');
@@ -2289,6 +2291,8 @@ rsvpNoButtonImage.draggable = false;
 rsvpConfirmButtonImage.id = 'rsvpConfirmButtonImage';
 rsvpConfirmButtonImage.alt = '';
 rsvpConfirmButtonImage.draggable = false;
+swipeSectionsScrollHintDebugRect.id = 'swipeSectionsScrollHintDebugRect';
+swipeSectionsScrollHintDebugRect.className = 'scrollHintDebugRect';
 rsvpNameDebugRect.id = 'rsvpNameDebugRect';
 rsvpNameDebugRect.className = 'rsvpDebugRect';
 rsvpYesDebugRect.id = 'rsvpYesDebugRect';
@@ -2325,6 +2329,8 @@ document.body.appendChild(wash2Layer);
 document.body.appendChild(video);  // Adds it to the page
 document.body.appendChild(centerOverlayImageLayer);
 document.body.appendChild(centerOverlayImageLayerAlt);
+document.body.appendChild(swipeSectionsScrollHintLayer);
+document.body.appendChild(swipeSectionsScrollHintDebugRect);
 document.body.appendChild(rsvpLayer);
 document.body.appendChild(section2ButtonLayer);
 // Keep front overlay canvas in root stacking context so it can render above the video.
@@ -2713,6 +2719,12 @@ const STATE = {
     overlayTransitionFadeOutRatio: 0.3,
     overlayTransitionFadeInStartProgress: 0.8,
     overlayTransitionHasSwappedPath: false,
+    scrollHint: {
+      pendingJumpTimerId: null,
+      jumpAnimation: null,
+      currentSectionId: '',
+      section1InitialJumpTriggered: false,
+    },
     rsvp: {
       initialized: false,
       visible: false,
@@ -7136,6 +7148,23 @@ function isSpriteCircleFullyInsideHiddenBand(centerX, centerY, radius, hiddenBan
     (centerX - safeRadius) >= leftX
     && (centerX + safeRadius) <= rightX
   );
+}
+
+function buildViewportSideBands(cssWidth, paddingPx) {
+  const w = Number.isFinite(cssWidth) ? Math.max(0, cssWidth) : 0;
+  const p = Number.isFinite(paddingPx) ? paddingPx : 0;
+  const LARGE = w + 10000;
+  const leftBand = {
+    centerX: -(LARGE + p),
+    topHalfWidthPx: LARGE,
+    bottomHalfWidthPx: LARGE,
+  };
+  const rightBand = {
+    centerX: (w + p) + LARGE,
+    topHalfWidthPx: LARGE,
+    bottomHalfWidthPx: LARGE,
+  };
+  return { leftBand, rightBand };
 }
 
 function drawHiddenSpriteCullDebugCircle(
@@ -13659,24 +13688,12 @@ function drawBranchLeaves(branch, leavesConfig, renderOptions = {}) {
     && hiddenBand
     && Number.isFinite(hiddenBand.centerX)
     && resolveHiddenBandEffectiveHalfWidthForYRange(hiddenBand, 0, STATE.viewportHeight) > hiddenSpriteCullInnerPaddingPx;
-  const cullingEnabled = isLeafViewportCullingEnabled();
-  const motionConfig = isPlainObjectLiteral(CONFIG.motion) ? CONFIG.motion : {};
-  const leafCullPaddingPx = Number.isFinite(motionConfig.leafSpriteViewportCullPaddingPx)
-    ? motionConfig.leafSpriteViewportCullPaddingPx
-    : 0;
-  
-  const viewportBounds = cullingEnabled ? resolveLeafViewportCullBounds(leafCullPaddingPx) : null;
-  const coarseBounds = leafCache && leafCache.bounds ? leafCache.bounds : null;
-  if (cullingEnabled && coarseBounds && viewportBounds) {
-    if (
-      coarseBounds.maxX < viewportBounds.minX
-      || coarseBounds.maxY < viewportBounds.minY
-      || coarseBounds.minX > viewportBounds.maxX
-      || coarseBounds.minY > viewportBounds.maxY
-    ) {
-      return { drawn: 0, culled: leaves.length, skippedHidden: 0 };
-    }
-  }
+  const viewportLeftBand = renderOptions.viewportLeftBand && typeof renderOptions.viewportLeftBand === 'object'
+    ? renderOptions.viewportLeftBand
+    : null;
+  const viewportRightBand = renderOptions.viewportRightBand && typeof renderOptions.viewportRightBand === 'object'
+    ? renderOptions.viewportRightBand
+    : null;
   let drawn = 0;
   let culled = 0;
   let skippedHidden = 0;
@@ -13697,18 +13714,6 @@ function drawBranchLeaves(branch, leavesConfig, renderOptions = {}) {
     const drawSize = Math.max(0.01, baseDrawSize * growthScale);
     const drawX = -drawSize * 0.5;
     const drawY = -drawSize + ((2.2 / leavesConfig.spriteCellHeight) * drawSize);
-    const halfAabb = drawSize * 0.9;
-    if (cullingEnabled && viewportBounds) {
-      if (
-        (leaf.x + halfAabb) < viewportBounds.minX
-        || (leaf.y + halfAabb) < viewportBounds.minY
-        || (leaf.x - halfAabb) > viewportBounds.maxX
-        || (leaf.y - halfAabb) > viewportBounds.maxY
-      ) {
-        culled += 1;
-        continue;
-      }
-    }
     const spriteRadius = Math.hypot(drawSize * 0.5, drawSize * 0.5) * hiddenSpriteCullRadiusScale;
     const swayInfluence = resolveLeafSwayInfluence(leaf, leavesConfig, nowMs);
     const swayOffsetRad = leavesConfig.swayEnabled
@@ -13719,15 +13724,14 @@ function drawBranchLeaves(branch, leavesConfig, renderOptions = {}) {
       )
       : 0;
     const drawRotationRad = leaf.rotationRad + swayOffsetRad;
-    let hiddenByOverlayBand = false;
+    const centerLocalX = drawX + (drawSize * 0.5);
+    const centerLocalY = drawY + (drawSize * 0.5);
+    const drawCos = Math.cos(drawRotationRad);
+    const drawSin = Math.sin(drawRotationRad);
+    const spriteCenterX = leaf.x + (centerLocalX * drawCos) - (centerLocalY * drawSin);
+    const spriteCenterY = leaf.y + (centerLocalX * drawSin) + (centerLocalY * drawCos);
     if (skipFullyHiddenInBand) {
-      const centerLocalX = drawX + (drawSize * 0.5);
-      const centerLocalY = drawY + (drawSize * 0.5);
-      const drawCos = Math.cos(drawRotationRad);
-      const drawSin = Math.sin(drawRotationRad);
-      const spriteCenterX = leaf.x + (centerLocalX * drawCos) - (centerLocalY * drawSin);
-      const spriteCenterY = leaf.y + (centerLocalX * drawSin) + (centerLocalY * drawCos);
-      hiddenByOverlayBand = isSpriteCircleFullyInsideHiddenBand(
+      const hiddenByOverlayBand = isSpriteCircleFullyInsideHiddenBand(
         spriteCenterX,
         spriteCenterY,
         spriteRadius,
@@ -13747,6 +13751,14 @@ function drawBranchLeaves(branch, leavesConfig, renderOptions = {}) {
         skippedHidden += 1;
         continue;
       }
+    }
+    if (viewportLeftBand && isSpriteCircleFullyInsideHiddenBand(spriteCenterX, spriteCenterY, spriteRadius, viewportLeftBand, 0)) {
+      skippedHidden += 1;
+      continue;
+    }
+    if (viewportRightBand && isSpriteCircleFullyInsideHiddenBand(spriteCenterX, spriteCenterY, spriteRadius, viewportRightBand, 0)) {
+      skippedHidden += 1;
+      continue;
     }
     const sourceRect = getLeafSpriteSourceRect(leavesConfig, leaf.col, leaf.row);
     targetCtx.translate(leaf.x, leaf.y);
@@ -13768,7 +13780,7 @@ function drawBranchLeaves(branch, leavesConfig, renderOptions = {}) {
   return { drawn, culled, skippedHidden };
 }
 
-function drawLeafOverlayFast(leavesConfig, nowMs, targetCtx = ctx) {
+function drawLeafOverlayFast(leavesConfig, nowMs, targetCtx = ctx, viewportLeftBand = null, viewportRightBand = null) {
   if (!leavesConfig || !leavesConfig.enabled || !STATE.leafImage || !targetCtx) {
     return { drawn: 0, culled: 0 };
   }
@@ -13778,7 +13790,6 @@ function drawLeafOverlayFast(leavesConfig, nowMs, targetCtx = ctx) {
     return { drawn: 0, culled: 0 };
   }
 
-  const cullingEnabled = isLeafViewportCullingEnabled();
   let drawn = 0;
   let culled = 0;
   for (let i = 0; i < leaves.length; i += 1) {
@@ -13786,14 +13797,20 @@ function drawLeafOverlayFast(leavesConfig, nowMs, targetCtx = ctx) {
     const drawSize = Number.isFinite(leaf.drawSize) ? Math.max(1, leaf.drawSize) : leavesConfig.drawSize;
     const drawX = -drawSize * 0.5;
     const drawY = -drawSize + ((2.2 / leavesConfig.spriteCellHeight) * drawSize);
-    if (cullingEnabled) {
-      const halfAabb = drawSize * 0.9;
-      if (
-        (leaf.x + halfAabb) < 0
-        || (leaf.y + halfAabb) < 0
-        || (leaf.x - halfAabb) > STATE.viewportWidth
-        || (leaf.y - halfAabb) > STATE.viewportHeight
-      ) {
+    if (viewportLeftBand || viewportRightBand) {
+      const spriteRadius = Math.hypot(drawSize * 0.5, drawSize * 0.5);
+      const centerLocalX = drawX + (drawSize * 0.5);
+      const centerLocalY = drawY + (drawSize * 0.5);
+      const rotRad = Number.isFinite(leaf.rotationRad) ? leaf.rotationRad : 0;
+      const drawCos = Math.cos(rotRad);
+      const drawSin = Math.sin(rotRad);
+      const spriteCenterX = leaf.x + (centerLocalX * drawCos) - (centerLocalY * drawSin);
+      const spriteCenterY = leaf.y + (centerLocalX * drawSin) + (centerLocalY * drawCos);
+      if (viewportLeftBand && isSpriteCircleFullyInsideHiddenBand(spriteCenterX, spriteCenterY, spriteRadius, viewportLeftBand, 0)) {
+        culled += 1;
+        continue;
+      }
+      if (viewportRightBand && isSpriteCircleFullyInsideHiddenBand(spriteCenterX, spriteCenterY, spriteRadius, viewportRightBand, 0)) {
         culled += 1;
         continue;
       }
@@ -13827,7 +13844,7 @@ function drawLeafOverlayFast(leavesConfig, nowMs, targetCtx = ctx) {
   return { drawn, culled };
 }
 
-function drawCommittedBranchLeavesFast(branch, leavesConfig, completedLayerCtx, mainCtx, branchIndex, nowMs) {
+function drawCommittedBranchLeavesFast(branch, leavesConfig, completedLayerCtx, mainCtx, branchIndex, nowMs, viewportLeftBand = null, viewportRightBand = null) {
   if (!branch || !leavesConfig || !leavesConfig.enabled || !STATE.leafImage) {
     return { drawn: 0, culled: 0 };
   }
@@ -13837,7 +13854,6 @@ function drawCommittedBranchLeavesFast(branch, leavesConfig, completedLayerCtx, 
   }
 
   const swayEpsilon = Number.isFinite(leavesConfig.swayEpsilon) ? leavesConfig.swayEpsilon : 0.001;
-  const cullingEnabled = isLeafViewportCullingEnabled();
   const leafCache = getBranchLeafCache(branch);
   const leavesConfigKey = leavesConfig.cacheKey || '';
 
@@ -13854,15 +13870,21 @@ function drawCommittedBranchLeavesFast(branch, leavesConfig, completedLayerCtx, 
     const drawSize = Number.isFinite(leaf.drawSize) ? Math.max(1, leaf.drawSize) : leavesConfig.drawSize;
     const drawX = -drawSize * 0.5;
     const drawY = -drawSize + ((2.2 / leavesConfig.spriteCellHeight) * drawSize);
-    const halfAabb = drawSize * 0.9;
 
-    if (cullingEnabled) {
-      if (
-        (leaf.x + halfAabb) < 0
-        || (leaf.y + halfAabb) < 0
-        || (leaf.x - halfAabb) > STATE.viewportWidth
-        || (leaf.y - halfAabb) > STATE.viewportHeight
-      ) {
+    if (viewportLeftBand || viewportRightBand) {
+      const spriteRadius = Math.hypot(drawSize * 0.5, drawSize * 0.5);
+      const centerLocalX = drawX + (drawSize * 0.5);
+      const centerLocalY = drawY + (drawSize * 0.5);
+      const rotRad = Number.isFinite(leaf.rotationRad) ? leaf.rotationRad : 0;
+      const drawCos = Math.cos(rotRad);
+      const drawSin = Math.sin(rotRad);
+      const spriteCenterX = leaf.x + (centerLocalX * drawCos) - (centerLocalY * drawSin);
+      const spriteCenterY = leaf.y + (centerLocalX * drawSin) + (centerLocalY * drawCos);
+      if (viewportLeftBand && isSpriteCircleFullyInsideHiddenBand(spriteCenterX, spriteCenterY, spriteRadius, viewportLeftBand, 0)) {
+        culled += 1;
+        continue;
+      }
+      if (viewportRightBand && isSpriteCircleFullyInsideHiddenBand(spriteCenterX, spriteCenterY, spriteRadius, viewportRightBand, 0)) {
         culled += 1;
         continue;
       }
@@ -15306,7 +15328,247 @@ function resolveSwipeSectionsConfig(configCandidate = CONFIG.swipeSections) {
       ),
     },
     rsvp: resolveSwipeSectionsRsvpConfig(safeConfig.rsvp, sections),
+    scrollHint: resolveSwipeSectionsScrollHintConfig(safeConfig.scrollHint),
   };
+}
+
+function resolveSwipeSectionsScrollHintConfig(configCandidate = {}) {
+  const safeConfig = isPlainObjectLiteral(configCandidate) ? configCandidate : {};
+  const visibleSectionIds = Array.isArray(safeConfig.visibleSectionIds)
+    ? safeConfig.visibleSectionIds.filter((value) => typeof value === 'string' && value.trim().length > 0).map((value) => value.trim())
+    : ['section-1', 'section-2', 'section-3'];
+
+  return {
+    enabled: safeConfig.enabled !== false,
+    spritePath: normalizeCenterOverlayImagePath(
+      typeof safeConfig.spritePath === 'string' && safeConfig.spritePath.trim().length > 0
+        ? safeConfig.spritePath.trim()
+        : './scroll_4_more.png',
+    ),
+    maxWidthPx: Number.isFinite(Number(safeConfig.maxWidthPx))
+      ? Math.max(0, Number(safeConfig.maxWidthPx))
+      : 48,
+    scale: Number.isFinite(Number(safeConfig.scale))
+      ? Math.max(0, Number(safeConfig.scale))
+      : 1,
+    offsetXVideoHeightRatio: Number.isFinite(Number(safeConfig.offsetXVideoHeightRatio))
+      ? Number(safeConfig.offsetXVideoHeightRatio)
+      : 0,
+    offsetYVideoHeightRatio: Number.isFinite(Number(safeConfig.offsetYVideoHeightRatio))
+      ? Number(safeConfig.offsetYVideoHeightRatio)
+      : 0.04,
+    bottomMarginPx: Number.isFinite(Number(safeConfig.bottomMarginPx))
+      ? Math.max(0, Number(safeConfig.bottomMarginPx))
+      : 10,
+    jumpDelayMs: Number.isFinite(Number(safeConfig.jumpDelayMs))
+      ? Math.max(0, Number(safeConfig.jumpDelayMs))
+      : 700,
+    jumpDistancePx: Number.isFinite(Number(safeConfig.jumpDistancePx))
+      ? Math.max(0, Number(safeConfig.jumpDistancePx))
+      : 10,
+    jumpDurationMs: Number.isFinite(Number(safeConfig.jumpDurationMs))
+      ? Math.max(1, Number(safeConfig.jumpDurationMs))
+      : 250,
+    visibleSectionIds: visibleSectionIds.length > 0
+      ? visibleSectionIds
+      : ['section-1', 'section-2', 'section-3'],
+    debug: isPlainObjectLiteral(safeConfig.debug) ? safeConfig.debug : {},
+  };
+}
+
+function cancelSwipeSectionsScrollHintPendingJump() {
+  const scrollHintState = STATE && STATE.swipeSections ? STATE.swipeSections.scrollHint : null;
+  if (!scrollHintState) {
+    return;
+  }
+  if (Number.isFinite(Number(scrollHintState.pendingJumpTimerId))) {
+    clearTimeout(scrollHintState.pendingJumpTimerId);
+  }
+  scrollHintState.pendingJumpTimerId = null;
+}
+
+function triggerSwipeSectionsScrollHintJump(scrollHintConfig) {
+  if (!scrollHintConfig || scrollHintConfig.enabled !== true) {
+    return;
+  }
+  const scrollHintState = STATE && STATE.swipeSections ? STATE.swipeSections.scrollHint : null;
+  if (!scrollHintState) {
+    return;
+  }
+  scrollHintState.jumpAnimation = {
+    startMs: performance.now(),
+    durationMs: scrollHintConfig.jumpDurationMs,
+    distancePx: scrollHintConfig.jumpDistancePx,
+  };
+  renderScene({ skipAutoStart: true });
+}
+
+function scheduleSwipeSectionsScrollHintJump(scrollHintConfig) {
+  if (!scrollHintConfig || scrollHintConfig.enabled !== true) {
+    return;
+  }
+  cancelSwipeSectionsScrollHintPendingJump();
+  const scrollHintState = STATE && STATE.swipeSections ? STATE.swipeSections.scrollHint : null;
+  if (!scrollHintState || scrollHintConfig.jumpDelayMs <= 0) {
+    return;
+  }
+  scrollHintState.pendingJumpTimerId = window.setTimeout(() => {
+    scrollHintState.pendingJumpTimerId = null;
+    triggerSwipeSectionsScrollHintJump(scrollHintConfig);
+  }, scrollHintConfig.jumpDelayMs);
+}
+
+function handleSwipeSectionsScrollHintOnActiveSectionChange(section, sectionIndex, swipeConfig) {
+  if (!section || !swipeConfig || !swipeConfig.scrollHint || swipeConfig.scrollHint.enabled !== true) {
+    cancelSwipeSectionsScrollHintPendingJump();
+    return;
+  }
+  const scrollHintConfig = swipeConfig.scrollHint;
+  const sectionId = typeof section.id === 'string' ? section.id : '';
+  const isVisible = scrollHintConfig.visibleSectionIds.indexOf(sectionId) >= 0;
+  const scrollHintState = STATE && STATE.swipeSections ? STATE.swipeSections.scrollHint : null;
+  if (!scrollHintState) {
+    return;
+  }
+  if (!isVisible) {
+    cancelSwipeSectionsScrollHintPendingJump();
+    scrollHintState.currentSectionId = '';
+    return;
+  }
+
+  if (scrollHintState.currentSectionId !== sectionId) {
+    scrollHintState.currentSectionId = sectionId;
+    if (sectionId === 'section-1' && scrollHintState.section1InitialJumpTriggered !== true) {
+      triggerSwipeSectionsScrollHintJump(scrollHintConfig);
+      scrollHintState.section1InitialJumpTriggered = true;
+    }
+    scheduleSwipeSectionsScrollHintJump(scrollHintConfig);
+  }
+}
+
+function syncSwipeSectionsScrollHintLayer(nowMs = performance.now()) {
+  const scrollHintConfig = resolveSwipeSectionsConfig().scrollHint;
+  if (!scrollHintConfig || scrollHintConfig.enabled !== true) {
+    swipeSectionsScrollHintLayer.style.display = 'none';
+    swipeSectionsScrollHintDebugRect.style.display = 'none';
+    return;
+  }
+  const heroPlaybackGateConfig = resolveHeroPlaybackGateConfig();
+  const currentFrame = getCurrentHeroVideoFrame(heroPlaybackGateConfig);
+  const postButtonPauseFrame = heroPlaybackGateConfig && Number.isFinite(heroPlaybackGateConfig.postButtonPauseFrame)
+    ? heroPlaybackGateConfig.postButtonPauseFrame
+    : 273;
+  if (currentFrame < postButtonPauseFrame) {
+    swipeSectionsScrollHintLayer.style.display = 'none';
+    swipeSectionsScrollHintDebugRect.style.display = 'none';
+    return;
+  }
+  const swipeState = STATE && STATE.swipeSections ? STATE.swipeSections : null;
+  const swipeConfig = resolveSwipeSectionsConfig();
+  const activeSectionIndex = (
+    swipeState
+    && Number.isFinite(swipeState.activeSectionIndex)
+    && swipeState.activeSectionIndex >= 0
+    && swipeState.activeSectionIndex < swipeConfig.sections.length
+  )
+    ? swipeState.activeSectionIndex
+    : findClosestSwipeSectionIndexToFrame(getCurrentHeroVideoFrame(resolveHeroPlaybackGateConfig()), swipeConfig);
+  const activeSection = (
+    activeSectionIndex >= 0
+    && activeSectionIndex < swipeConfig.sections.length
+  )
+    ? swipeConfig.sections[activeSectionIndex]
+    : null;
+  if (!activeSection || scrollHintConfig.visibleSectionIds.indexOf(activeSection.id) < 0) {
+    swipeSectionsScrollHintLayer.style.display = 'none';
+    swipeSectionsScrollHintDebugRect.style.display = 'none';
+    return;
+  }
+
+
+
+  const spritePath = normalizeCenterOverlayImagePath(scrollHintConfig.spritePath);
+  if (spritePath.length <= 0) {
+    swipeSectionsScrollHintLayer.style.display = 'none';
+    swipeSectionsScrollHintDebugRect.style.display = 'none';
+    return;
+  }
+  const preloadEntry = getCenterOverlayImagePreloadEntry(spritePath);
+  if (!preloadEntry || preloadEntry.status !== 'loaded' || !preloadEntry.image) {
+    ensureCenterOverlayImagePreload(spritePath).catch(() => {});
+    swipeSectionsScrollHintLayer.style.display = 'none';
+    swipeSectionsScrollHintDebugRect.style.display = 'none';
+    return;
+  }
+  if (swipeSectionsScrollHintLayer.dataset.scrollHintPath !== spritePath || swipeSectionsScrollHintLayer.src !== preloadEntry.image.src) {
+    swipeSectionsScrollHintLayer.src = preloadEntry.image.src;
+    swipeSectionsScrollHintLayer.dataset.scrollHintPath = spritePath;
+  }
+
+  const videoRect = getHeroVideoRenderedRect();
+  const viewportWidth = Number.isFinite(STATE.viewportWidth) && STATE.viewportWidth > 0
+    ? STATE.viewportWidth
+    : (Number.isFinite(window.innerWidth) ? window.innerWidth : 0);
+  const centerX = videoRect && Number.isFinite(videoRect.left) && Number.isFinite(videoRect.width)
+    ? videoRect.left + (videoRect.width * 0.5) + (scrollHintConfig.offsetXVideoHeightRatio * (Number.isFinite(videoRect.height) ? videoRect.height : 0))
+    : viewportWidth * 0.5;
+  const bottomOffset = Math.max(0, scrollHintConfig.bottomMarginPx);
+  const videoHeight = videoRect && Number.isFinite(videoRect.height) ? videoRect.height : 0;
+  const extraOffsetY = videoHeight * scrollHintConfig.offsetYVideoHeightRatio;
+
+  let jumpOffsetPx = 0;
+  if (swipeState && swipeState.scrollHint && swipeState.scrollHint.jumpAnimation) {
+    const animation = swipeState.scrollHint.jumpAnimation;
+    const elapsedMs = Math.max(0, nowMs - Number(animation.startMs));
+    const progress = animation.durationMs > 1e-6
+      ? clamp(elapsedMs / animation.durationMs, 0, 1)
+      : 1;
+    if (progress < 1) {
+      jumpOffsetPx = Math.sin(progress * Math.PI) * Number(animation.distancePx);
+    } else {
+      swipeState.scrollHint.jumpAnimation = null;
+    }
+  }
+
+  const widthPx = Math.max(0, Number(scrollHintConfig.maxWidthPx));
+  const scale = scrollHintConfig.scale;
+  const scaledWidthPx = widthPx * scale;
+  const naturalHeightPx = preloadEntry.image.naturalHeight || 0;
+  const naturalWidthPx = preloadEntry.image.naturalWidth || 0;
+  const aspectRatio = naturalWidthPx > 0 ? naturalHeightPx / naturalWidthPx : 1;
+  const scaledHeightPx = scaledWidthPx * aspectRatio;
+
+  swipeSectionsScrollHintLayer.style.position = 'fixed';
+  swipeSectionsScrollHintLayer.style.left = `${centerX}px`;
+  swipeSectionsScrollHintLayer.style.bottom = `${bottomOffset + extraOffsetY + jumpOffsetPx}px`;
+  swipeSectionsScrollHintLayer.style.transform = `translateX(-50%) scale(${scale})`;
+  swipeSectionsScrollHintLayer.style.width = `${widthPx}px`;
+  swipeSectionsScrollHintLayer.style.height = 'auto';
+  swipeSectionsScrollHintLayer.style.display = 'block';
+  swipeSectionsScrollHintLayer.style.opacity = '1';
+  swipeSectionsScrollHintLayer.style.visibility = 'visible';
+  swipeSectionsScrollHintLayer.style.pointerEvents = 'none';
+  swipeSectionsScrollHintLayer.style.zIndex = '10000';
+
+  // Debug rect
+  const debugEnabled = scrollHintConfig.debug && scrollHintConfig.debug.enabled === true;
+  if (debugEnabled) {
+    swipeSectionsScrollHintDebugRect.style.position = 'fixed';
+    swipeSectionsScrollHintDebugRect.style.left = `${centerX}px`;
+    swipeSectionsScrollHintDebugRect.style.bottom = `${bottomOffset + extraOffsetY + jumpOffsetPx}px`;
+    swipeSectionsScrollHintDebugRect.style.transform = `translateX(-50%)`;
+    swipeSectionsScrollHintDebugRect.style.width = `${scaledWidthPx}px`;
+    swipeSectionsScrollHintDebugRect.style.height = `${scaledHeightPx}px`;
+    swipeSectionsScrollHintDebugRect.style.display = 'block';
+    swipeSectionsScrollHintDebugRect.style.opacity = '0.5';
+    swipeSectionsScrollHintDebugRect.style.visibility = 'visible';
+    swipeSectionsScrollHintDebugRect.style.pointerEvents = 'none';
+    swipeSectionsScrollHintDebugRect.style.zIndex = '9999';
+    swipeSectionsScrollHintDebugRect.style.backgroundColor = 'rgba(255, 0, 0, 0.5)';
+    swipeSectionsScrollHintDebugRect.style.border = '1px solid red';
+  } else {
+    swipeSectionsScrollHintDebugRect.style.display = 'none';
+  }
 }
 
 function isEditableEventTarget(target) {
@@ -17196,6 +17458,12 @@ function renderBranch(branch, renderOptions = {}) {
   )
     ? renderOptions.hiddenSpriteCullDebugBudget
     : null;
+  const viewportLeftBand = renderOptions.viewportLeftBand && typeof renderOptions.viewportLeftBand === 'object'
+    ? renderOptions.viewportLeftBand
+    : null;
+  const viewportRightBand = renderOptions.viewportRightBand && typeof renderOptions.viewportRightBand === 'object'
+    ? renderOptions.viewportRightBand
+    : null;
   const branchTextures = renderOptions.branchTextures || getBranchStemTextures(branch, CONFIG.brush);
   if (!branchTextures || !branchTextures.defaultImage) {
     return { backSkippedStems: 0, backSkippedLeaves: 0 };
@@ -17232,6 +17500,8 @@ function renderBranch(branch, renderOptions = {}) {
     hiddenSpriteCullRadiusScale,
     hiddenSpriteCullDebug,
     hiddenSpriteCullDebugBudget,
+    viewportLeftBand,
+    viewportRightBand,
   });
   if (perfStats) {
     if (leafStartMs > 0) {
@@ -17303,6 +17573,12 @@ function drawOverlayBranchRangeWithStemCache(options = {}) {
     && typeof options.hiddenSpriteCullDebugBudget === 'object'
   )
     ? options.hiddenSpriteCullDebugBudget
+    : null;
+  const viewportLeftBand = options.viewportLeftBand && typeof options.viewportLeftBand === 'object'
+    ? options.viewportLeftBand
+    : null;
+  const viewportRightBand = options.viewportRightBand && typeof options.viewportRightBand === 'object'
+    ? options.viewportRightBand
     : null;
   if (!branch || !branch.pathData || !branchTextures || !branchTextures.defaultImage || !targetCtx) {
     return;
@@ -17402,6 +17678,8 @@ function drawOverlayBranchRangeWithStemCache(options = {}) {
     hiddenSpriteCullRadiusScale,
     hiddenSpriteCullDebug,
     hiddenSpriteCullDebugBudget,
+    viewportLeftBand,
+    viewportRightBand,
   });
   if (perfStats) {
     if (leafStartMs > 0) {
@@ -17461,6 +17739,18 @@ function renderScene(options = {}) {
   const overlayWrapActive = isOverlayWrapActive(overlayWrapConfig, useAnimation)
     && Boolean(frontCanvas && frontCtx);
   const hiddenBand = overlayWrapActive ? getOverlayHiddenBand(overlayWrapConfig) : null;
+  const _renderSceneMotionConfig = isPlainObjectLiteral(CONFIG.motion) ? CONFIG.motion : {};
+  const viewportSideCullEnabled = _renderSceneMotionConfig.flowerSpriteViewportCullingEnabled !== false;
+  const viewportSideCullPaddingPx = Number.isFinite(_renderSceneMotionConfig.flowerSpriteViewportCullPaddingPx)
+    ? _renderSceneMotionConfig.flowerSpriteViewportCullPaddingPx
+    : 0;
+  const viewportSideBands = viewportSideCullEnabled
+    ? buildViewportSideBands(STATE.viewportWidth, viewportSideCullPaddingPx)
+    : null;
+  if (viewportSideBands && !renderScene._sideBandLogged) {
+    renderScene._sideBandLogged = true;
+    console.log('[sideBands] w=', STATE.viewportWidth, 'p=', viewportSideCullPaddingPx, 'left.centerX=', viewportSideBands.leftBand.centerX, 'left.halfW=', viewportSideBands.leftBand.topHalfWidthPx, 'right.centerX=', viewportSideBands.rightBand.centerX);
+  }
   const hiddenSpriteCullDebug = (overlayWrapActive && overlayWrapConfig.debugHiddenSpriteCullCirclesEnabled === true)
     ? {
       enabled: true,
@@ -17669,6 +17959,8 @@ function renderScene(options = {}) {
           hiddenSpriteCullRadiusScale: overlayWrapConfig.spriteHiddenCullRadiusScale,
           hiddenSpriteCullDebug,
           hiddenSpriteCullDebugBudget,
+          viewportLeftBand: viewportSideBands && viewportSideBands.leftBand,
+          viewportRightBand: viewportSideBands && viewportSideBands.rightBand,
         });
         drawOverlayBranchRangeWithStemCache({
           branch,
@@ -17701,6 +17993,8 @@ function renderScene(options = {}) {
           hiddenSpriteCullRadiusScale: overlayWrapConfig.spriteHiddenCullRadiusScale,
           hiddenSpriteCullDebug,
           hiddenSpriteCullDebugBudget,
+          viewportLeftBand: viewportSideBands && viewportSideBands.leftBand,
+          viewportRightBand: viewportSideBands && viewportSideBands.rightBand,
         });
         if (frontCtx) {
           renderBranch(branch, {
@@ -17714,6 +18008,8 @@ function renderScene(options = {}) {
             perfStats,
             hiddenBand: null,
             skipFullyHiddenInBand: false,
+            viewportLeftBand: viewportSideBands && viewportSideBands.leftBand,
+            viewportRightBand: viewportSideBands && viewportSideBands.rightBand,
           });
         }
       }
@@ -17723,7 +18019,13 @@ function renderScene(options = {}) {
   } else if (canUseLeafOverlayFastPath) {
     activeBranches = branches.length;
     const leafStartMs = perfEnabled ? performance.now() : 0;
-    const leafStats = drawLeafOverlayFast(leavesConfig, renderTimestampMs, ctx);
+    const leafStats = drawLeafOverlayFast(
+      leavesConfig,
+      renderTimestampMs,
+      ctx,
+      viewportSideBands && viewportSideBands.leftBand,
+      viewportSideBands && viewportSideBands.rightBand,
+    );
     if (perfEnabled) {
       perfStats.leafDrawMs += Math.max(0, performance.now() - leafStartMs);
     }
@@ -17756,6 +18058,8 @@ function renderScene(options = {}) {
                 ctx,
                 i,
                 renderTimestampMs,
+                viewportSideBands && viewportSideBands.leftBand,
+                viewportSideBands && viewportSideBands.rightBand,
               );
               if (perfEnabled) {
                 perfStats.leafDrawMs += Math.max(0, performance.now() - leafStartMs);
@@ -17786,7 +18090,16 @@ function renderScene(options = {}) {
           }
           completedLayer.committedBranchIds.add(branchRenderId);
           if (shouldRenderLeaves) {
-            drawCommittedBranchLeavesFast(branch, leavesConfig, completedLayer.ctx, null, i, renderTimestampMs);
+            drawCommittedBranchLeavesFast(
+              branch,
+              leavesConfig,
+              completedLayer.ctx,
+              null,
+              i,
+              renderTimestampMs,
+              viewportSideBands && viewportSideBands.leftBand,
+              viewportSideBands && viewportSideBands.rightBand,
+            );
           }
           // Draw once on this frame since layer blit already happened earlier.
           renderBranch(branch, {
@@ -17796,6 +18109,8 @@ function renderScene(options = {}) {
             branchIndex: i,
             nowMs: renderTimestampMs,
             perfStats,
+            viewportLeftBand: viewportSideBands && viewportSideBands.leftBand,
+            viewportRightBand: viewportSideBands && viewportSideBands.rightBand,
           });
           continue;
         }
@@ -17875,6 +18190,8 @@ function renderScene(options = {}) {
               ctx,
               i,
               renderTimestampMs,
+              viewportSideBands && viewportSideBands.leftBand,
+              viewportSideBands && viewportSideBands.rightBand,
             );
           } else {
             leafStats = drawBranchLeaves(branch, leavesConfig, {
@@ -17883,6 +18200,8 @@ function renderScene(options = {}) {
               branchIndex: i,
               nowMs: renderTimestampMs,
               perfStats,
+              viewportLeftBand: viewportSideBands && viewportSideBands.leftBand,
+              viewportRightBand: viewportSideBands && viewportSideBands.rightBand,
             });
           }
           if (perfEnabled) {
@@ -17899,6 +18218,8 @@ function renderScene(options = {}) {
           branchIndex: i,
           nowMs: renderTimestampMs,
           perfStats,
+          viewportLeftBand: viewportSideBands && viewportSideBands.leftBand,
+          viewportRightBand: viewportSideBands && viewportSideBands.rightBand,
         });
       }
     }
@@ -17942,7 +18263,6 @@ function renderScene(options = {}) {
         isBranchFlowerEndpointVisible(branchId, flower)
         && !isBackLayerForBranch(branchId, flower)
       );
-      const motionConfig = isPlainObjectLiteral(CONFIG.motion) ? CONFIG.motion : {};
       const backFlowerTiming = drawEndpointFlowers(
         renderTimestampMs,
         ctx,
@@ -17955,8 +18275,8 @@ function renderScene(options = {}) {
           hiddenSpriteCullInnerPaddingPx: overlayWrapConfig.spriteHiddenCullInnerPaddingPx,
           hiddenSpriteCullRadiusScale: overlayWrapConfig.spriteHiddenCullRadiusScale,
           hiddenSpriteCullDebug,
-          viewportCullEnabled: motionConfig.flowerSpriteViewportCullingEnabled !== false,
-          viewportCullPaddingPx: motionConfig.flowerSpriteViewportCullPaddingPx,
+          viewportLeftBand: viewportSideBands && viewportSideBands.leftBand,
+          viewportRightBand: viewportSideBands && viewportSideBands.rightBand,
         },
         false,
       );
@@ -17977,8 +18297,8 @@ function renderScene(options = {}) {
             layerName: 'front',
             skipUpdate: true,
             branchFilter: frontBranchFilter,
-            viewportCullEnabled: motionConfig.flowerSpriteViewportCullingEnabled !== false,
-            viewportCullPaddingPx: motionConfig.flowerSpriteViewportCullPaddingPx,
+            viewportLeftBand: viewportSideBands && viewportSideBands.leftBand,
+            viewportRightBand: viewportSideBands && viewportSideBands.rightBand,
           },
           true,
         );
@@ -17991,7 +18311,6 @@ function renderScene(options = {}) {
         }
       }
     } else {
-      const nonOverlayMotionConfig = isPlainObjectLiteral(CONFIG.motion) ? CONFIG.motion : {};
       const flowerTiming = drawEndpointFlowers(
         renderTimestampMs,
         ctx,
@@ -17999,8 +18318,8 @@ function renderScene(options = {}) {
           layerName: 'back',
           clearFront: true,
           branchFilter: isBranchFlowerEndpointVisible,
-          viewportCullEnabled: nonOverlayMotionConfig.flowerSpriteViewportCullingEnabled !== false,
-          viewportCullPaddingPx: nonOverlayMotionConfig.flowerSpriteViewportCullPaddingPx,
+          viewportLeftBand: viewportSideBands && viewportSideBands.leftBand,
+          viewportRightBand: viewportSideBands && viewportSideBands.rightBand,
         },
       );
       if (flowerTiming) {
@@ -18068,6 +18387,7 @@ function renderScene(options = {}) {
     flushPerformanceFrame(frameStartMs, activeBranches);
   }
 
+  syncSwipeSectionsScrollHintLayer(overlayNowMs);
   syncFlowerInteractionLoop();
 }
 
@@ -18256,6 +18576,9 @@ function syncSwipeSectionsStateWithConfig(options = {}) {
     rsvpRuntime.sectionId = swipeConfig.rsvp.sectionId;
   }
   preloadSwipeSectionsOverlayImages(swipeConfig);
+  if (swipeConfig.scrollHint && swipeConfig.scrollHint.enabled === true && swipeConfig.scrollHint.spritePath.length > 0) {
+    ensureCenterOverlayImagePreload(swipeConfig.scrollHint.spritePath).catch(() => {});
+  }
   if (swipeConfig.enabled !== true) {
     cancelSwipeSectionTransition();
     resetSwipeSectionsWheelGestureSession();
@@ -18296,6 +18619,7 @@ function syncSwipeSectionsStateWithConfig(options = {}) {
     swipeState.overlayTransitionHasSwappedPath = false;
   }
   syncSwipeSectionDomState(nextSection, nextIndex);
+  handleSwipeSectionsScrollHintOnActiveSectionChange(nextSection, nextIndex, swipeConfig);
   if (safeOptions.emitEvent === true && previousIndex !== nextIndex) {
     dispatchSwipeSectionChangeEvent({
       index: nextIndex,
@@ -18464,6 +18788,7 @@ function finalizeSwipeSectionTransition(targetIndex, direction, reason, swipeCon
   swipeState.activeSectionId = targetSection.id;
   setSwipeSectionOverlayPathOverride(targetSection.centerOverlayImagePath, { forceLoad: true });
   syncSwipeSectionDomState(targetSection, safeTargetIndex);
+  handleSwipeSectionsScrollHintOnActiveSectionChange(targetSection, safeTargetIndex, swipeConfig);
   if (previousIndex !== safeTargetIndex) {
     dispatchSwipeSectionChangeEvent({
       index: safeTargetIndex,
