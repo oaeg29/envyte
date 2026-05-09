@@ -366,6 +366,7 @@ body.ios26-fixed-workaround #centerOverlayImageAlt,
 body.ios26-fixed-workaround #rsvpLayer,
 body.ios26-fixed-workaround #scrollHintLayer,
 body.ios26-fixed-workaround #section2ButtonLayer,
+body.ios26-fixed-workaround #section1LabelLayer,
 body.ios26-fixed-workaround #loadingScreen {
   position: absolute;
 }
@@ -411,6 +412,7 @@ body[data-viewport-layout-mode="relativeAdjustable"] #centerOverlayImageAlt,
 body[data-viewport-layout-mode="relativeAdjustable"] #rsvpLayer,
 body[data-viewport-layout-mode="relativeAdjustable"] #scrollHintLayer,
 body[data-viewport-layout-mode="relativeAdjustable"] #section2ButtonLayer,
+body[data-viewport-layout-mode="relativeAdjustable"] #section1LabelLayer,
 body[data-viewport-layout-mode="relativeAdjustable"] #loadingScreen,
 body[data-viewport-layout-mode="relative166"] #myCanvas,
 body[data-viewport-layout-mode="relative166"] #myCanvasFront,
@@ -424,6 +426,7 @@ body[data-viewport-layout-mode="relative166"] #centerOverlayImageAlt,
 body[data-viewport-layout-mode="relative166"] #rsvpLayer,
 body[data-viewport-layout-mode="relative166"] #scrollHintLayer,
 body[data-viewport-layout-mode="relative166"] #section2ButtonLayer,
+body[data-viewport-layout-mode="relative166"] #section1LabelLayer,
 body[data-viewport-layout-mode="relative166"] #loadingScreen {
   position: absolute;
 }
@@ -745,4 +748,21 @@ body[data-viewport-layout-mode="relative166"] #loadingScreen {
   100% {
     transform: translate(-50%, -50%) scale(1);
   }
+}
+
+#section1LabelLayer {
+  position: fixed;
+  top: var(--app-viewport-offset-top);
+  left: var(--app-viewport-offset-left);
+  width: var(--app-viewport-width);
+  height: var(--app-viewport-height);
+  pointer-events: none;
+  z-index: 901;
+}
+
+#section1Label {
+  position: absolute;
+  pointer-events: none;
+  user-select: none;
+  white-space: pre-line;
 }

@@ -57,12 +57,14 @@ const wash1Layer = document.createElement('div');
 const wash2Layer = document.createElement('div');
 const section2ButtonLayer = document.createElement('div');
 const section2Button = document.createElement('button');
+const section1LabelLayer = document.createElement('div');
+const section1LabelEl = document.createElement('div');
 
 // =========================
 // 2) Config
 // =========================
 let valScaling = 0.01;
-const defaultCountPerSide = 9;
+const defaultCountPerSide = 2;
 const FILTER_CACHE_HUE_STEP_DEG = 2;
 const FILTER_CACHE_BRIGHTNESS_STEP = 0.02;
 const HERO_VIDEO_PATH_DEFAULT = './hero_final_1500.webm';
@@ -2350,6 +2352,11 @@ swipeSectionsScrollHintWrapperLayer.appendChild(swipeSectionsScrollHintDebugRect
 document.body.appendChild(swipeSectionsScrollHintWrapperLayer);
 document.body.appendChild(rsvpLayer);
 document.body.appendChild(section2ButtonLayer);
+section1LabelLayer.id = 'section1LabelLayer';
+section1LabelLayer.setAttribute('aria-hidden', 'true');
+section1LabelEl.id = 'section1Label';
+section1LabelLayer.appendChild(section1LabelEl);
+document.body.appendChild(section1LabelLayer);
 // Keep front overlay canvas in root stacking context so it can render above the video.
 document.body.appendChild(frontCanvas);
 document.body.appendChild(flowersFrontCanvas);
@@ -2558,6 +2565,8 @@ const STATE = {
     lastFrame: null,
     backgroundMusicAudio: null,
     backgroundMusicStarted: false,
+    audioContext: null,
+    audioBuffers: new Map(),
   },
   flowerSystem: null,
   flowerInteractionRafId: null,
@@ -3651,17 +3660,90 @@ function resolveMasterSoundConfig(configCandidate = CONFIG.mastersound) {
   };
 }
 
-function playSoundWithDelay(filePath, delayMs, volume = 1.0, speed = 1.0) {
-  const playAudio = () => {
+function getOrCreateAudioContext() {
+  if (!STATE.masterSound) {
+    return null;
+  }
+  if (!STATE.masterSound.audioContext) {
     try {
-      const audio = new Audio(filePath);
-      audio.volume = Math.max(0, Math.min(1, volume));
-      audio.playbackRate = Math.max(0.1, Math.min(4.0, speed));
-      audio.play().catch((err) => {
-        console.warn(`Failed to play sound: ${filePath}`, err.message);
-      });
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (AudioContextClass) {
+        STATE.masterSound.audioContext = new AudioContextClass();
+      }
     } catch (err) {
-      console.warn(`Failed to create audio for sound: ${filePath}`, err.message);
+      console.warn('Failed to create AudioContext:', err.message);
+    }
+  }
+  return STATE.masterSound.audioContext;
+}
+
+async function loadAudioBuffer(filePath) {
+  const audioContext = getOrCreateAudioContext();
+  if (!audioContext) {
+    return null;
+  }
+
+  const normalizedPath = normalizeHostedAssetPath(filePath);
+  const cacheKey = normalizedPath;
+
+  if (STATE.masterSound.audioBuffers.has(cacheKey)) {
+    return STATE.masterSound.audioBuffers.get(cacheKey);
+  }
+
+  try {
+    const response = await fetch(normalizedPath);
+    const arrayBuffer = await response.arrayBuffer();
+    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+    STATE.masterSound.audioBuffers.set(cacheKey, audioBuffer);
+    return audioBuffer;
+  } catch (err) {
+    console.warn(`Failed to load audio buffer: ${normalizedPath}`, err.message);
+    return null;
+  }
+}
+
+function playSoundWithDelay(filePath, delayMs, volume = 1.0, speed = 1.0) {
+  const playAudio = async () => {
+    try {
+      const audioContext = getOrCreateAudioContext();
+      if (!audioContext) {
+        console.warn('AudioContext not available, falling back to HTML5 Audio');
+        const audio = new Audio(filePath);
+        audio.volume = Math.max(0, Math.min(1, volume));
+        audio.playbackRate = Math.max(0.1, Math.min(4.0, speed));
+        audio.play().catch((err) => {
+          console.warn(`Failed to play sound: ${filePath}`, err.message);
+        });
+        return;
+      }
+
+      if (audioContext.state === 'suspended') {
+        await audioContext.resume();
+      }
+
+      const audioBuffer = await loadAudioBuffer(filePath);
+      if (!audioBuffer) {
+        console.warn(`Failed to load audio buffer for: ${filePath}`);
+        return;
+      }
+
+      const source = audioContext.createBufferSource();
+      source.buffer = audioBuffer;
+      source.playbackRate.value = Math.max(0.1, Math.min(4.0, speed));
+
+      const gainNode = audioContext.createGain();
+      gainNode.gain.value = Math.max(0, Math.min(1, volume));
+
+      source.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+
+      source.start(0);
+      source.onended = () => {
+        source.disconnect();
+        gainNode.disconnect();
+      };
+    } catch (err) {
+      console.warn(`Failed to play sound: ${filePath}`, err.message);
     }
   };
 
@@ -3718,7 +3800,7 @@ function resetMasterSoundTriggeredFrames() {
   }
 }
 
-function startBackgroundMusic() {
+async function startBackgroundMusic() {
   const masterSoundConfig = resolveMasterSoundConfig();
   if (!masterSoundConfig.enabled || !masterSoundConfig.backgroundMusic.enabled) {
     return;
@@ -3734,25 +3816,60 @@ function startBackgroundMusic() {
   }
 
   try {
-    const audio = new Audio(masterSoundConfig.backgroundMusic.filePath);
-    audio.loop = true;
-    audio.volume = masterSoundConfig.backgroundMusic.volume;
-    audio.play().catch((err) => {
-      console.warn('Failed to play background music:', err.message);
-    });
+    const audioContext = getOrCreateAudioContext();
+    if (!audioContext) {
+      console.warn('AudioContext not available, falling back to HTML5 Audio for background music');
+      const audio = new Audio(masterSoundConfig.backgroundMusic.filePath);
+      audio.loop = true;
+      audio.volume = masterSoundConfig.backgroundMusic.volume;
+      audio.play().catch((err) => {
+        console.warn('Failed to play background music:', err.message);
+      });
+      STATE.masterSound.backgroundMusicAudio = audio;
+      STATE.masterSound.backgroundMusicStarted = true;
+      return;
+    }
 
-    STATE.masterSound.backgroundMusicAudio = audio;
+    if (audioContext.state === 'suspended') {
+      await audioContext.resume();
+    }
+
+    const audioBuffer = await loadAudioBuffer(masterSoundConfig.backgroundMusic.filePath);
+    if (!audioBuffer) {
+      console.warn('Failed to load background music buffer');
+      return;
+    }
+
+    const source = audioContext.createBufferSource();
+    source.buffer = audioBuffer;
+    source.loop = true;
+
+    const gainNode = audioContext.createGain();
+    gainNode.gain.value = masterSoundConfig.backgroundMusic.volume;
+
+    source.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+
+    source.start(0);
+
+    STATE.masterSound.backgroundMusicAudio = { source, gainNode };
     STATE.masterSound.backgroundMusicStarted = true;
   } catch (err) {
-    console.warn('Failed to create background audio:', err.message);
+    console.warn('Failed to start background music:', err.message);
   }
 }
 
 function stopBackgroundMusic() {
   if (STATE.masterSound.backgroundMusicAudio) {
     try {
-      STATE.masterSound.backgroundMusicAudio.pause();
-      STATE.masterSound.backgroundMusicAudio.currentTime = 0;
+      const bgAudio = STATE.masterSound.backgroundMusicAudio;
+      if (bgAudio.source && typeof bgAudio.source.stop === 'function') {
+        bgAudio.source.stop();
+        bgAudio.source.disconnect();
+      }
+      if (bgAudio.gainNode) {
+        bgAudio.gainNode.disconnect();
+      }
       STATE.masterSound.backgroundMusicAudio = null;
     } catch (err) {
       console.warn('Failed to stop background music:', err.message);
@@ -5899,6 +6016,140 @@ function syncSection2ButtonLayer(nowMs = performance.now()) {
   section2ButtonLayer.dataset.buttonTimestamp = Number.isFinite(nowMs) ? String(nowMs) : String(performance.now());
 }
 
+const section1LabelFontState = {
+  activeFontKey: '',
+  entries: new Map(),
+};
+
+function ensureSection1LabelFontLoaded(labelConfig) {
+  const fontSourcePath = normalizeHostedAssetPath(
+    typeof labelConfig.fontSourcePath === 'string' ? labelConfig.fontSourcePath.trim() : '',
+  );
+  const fontFamily = (
+    typeof labelConfig.fontFamily === 'string' && labelConfig.fontFamily.trim().length > 0
+  )
+    ? labelConfig.fontFamily.trim()
+    : '';
+  if (fontSourcePath.length <= 0 || fontFamily.length <= 0 || typeof FontFace !== 'function' || !document.fonts) {
+    return;
+  }
+  const fontWeight = String(labelConfig.fontWeight || 'normal');
+  const fontStyle = (
+    typeof labelConfig.fontStyle === 'string' && labelConfig.fontStyle.trim().length > 0
+  )
+    ? labelConfig.fontStyle.trim()
+    : 'normal';
+  const fontKey = `${fontFamily}|${fontSourcePath}|${fontWeight}|${fontStyle}`;
+  section1LabelFontState.activeFontKey = fontKey;
+  const existing = section1LabelFontState.entries.get(fontKey);
+  if (existing && (existing.status === 'loaded' || existing.status === 'loading' || existing.status === 'failed')) {
+    return;
+  }
+  const entry = { status: 'loading' };
+  section1LabelFontState.entries.set(fontKey, entry);
+  new FontFace(fontFamily, `url("${fontSourcePath}")`, { weight: fontWeight, style: fontStyle })
+    .load()
+    .then((loadedFontFace) => {
+      document.fonts.add(loadedFontFace);
+      entry.status = 'loaded';
+      renderScene({ skipAutoStart: true });
+    })
+    .catch(() => {
+      entry.status = 'failed';
+    });
+}
+
+function resolveSection1DaysLeft() {
+  const target = new Date('2026-06-26T00:00:00');
+  const now = new Date();
+  const msLeft = target.getTime() - now.getTime();
+  return Math.max(0, Math.ceil(msLeft / (1000 * 60 * 60 * 24)));
+}
+
+function hideSection1LabelLayer() {
+  section1LabelLayer.style.display = 'none';
+  section1LabelLayer.style.visibility = 'hidden';
+  section1LabelLayer.style.pointerEvents = 'none';
+  section1LabelLayer.setAttribute('aria-hidden', 'true');
+}
+
+function syncSection1LabelLayer(nowMs = performance.now()) {
+  const swipeConfig = resolveSwipeSectionsConfig();
+  const sections = swipeConfig && Array.isArray(swipeConfig.sections) ? swipeConfig.sections : [];
+  const activeSectionId = resolveRsvpActiveSectionId(swipeConfig);
+
+  if (!swipeConfig || !swipeConfig.enabled || sections.length === 0) {
+    hideSection1LabelLayer();
+    return;
+  }
+  if (!isSwipeSectionsNavigationActive(swipeConfig)) {
+    hideSection1LabelLayer();
+    return;
+  }
+
+  const labelConfig = swipeConfig.section1Label || {};
+  if (labelConfig.enabled === false) {
+    hideSection1LabelLayer();
+    return;
+  }
+
+  const targetSectionId = (typeof labelConfig.sectionId === 'string' && labelConfig.sectionId.trim().length > 0)
+    ? labelConfig.sectionId.trim()
+    : 'section-1';
+  if (activeSectionId !== targetSectionId) {
+    hideSection1LabelLayer();
+    return;
+  }
+
+  const videoRect = getHeroVideoRenderedRect();
+  const videoHeight = (
+    videoRect
+    && Number.isFinite(videoRect.height)
+    && videoRect.height > 0
+  )
+    ? videoRect.height
+    : resolveHeroVideoRenderedHeightPx();
+
+  if (!(videoHeight > 0)) {
+    hideSection1LabelLayer();
+    return;
+  }
+
+  const videoLeft = videoRect ? (Number.isFinite(videoRect.left) ? videoRect.left : 0) : 0;
+  const videoTop = videoRect ? (Number.isFinite(videoRect.top) ? videoRect.top : 0) : 0;
+  const centerX = videoLeft + videoRect.width * 0.5;
+  const centerY = videoTop + videoRect.height * 0.5;
+  const labelCenterX = centerX + (Number(labelConfig.offsetXVideoHeightRatio) || 0) * videoHeight;
+  const labelCenterY = centerY + (Number(labelConfig.offsetYVideoHeightRatio) || 0) * videoHeight;
+  const labelWidth = Math.max(0, (Number(labelConfig.widthVideoHeightRatio) || 0) * videoHeight);
+  const fontSize = Math.max(0, (Number(labelConfig.fontSizeVideoHeightRatio) || 0) * videoHeight);
+  const daysLeft = resolveSection1DaysLeft();
+  const labelText = `Save the date,\nonly ${daysLeft} days left!`;
+
+  ensureSection1LabelFontLoaded(labelConfig);
+
+  section1LabelLayer.style.display = 'block';
+  section1LabelLayer.style.visibility = 'visible';
+  section1LabelLayer.style.pointerEvents = 'none';
+  section1LabelLayer.setAttribute('aria-hidden', 'true');
+
+  section1LabelEl.textContent = labelText;
+  section1LabelEl.style.left = `${labelCenterX}px`;
+  section1LabelEl.style.top = `${labelCenterY}px`;
+  section1LabelEl.style.width = `${labelWidth}px`;
+  section1LabelEl.style.transform = 'translate(-50%, -50%)';
+  section1LabelEl.style.fontFamily = labelConfig.fontFamily || 'inherit';
+  section1LabelEl.style.fontWeight = String(labelConfig.fontWeight || 'normal');
+  section1LabelEl.style.fontStyle = labelConfig.fontStyle || 'normal';
+  section1LabelEl.style.fontSize = `${fontSize}px`;
+  section1LabelEl.style.color = labelConfig.textColor || '#1f1b17';
+  section1LabelEl.style.textAlign = labelConfig.textAlign || 'center';
+  section1LabelEl.style.lineHeight = String(labelConfig.lineHeight || 1.45);
+  section1LabelEl.style.whiteSpace = 'pre-line';
+  section1LabelEl.style.pointerEvents = 'none';
+  section1LabelEl.style.userSelect = 'none';
+}
+
 function onSection2ButtonHoverEnter() {
   const section2 = getSection2Config();
   if (!section2 || !section2.button || !section2.button.animation) {
@@ -6709,22 +6960,7 @@ function tryHandleHeroPlaybackOpenButtonClick(event) {
   if (buttonConfig && buttonConfig.sound && buttonConfig.sound.enabled === true) {
     const soundConfig = buttonConfig.sound;
     if (soundConfig.filePath && soundConfig.filePath.length > 0) {
-      const playSound = () => {
-        try {
-          const audio = new Audio(soundConfig.filePath);
-          audio.volume = Math.max(0, Math.min(1, soundConfig.volume || 1.0));
-          audio.play().catch((err) => {
-            console.warn('Failed to play open button sound:', err.message);
-          });
-        } catch (err) {
-          console.warn('Failed to create audio for open button sound:', err.message);
-        }
-      };
-      if (soundConfig.delayMs > 0) {
-        setTimeout(playSound, soundConfig.delayMs);
-      } else {
-        playSound();
-      }
+      playSoundWithDelay(soundConfig.filePath, soundConfig.delayMs, soundConfig.volume || 1.0, 1.0);
     }
   }
 
@@ -15337,6 +15573,48 @@ function resolveSwipeSectionsConfig(configCandidate = CONFIG.swipeSections) {
     },
     rsvp: resolveSwipeSectionsRsvpConfig(safeConfig.rsvp, sections),
     scrollHint: resolveSwipeSectionsScrollHintConfig(safeConfig.scrollHint),
+    section1Label: resolveSwipeSectionsSection1LabelConfig(safeConfig.section1Label),
+  };
+}
+
+function resolveSwipeSectionsSection1LabelConfig(configCandidate = {}) {
+  const safeConfig = isPlainObjectLiteral(configCandidate) ? configCandidate : {};
+  return {
+    enabled: safeConfig.enabled !== false,
+    sectionId: (typeof safeConfig.sectionId === 'string' && safeConfig.sectionId.trim().length > 0)
+      ? safeConfig.sectionId.trim()
+      : 'section-1',
+    offsetXVideoHeightRatio: Number.isFinite(Number(safeConfig.offsetXVideoHeightRatio))
+      ? Number(safeConfig.offsetXVideoHeightRatio)
+      : 0,
+    offsetYVideoHeightRatio: Number.isFinite(Number(safeConfig.offsetYVideoHeightRatio))
+      ? Number(safeConfig.offsetYVideoHeightRatio)
+      : -0.32,
+    widthVideoHeightRatio: Number.isFinite(Number(safeConfig.widthVideoHeightRatio)) && Number(safeConfig.widthVideoHeightRatio) > 0
+      ? Number(safeConfig.widthVideoHeightRatio)
+      : 0.55,
+    fontFamily: (typeof safeConfig.fontFamily === 'string' && safeConfig.fontFamily.trim().length > 0)
+      ? safeConfig.fontFamily.trim()
+      : 'serif',
+    fontSourcePath: normalizeHostedAssetPath(
+      typeof safeConfig.fontSourcePath === 'string' ? safeConfig.fontSourcePath.trim() : '',
+    ),
+    fontWeight: Number.isFinite(Number(safeConfig.fontWeight)) ? Number(safeConfig.fontWeight) : 400,
+    fontStyle: (typeof safeConfig.fontStyle === 'string' && safeConfig.fontStyle.trim().length > 0)
+      ? safeConfig.fontStyle.trim()
+      : 'normal',
+    fontSizeVideoHeightRatio: Number.isFinite(Number(safeConfig.fontSizeVideoHeightRatio)) && Number(safeConfig.fontSizeVideoHeightRatio) > 0
+      ? Number(safeConfig.fontSizeVideoHeightRatio)
+      : 0.055,
+    textColor: (typeof safeConfig.textColor === 'string' && safeConfig.textColor.trim().length > 0)
+      ? safeConfig.textColor.trim()
+      : '#1f1b17',
+    textAlign: (typeof safeConfig.textAlign === 'string' && safeConfig.textAlign.trim().length > 0)
+      ? safeConfig.textAlign.trim()
+      : 'center',
+    lineHeight: Number.isFinite(Number(safeConfig.lineHeight)) && Number(safeConfig.lineHeight) > 0
+      ? Number(safeConfig.lineHeight)
+      : 1.45,
   };
 }
 
@@ -16947,6 +17225,7 @@ function ensureScrollStageLayoutStructure() {
     centerOverlayImageLayerAlt,
     swipeSectionsScrollHintWrapperLayer,
     rsvpLayer,
+    section1LabelLayer,
     frontCanvas,
     flowersFrontCanvas,
     mainElement,
@@ -16983,6 +17262,7 @@ function ensureRootBackgroundLayoutStructure() {
     centerOverlayImageLayerAlt,
     swipeSectionsScrollHintWrapperLayer,
     rsvpLayer,
+    section1LabelLayer,
     frontCanvas,
     flowersFrontCanvas,
   ];
@@ -17736,6 +18016,7 @@ function renderScene(options = {}) {
   syncCenterOverlayImageLayer(overlayNowMs, heroPlaybackFrame);
   syncRsvpLayer(overlayNowMs);
   syncSection2ButtonLayer(overlayNowMs);
+  syncSection1LabelLayer(overlayNowMs);
   syncWash1Layer(heroPlaybackFrame);
   syncWash2Layer(heroPlaybackFrame);
   if (enforceHeroPlaybackGatePauseFrames(heroPlaybackFrame, heroPlaybackGateConfig, { rerenderOnPause: false })) {

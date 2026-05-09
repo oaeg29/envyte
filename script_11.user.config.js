@@ -84,12 +84,16 @@
   },
 
   seeds: {
+    // countPerSide: defaultCountPerSide,
     countPerSide: defaultCountPerSide,
-    sidePad: -0.14, // interpreted by sidePadBasis
+
+    sidePad: -0.12, // interpreted by sidePadBasis
     sidePadBasis: 'videoWidthRatio', // px | videoWidthRatio | viewportWidthRatio
     sideAnchorXMode: 'videoCenter', // viewportEdges | videoCenter
     sideMargin: 2,
-    mode: 'explicitYRatios', // autoSpacing | explicitYRatios
+    // mode: 'explicitYRatios', // autoSpacing | explicitYRatios
+    mode: 'autoSpacing', // autoSpacing | explicitYRatios
+
     explicitYRatioBasis: 'video', // video | viewport
     explicitYRatios: [0.05, 0.1, 0.3, 0.5, 0.4 , 0.45, 0.89, 0.85, 0.9, 0.81, 0.75], // shared ratios for both sides (0..1 or 0..100)
     explicitYRatiosBySide: null, // optional { left: [...], right: [...] }
@@ -207,7 +211,7 @@
     useOffscreenLayerCache: true,
     useIncrementalStemCache: true, // commit only new tip growth each frame; free blit replays the rest
     growthFpsCap: 30, // max render fps during growth animation (0 = uncapped); matches native RAF cadence above this
-    earlyCommitEnabled: true, // commit partially-grown branches once they cross earlyCommitThreshold
+    earlyCommitEnabled: false, // commit partially-grown branches once they cross earlyCommitThreshold
     earlyCommitThreshold: 0.5, // fraction of totalLength (0..1) at which a growing branch is committed early
     overlayPromotionGrowthOnMode: 'growthON', // growthON only: matchGrowthOff | firstExitCutover
   },
@@ -584,6 +588,23 @@
 
   swipeSections: {
     enabled: true,
+
+    section1Label: {
+      enabled: true,
+      sectionId: 'section-1',
+      offsetXVideoHeightRatio: 0,
+      offsetYVideoHeightRatio: 0.17,
+      widthVideoHeightRatio: 0.55,
+      fontFamily: 'ZeinaDidotScript',  
+      fontSourcePath: './Didot_Bold.otf',
+      fontWeight: 400,
+      fontStyle: 'normal',
+      fontSizeVideoHeightRatio: 0.018,
+      textColor: '#1f1b17',
+      textAlign: 'center',
+      lineHeight: 1.0,
+    },
+
     // Ordered page list used by section.pageIndex (1-based).
     pages: [
       './test_page.png',
@@ -1136,6 +1157,6 @@
   global.STEM_WARP_USER_CONFIG = createStemWarpUserConfig({
     gradient: undefined,
     valScaling: 0.0001,
-    defaultCountPerSide: 9,
+    defaultCountPerSide: 22,
   });
 })(typeof window !== 'undefined' ? window : globalThis);
