@@ -825,7 +825,7 @@
     skipHiddenBackDrawEnabled: true,
     spriteHiddenCullInnerPaddingPx: 10,
     spriteHiddenCullRadiusScale: 0.5, // 0.05..1 scales the hidden-cull test circle radius
-    debugHiddenSpriteCullCirclesEnabled: true,
+    debugHiddenSpriteCullCirclesEnabled: false,
     debugHiddenSpriteCullCirclesMode: 'culled', // culled | all
     debugHiddenSpriteCullCirclesMaxPerFrame: 400,
     debugHiddenSpriteCullCircleStrokeVisible: 'rgba(90, 220, 120, 0.55)',

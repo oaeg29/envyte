@@ -15503,8 +15503,10 @@ function syncSwipeSectionsScrollHintLayer(nowMs = performance.now()) {
   const centerX = videoRect && Number.isFinite(videoRect.left) && Number.isFinite(videoRect.width)
     ? videoRect.left + (videoRect.width * 0.5) + (scrollHintConfig.offsetXVideoHeightRatio * (Number.isFinite(videoRect.height) ? videoRect.height : 0))
     : viewportWidth * 0.5;
-  const bottomOffset = Math.max(0, scrollHintConfig.bottomMarginPx);
   const videoHeight = videoRect && Number.isFinite(videoRect.height) ? videoRect.height : 0;
+  const videoBottom = videoRect && Number.isFinite(videoRect.top) && Number.isFinite(videoRect.height)
+    ? videoRect.top + videoRect.height
+    : (Number.isFinite(STATE.viewportHeight) && STATE.viewportHeight > 0 ? STATE.viewportHeight : (Number.isFinite(window.innerHeight) ? window.innerHeight : 0));
   const extraOffsetY = videoHeight * scrollHintConfig.offsetYVideoHeightRatio;
 
   let jumpOffsetPx = 0;
@@ -15533,8 +15535,10 @@ function syncSwipeSectionsScrollHintLayer(nowMs = performance.now()) {
 
   swipeSectionsScrollHintLayer.style.position = 'fixed';
   swipeSectionsScrollHintLayer.style.left = `${centerX}px`;
-  swipeSectionsScrollHintLayer.style.bottom = `${bottomOffset + extraOffsetY + jumpOffsetPx}px`;
-  swipeSectionsScrollHintLayer.style.transform = `translateX(-50%) scale(${scale})`;
+  swipeSectionsScrollHintLayer.style.top = `${videoBottom - extraOffsetY - jumpOffsetPx}px`;
+  swipeSectionsScrollHintLayer.style.bottom = '';
+  swipeSectionsScrollHintLayer.style.transform = `translateX(-50%) translateY(-100%) scale(${scale})`;
+  swipeSectionsScrollHintLayer.style.transformOrigin = 'top center';
   swipeSectionsScrollHintLayer.style.width = `${widthPx}px`;
   swipeSectionsScrollHintLayer.style.height = 'auto';
   swipeSectionsScrollHintLayer.style.display = 'block';
@@ -15548,7 +15552,8 @@ function syncSwipeSectionsScrollHintLayer(nowMs = performance.now()) {
   if (debugEnabled) {
     swipeSectionsScrollHintDebugRect.style.position = 'fixed';
     swipeSectionsScrollHintDebugRect.style.left = `${centerX}px`;
-    swipeSectionsScrollHintDebugRect.style.bottom = `${bottomOffset + extraOffsetY + jumpOffsetPx}px`;
+    swipeSectionsScrollHintDebugRect.style.top = `${videoBottom - extraOffsetY - jumpOffsetPx - scaledHeightPx}px`;
+    swipeSectionsScrollHintDebugRect.style.bottom = '';
     swipeSectionsScrollHintDebugRect.style.transform = `translateX(-50%)`;
     swipeSectionsScrollHintDebugRect.style.width = `${scaledWidthPx}px`;
     swipeSectionsScrollHintDebugRect.style.height = `${scaledHeightPx}px`;
