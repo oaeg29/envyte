@@ -33,6 +33,8 @@ if (!flowersFrontCanvas) {
   flowersFrontCanvas.id = 'myCanvasFlowersFront';
 }
 const video = document.createElement('video');
+const foliageVideoLower = document.createElement('video');
+const foliageVideoUpper = document.createElement('video');
 const centerOverlayImageLayer = document.createElement('img');
 const centerOverlayImageLayerAlt = document.createElement('img');
 const centerOverlayImageLayers = [centerOverlayImageLayer, centerOverlayImageLayerAlt];
@@ -53,6 +55,90 @@ const rsvpNoDebugRect = document.createElement('div');
 const rsvpConfirmDebugRect = document.createElement('div');
 const rsvpNameFitMeasureCanvas = document.createElement('canvas');
 const rsvpNameFitMeasureCtx = rsvpNameFitMeasureCanvas.getContext('2d');
+
+// =========================
+// Section Control - Canvas Visibility
+// =========================
+function initSectionControl() {
+  const config = window.STEM_WARP_USER_CONFIG;
+  if (!config || !config.sectionControl || !config.sectionControl.enabled) {
+    return;
+  }
+
+  const sectionControl = config.sectionControl;
+  const canvasConfig = sectionControl.canvases;
+
+  // Apply canvas visibility based on config
+  function applyCanvasVisibility() {
+    const canvasMap = {
+      myCanvas: canvas,
+      myCanvasFront: frontCanvas,
+      myCanvasFlowersBack: flowersBackCanvas,
+      myCanvasFlowersFront: flowersFrontCanvas,
+      rsvpNameFitMeasureCanvas: rsvpNameFitMeasureCanvas,
+    };
+
+    for (const [canvasId, canvasEl] of Object.entries(canvasMap)) {
+      if (canvasEl && canvasConfig[canvasId]) {
+        const isEnabled = canvasConfig[canvasId].enabled;
+        canvasEl.style.display = isEnabled ? '' : 'none';
+        console.log(`[SectionControl] ${canvasId}: ${isEnabled ? 'ENABLED' : 'DISABLED'}`);
+      }
+    }
+  }
+
+  // Initialize debug console if enabled
+  function initDebugConsole() {
+    const debugConfig = sectionControl.debugConsole;
+    if (!debugConfig || !debugConfig.enabled) {
+      return;
+    }
+
+    const debugConsole = document.createElement('div');
+    debugConsole.id = 'sectionControlDebugConsole';
+    debugConsole.style.position = 'fixed';
+    debugConsole.style.zIndex = '99999';
+    debugConsole.style.backgroundColor = debugConfig.backgroundColor;
+    debugConsole.style.color = debugConfig.textColor;
+    debugConsole.style.fontSize = debugConfig.fontSize;
+    debugConsole.style.padding = debugConfig.padding;
+    debugConsole.style.maxWidth = debugConfig.maxWidth;
+    debugConsole.style.fontFamily = 'monospace';
+    debugConsole.style.borderRadius = '4px';
+    debugConsole.style.boxShadow = '0 2px 10px rgba(0,0,0,0.3)';
+
+    // Position based on config
+    const positions = {
+      'top-right': { top: '10px', right: '10px' },
+      'top-left': { top: '10px', left: '10px' },
+      'bottom-right': { bottom: '10px', right: '10px' },
+      'bottom-left': { bottom: '10px', left: '10px' },
+    };
+    const pos = positions[debugConfig.position] || positions['top-right'];
+    Object.assign(debugConsole.style, pos);
+
+    // Build canvas status list
+    let statusHTML = '<div style="font-weight:bold; margin-bottom:8px;">CANVAS STATUS</div>';
+    for (const [canvasId, canvasInfo] of Object.entries(canvasConfig)) {
+      const status = canvasInfo.enabled ? '✓ ENABLED' : '✗ DISABLED';
+      const color = canvasInfo.enabled ? '#00ff00' : '#ff4444';
+      statusHTML += `<div style="margin:4px 0;">
+        <span style="color:${color};">${status}</span>
+        <span style="margin-left:8px; color:#ffffff;">${canvasId}</span>
+      </div>`;
+      statusHTML += `<div style="margin-left:20px; font-size:10px; color:#aaaaaa;">${canvasInfo.description}</div>`;
+    }
+
+    debugConsole.innerHTML = statusHTML;
+    document.body.appendChild(debugConsole);
+
+    console.log('[SectionControl] Debug console initialized');
+  }
+
+  applyCanvasVisibility();
+  initDebugConsole();
+}
+
 const wash1Layer = document.createElement('div');
 const wash2Layer = document.createElement('div');
 const section2ButtonLayer = document.createElement('div');
@@ -67,14 +153,30 @@ let valScaling = 0.01;
 const defaultCountPerSide = 2;
 const FILTER_CACHE_HUE_STEP_DEG = 2;
 const FILTER_CACHE_BRIGHTNESS_STEP = 0.02;
-const HERO_VIDEO_PATH_DEFAULT = './hero_final_1500.webm';
-const HERO_VIDEO_PATH_APPLE_SAFARI = './hero_1500_foriOS.mov';
+const HERO_VIDEO_PATH_DEFAULT = './hero_final.webm';
+const HERO_VIDEO_PATH_APPLE_SAFARI = './hero_final_foriOS.mov';
 const HERO_VIDEO_SOURCE_RUNTIME = {
   candidates: [],
   activeIndex: -1,
   fallbackUsed: false,
   errorEvents: 0,
   errorListenerInstalled: false,
+};
+const FOLIAGE_VIDEO_SOURCE_RUNTIME = {
+  lower: {
+    candidates: [],
+    activeIndex: -1,
+    fallbackUsed: false,
+    errorEvents: 0,
+    errorListenerInstalled: false,
+  },
+  upper: {
+    candidates: [],
+    activeIndex: -1,
+    fallbackUsed: false,
+    errorEvents: 0,
+    errorListenerInstalled: false,
+  },
 };
 const HERO_VIDEO_DEBUG_LABEL_ID = 'heroVideoDebugLabel';
 const VIEWPORT_LAYOUT_MODE_COVER = 'cover';
@@ -1827,6 +1929,248 @@ function configureHeroVideoElement() {
   }
 }
 
+function resolveFoliageVideoSourcePath(videoType) {
+  const config = CONFIG.foliageVideos;
+  if (!config || !config.enabled) {
+    return null;
+  }
+  const videoConfig = videoType === 'lower' ? config.lowerVideo : config.upperVideo;
+  if (!videoConfig) {
+    return null;
+  }
+  if (isLikelyIOSDevice() || isLikelySafariOnMacDesktop()) {
+    return videoConfig.mov || null;
+  }
+  return videoConfig.webm || null;
+}
+
+function buildFoliageVideoSourceCandidates(videoType) {
+  const config = CONFIG.foliageVideos;
+  if (!config || !config.enabled) {
+    return [];
+  }
+  const videoConfig = videoType === 'lower' ? config.lowerVideo : config.upperVideo;
+  if (!videoConfig) {
+    return [];
+  }
+  const candidates = [];
+  if (typeof videoConfig.webm === 'string' && videoConfig.webm.trim().length > 0) {
+    candidates.push(normalizeHostedAssetPath(videoConfig.webm.trim()));
+  }
+  if (typeof videoConfig.mov === 'string' && videoConfig.mov.trim().length > 0) {
+    candidates.push(normalizeHostedAssetPath(videoConfig.mov.trim()));
+  }
+  return candidates;
+}
+
+function getFoliageVideoCurrentSourcePath(videoType) {
+  const videoEl = videoType === 'lower' ? foliageVideoLower : foliageVideoUpper;
+  return String(videoEl.currentSrc || videoEl.src || '').trim();
+}
+
+function setFoliageVideoSourceByIndex(videoType, index, options = {}) {
+  const runtime = videoType === 'lower' ? FOLIAGE_VIDEO_SOURCE_RUNTIME.lower : FOLIAGE_VIDEO_SOURCE_RUNTIME.upper;
+  const videoEl = videoType === 'lower' ? foliageVideoLower : foliageVideoUpper;
+  const candidates = runtime.candidates;
+  if (!Array.isArray(candidates) || candidates.length <= 0) {
+    return false;
+  }
+  if (index < 0 || index >= candidates.length) {
+    return false;
+  }
+  const safeOptions = (options && typeof options === 'object') ? options : {};
+  const shouldForceLoad = safeOptions.forceLoad !== false;
+  const nextPath = candidates[index].trim();
+  videoEl.setAttribute('data-foliage-video-source-path', nextPath);
+  videoEl.setAttribute('src', nextPath);
+  videoEl.src = nextPath;
+  if (shouldForceLoad && typeof videoEl.load === 'function') {
+    try {
+      videoEl.load();
+    } catch (_error) {
+      // Ignore load() exceptions and rely on media events.
+    }
+  }
+  return true;
+}
+
+function configureFoliageVideoElement(videoType) {
+  const config = CONFIG.foliageVideos;
+  if (!config || !config.enabled) {
+    return;
+  }
+  const runtime = videoType === 'lower' ? FOLIAGE_VIDEO_SOURCE_RUNTIME.lower : FOLIAGE_VIDEO_SOURCE_RUNTIME.upper;
+  const videoEl = videoType === 'lower' ? foliageVideoLower : foliageVideoUpper;
+  const videoId = videoType === 'lower' ? 'foliageVideoLower' : 'foliageVideoUpper';
+
+  videoEl.id = videoId;
+  videoEl.controls = false;
+  videoEl.preload = 'auto';
+  videoEl.muted = true;
+  videoEl.autoplay = false;
+  videoEl.playsInline = true;
+  videoEl.loop = false;
+  videoEl.disablePictureInPicture = true;
+  videoEl.controlsList = 'nodownload noplaybackrate noremoteplayback nofullscreen';
+  videoEl.setAttribute('playsinline', '');
+  videoEl.setAttribute('webkit-playsinline', '');
+  videoEl.setAttribute('disablepictureinpicture', '');
+  videoEl.setAttribute('controlslist', 'nodownload noplaybackrate noremoteplayback nofullscreen');
+  videoEl.removeAttribute('autoplay');
+  // Additional attributes to prevent browser extensions from interfering
+  videoEl.setAttribute('data-ignore', 'true');
+  videoEl.setAttribute('data-no-controls', 'true');
+  videoEl.style.visibility = 'hidden';
+
+  runtime.candidates = buildFoliageVideoSourceCandidates(videoType);
+  runtime.activeIndex = -1;
+  runtime.fallbackUsed = false;
+  setFoliageVideoSourceByIndex(videoType, 0, { forceLoad: false });
+
+  console.log(`[FoliageVideo${videoType}] Configured with sources:`, runtime.candidates);
+
+  if (!runtime.errorListenerInstalled) {
+    videoEl.addEventListener('error', () => {
+      runtime.errorEvents += 1;
+      console.warn(`[FoliageVideo${videoType}] Media error on source: ${getFoliageVideoCurrentSourcePath(videoType)}`);
+      if (config.fallbackToFoliageOnLoadError) {
+        showFoliageCanvases();
+        hideFoliageVideos();
+      }
+    });
+    runtime.errorListenerInstalled = true;
+  }
+
+  videoEl.addEventListener('ended', () => {
+    console.log(`[FoliageVideo${videoType}] Playback ended`);
+    checkBothFoliageVideosEnded();
+  });
+}
+
+function hideFoliageCanvases() {
+  if (canvas) canvas.style.display = 'none';
+  if (frontCanvas) frontCanvas.style.display = 'none';
+}
+
+function showFoliageCanvases() {
+  if (canvas) canvas.style.display = '';
+  if (frontCanvas) frontCanvas.style.display = '';
+}
+
+function hideFoliageVideos() {
+  if (foliageVideoLower) {
+    foliageVideoLower.style.display = 'none';
+    foliageVideoLower.pause();
+  }
+  if (foliageVideoUpper) {
+    foliageVideoUpper.style.display = 'none';
+    foliageVideoUpper.pause();
+  }
+}
+
+function showFoliageVideos() {
+  if (foliageVideoLower) foliageVideoLower.style.display = 'block';
+  if (foliageVideoUpper) foliageVideoUpper.style.display = 'block';
+}
+
+let foliageVideosEndedCount = 0;
+
+function checkBothFoliageVideosEnded() {
+  foliageVideosEndedCount += 1;
+  if (foliageVideosEndedCount >= 2) {
+    console.log('[FoliageVideos] Both videos ended, showing foliage canvases');
+    hideFoliageVideos();
+    showFoliageCanvases();
+    foliageVideosEndedCount = 0;
+  }
+}
+
+function startFoliageVideos() {
+  const config = CONFIG.foliageVideos;
+  if (!config || !config.enabled) {
+    return;
+  }
+  const playbackSpeed = Number.isFinite(config.playbackSpeed) ? Math.max(0.1, config.playbackSpeed) : 1.0;
+  
+  console.log('[FoliageVideos] Starting playback with speed:', playbackSpeed);
+  
+  // Sync positioning before starting
+  syncFoliageVideoPositioning();
+  
+  if (foliageVideoLower) {
+    foliageVideoLower.currentTime = 0;
+    foliageVideoLower.playbackRate = playbackSpeed;
+    foliageVideoLower.style.display = 'block';
+    foliageVideoLower.style.visibility = 'visible';
+    console.log('[FoliageVideos] Lower video source:', foliageVideoLower.currentSrc || foliageVideoLower.src);
+    console.log('[FoliageVideos] Lower video styles:', {
+      top: foliageVideoLower.style.top,
+      left: foliageVideoLower.style.left,
+      width: foliageVideoLower.style.width,
+      height: foliageVideoLower.style.height,
+      transform: foliageVideoLower.style.transform,
+    });
+    foliageVideoLower.play().catch(err => {
+      console.warn('[FoliageVideos] Failed to play lower video:', err);
+      if (config.fallbackToFoliageOnLoadError) {
+        showFoliageCanvases();
+        hideFoliageVideos();
+      }
+    });
+  }
+  
+  if (foliageVideoUpper) {
+    foliageVideoUpper.currentTime = 0;
+    foliageVideoUpper.playbackRate = playbackSpeed;
+    foliageVideoUpper.style.display = 'block';
+    foliageVideoUpper.style.visibility = 'visible';
+    console.log('[FoliageVideos] Upper video source:', foliageVideoUpper.currentSrc || foliageVideoUpper.src);
+    console.log('[FoliageVideos] Upper video styles:', {
+      top: foliageVideoUpper.style.top,
+      left: foliageVideoUpper.style.left,
+      width: foliageVideoUpper.style.width,
+      height: foliageVideoUpper.style.height,
+      transform: foliageVideoUpper.style.transform,
+    });
+    foliageVideoUpper.play().catch(err => {
+      console.warn('[FoliageVideos] Failed to play upper video:', err);
+      if (config.fallbackToFoliageOnLoadError) {
+        showFoliageCanvases();
+        hideFoliageVideos();
+      }
+    });
+  }
+}
+
+function syncFoliageVideoPositioning() {
+  if (!video) return;
+  
+  const heroStyles = window.getComputedStyle(video);
+  const heroRect = video.getBoundingClientRect();
+  
+  console.log('[FoliageVideos] Syncing positioning from hero:', {
+    top: heroStyles.top,
+    left: heroStyles.left,
+    width: heroStyles.width,
+    height: heroStyles.height,
+    transform: heroStyles.transform,
+    rect: heroRect,
+  });
+  
+  [foliageVideoLower, foliageVideoUpper].forEach(foliageVideo => {
+    if (!foliageVideo) return;
+    
+    foliageVideo.style.top = heroStyles.top;
+    foliageVideo.style.left = heroStyles.left;
+    foliageVideo.style.transform = heroStyles.transform;
+    foliageVideo.style.height = heroStyles.height;
+    foliageVideo.style.minHeight = heroStyles.minHeight;
+    foliageVideo.style.width = heroStyles.width;
+    foliageVideo.style.objectFit = 'cover';
+    foliageVideo.style.objectPosition = 'center center';
+  });
+}
+
 function resolveHeroVideoDebugConfig(configCandidate = CONFIG.heroVideoDebug) {
   const safeConfig = isPlainObjectLiteral(configCandidate) ? configCandidate : {};
   const candidateSourcesSource = Array.isArray(safeConfig.candidateSources)
@@ -2343,6 +2687,8 @@ document.body.appendChild(flowersBackCanvas);
 document.body.appendChild(wash1Layer);
 document.body.appendChild(wash2Layer);
 document.body.appendChild(video);  // Adds it to the page
+document.body.appendChild(foliageVideoLower);
+document.body.appendChild(foliageVideoUpper);
 document.body.appendChild(centerOverlayImageLayer);
 document.body.appendChild(centerOverlayImageLayerAlt);
 swipeSectionsScrollHintWrapperLayer.id = 'scrollHintLayer';
@@ -2360,6 +2706,10 @@ document.body.appendChild(section1LabelLayer);
 // Keep front overlay canvas in root stacking context so it can render above the video.
 document.body.appendChild(frontCanvas);
 document.body.appendChild(flowersFrontCanvas);
+
+// Initialize section control for canvas visibility and debug console
+initSectionControl();
+
 setupRsvpLayerEventHandlers();
 section2Button.addEventListener('mouseenter', onSection2ButtonHoverEnter);
 section2Button.addEventListener('mouseleave', onSection2ButtonHoverLeave);
@@ -2514,6 +2864,22 @@ CONFIG.animation = CONFIG.branchGrowth;
 // Backward compatibility alias.
 CONFIG.offshoots = CONFIG.offshoot;
 CONFIG.swipeSections = resolveSwipeSectionsConfig(CONFIG.swipeSections);
+
+// Initialize foliage videos if enabled
+if (CONFIG.foliageVideos && CONFIG.foliageVideos.enabled) {
+  configureFoliageVideoElement('lower');
+  configureFoliageVideoElement('upper');
+  
+  // Hide canvases initially when using video foliage
+  if (!CONFIG.branchGrowth.enabled) {
+    hideFoliageCanvases();
+  }
+  
+  // Sync positioning on resize
+  window.addEventListener('resize', syncFoliageVideoPositioning);
+  // Initial sync
+  syncFoliageVideoPositioning();
+}
 
 // =========================
 // 3) Runtime State
@@ -2700,6 +3066,7 @@ const STATE = {
     growthFrameReached: false,
     growthStarted: false,
     growthAnimationEnabledByConfig: false,
+    foliageVideosStarted: false,
     openButtonClickedAtMs: null,
     openButtonArrowRenderedPresence: false,
     openButtonArrowLastRenderMs: 0,
@@ -6614,7 +6981,7 @@ function cancelHeroPlaybackGateMonitor() {
   }
 }
 
-function maybeStartGrowthAnimationFromHeroVideoFrame(currentFrame, gateConfig = resolveHeroPlaybackGateConfig()) {
+function maybeStartGrowthAnimationFromHeroVideoFrame(currentFrame, gateConfig) {
   const gateState = STATE.heroPlaybackGate;
   if (!gateConfig || gateConfig.enabled !== true || !gateState || gateState.growthStarted === true) {
     return;
@@ -6622,9 +6989,13 @@ function maybeStartGrowthAnimationFromHeroVideoFrame(currentFrame, gateConfig = 
   if (gateState.growthAnimationEnabledByConfig !== true) {
     return;
   }
-  if (Number.isFinite(currentFrame) && currentFrame >= gateConfig.growthStartFrame) {
-    gateState.growthFrameReached = true;
+  const growthStartFrame = Number.isFinite(Number(gateConfig.growthStartFrame))
+    ? Math.max(0, Math.floor(Number(gateConfig.growthStartFrame)))
+    : 0;
+  if (currentFrame < growthStartFrame) {
+    return;
   }
+  gateState.growthFrameReached = true;
   if (gateState.growthFrameReached !== true) {
     return;
   }
@@ -6636,6 +7007,32 @@ function maybeStartGrowthAnimationFromHeroVideoFrame(currentFrame, gateConfig = 
     return;
   }
   startBranchAnimation({ restart: true });
+}
+
+function maybeStartFoliageVideosFromHeroVideoFrame(currentFrame, gateConfig) {
+  const config = CONFIG.foliageVideos;
+  if (!config || !config.enabled) {
+    return;
+  }
+  
+  const gateState = STATE.heroPlaybackGate;
+  if (!gateState || gateState.foliageVideosStarted === true) {
+    return;
+  }
+  
+  const startFrame = Number.isFinite(Number(config.startFrame))
+    ? Math.max(0, Math.floor(Number(config.startFrame)))
+    : 273;
+  
+  console.log('[FoliageVideos] Checking frame:', currentFrame, 'vs target:', startFrame);
+  
+  if (currentFrame < startFrame) {
+    return;
+  }
+  
+  gateState.foliageVideosStarted = true;
+  console.log('[FoliageVideos] Starting at frame:', currentFrame, '(startFrame:', startFrame + ')');
+  startFoliageVideos();
 }
 
 function enforceHeroPlaybackGatePauseFrames(
@@ -6722,6 +7119,9 @@ function runHeroPlaybackGateMonitorStep(
   checkAndTriggerMasterSounds(currentFrame);
 
   maybeRenderHeroPlaybackGateVisuals(currentFrame, gateConfig, nowMs);
+
+  // Start foliage videos when crossing postButtonPauseFrame
+  maybeStartFoliageVideosFromHeroVideoFrame(currentFrame, gateConfig);
 
   if (video && video.paused !== true) {
     ensureHeroPlaybackGateMonitorRunning();
@@ -16500,6 +16900,44 @@ function stopBranchAnimation(options = {}) {
   resetFlowerGrowthRuntimeState({ clearSignature: false, clearOpenLatch: true });
 }
 
+function stepAnimationFrame(deltaTimeSec = 1 / 30) {
+  // Only activate on export page (detected by export button presence)
+  if (typeof document === 'undefined' || !document.getElementById('startExportBtn')) {
+    return null;
+  }
+  
+  const animationState = STATE.branchGrowth;
+  if (!animationState) {
+    return null;
+  }
+  
+  // Stop automatic RAF loop if running
+  if (animationState.rafId !== null) {
+    cancelAnimationFrame(animationState.rafId);
+    animationState.rafId = null;
+  }
+  animationState.running = false;
+  
+  // Manually advance time
+  animationState.elapsedSec = Math.max(0, (animationState.elapsedSec || 0) + deltaTimeSec);
+  
+  // Sync flower sweep timing with animation time (for export)
+  // This prevents the flower sweep from using wall-clock time during frame-by-frame capture
+  const flowerGrowth = STATE.flowerGrowth;
+  if (flowerGrowth && flowerGrowth.openTriggered === true && flowerGrowth.openSweepCompleted === false) {
+    // Manually advance flower sweep elapsed time
+    flowerGrowth.openSweepElapsedSec = Math.max(0, (flowerGrowth.openSweepElapsedSec || 0) + deltaTimeSec);
+    // Update last tick to prevent wall-clock deltas from being added
+    flowerGrowth.openSweepLastTickMs = performance.now();
+  }
+  
+  // Render at this specific time
+  renderScene({ skipAutoStart: true });
+  
+  // Return current elapsed time
+  return animationState.elapsedSec;
+}
+
 function startBranchAnimation(options = {}) {
   const { restart = true } = options;
   if (!STATE.branchGarden) {
@@ -21284,6 +21722,15 @@ function exposeDevToolsApi() {
   window.stemWarpDemo10 = api;
   window.stemWarpDemo11 = api;
 }
+
+// Export functions for foliage exporter
+window.STEM_WARP_EXPORT_FUNCTIONS = {
+  resetFlowerGrowthRuntimeState,
+  areFlowersFullyOpen,
+  stepAnimationFrame,
+  CONFIG,
+  STATE,
+};
 
 // =========================
 // 17) Bootstrap

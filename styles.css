@@ -194,6 +194,36 @@ video {
   padding: 0;
 }
 
+#foliageVideoLower {
+  position: fixed;
+  top: calc(50% + var(--app-viewport-offset-top));
+  left: calc(50% + var(--app-viewport-offset-left));
+  transform: translate(-50%, -50%) rotate(var(--hero-video-rotate, 0deg));
+  width: auto;
+  height: var(--app-viewport-height);
+  min-height: var(--app-viewport-height);
+  display: none;
+  z-index: 0;  /* Behind hero video (z-index: 1) but above background */
+  margin: 0;
+  padding: 0;
+  pointer-events: none;
+}
+
+#foliageVideoUpper {
+  position: fixed;
+  top: calc(50% + var(--app-viewport-offset-top));
+  left: calc(50% + var(--app-viewport-offset-left));
+  transform: translate(-50%, -50%) rotate(var(--hero-video-rotate, 0deg));
+  width: auto;
+  height: var(--app-viewport-height);
+  min-height: var(--app-viewport-height);
+  display: none;
+  z-index: 10000;
+  margin: 0;
+  padding: 0;
+  pointer-events: none;
+}
+
 #centerOverlayImage,
 #centerOverlayImageAlt {
   position: fixed;
@@ -361,6 +391,8 @@ body.ios26-fixed-workaround #myCanvasFlowersFront,
 body.ios26-fixed-workaround #wash1Layer,
 body.ios26-fixed-workaround #wash2Layer,
 body.ios26-fixed-workaround video,
+body.ios26-fixed-workaround #foliageVideoLower,
+body.ios26-fixed-workaround #foliageVideoUpper,
 body.ios26-fixed-workaround #centerOverlayImage,
 body.ios26-fixed-workaround #centerOverlayImageAlt,
 body.ios26-fixed-workaround #rsvpLayer,
@@ -382,7 +414,9 @@ body[data-viewport-layout-mode="rootbg"] {
   background-image: none;
 }
 
-body[data-viewport-layout-mode="rootbg"] video {
+body[data-viewport-layout-mode="rootbg"] video,
+body[data-viewport-layout-mode="rootbg"] #foliageVideoLower,
+body[data-viewport-layout-mode="rootbg"] #foliageVideoUpper {
   top: var(--app-viewport-offset-top);
   left: 0;
   width: var(--app-viewport-width);
@@ -407,6 +441,8 @@ body[data-viewport-layout-mode="relativeAdjustable"] #myCanvasFlowersFront,
 body[data-viewport-layout-mode="relativeAdjustable"] #wash1Layer,
 body[data-viewport-layout-mode="relativeAdjustable"] #wash2Layer,
 body[data-viewport-layout-mode="relativeAdjustable"] video,
+body[data-viewport-layout-mode="relativeAdjustable"] #foliageVideoLower,
+body[data-viewport-layout-mode="relativeAdjustable"] #foliageVideoUpper,
 body[data-viewport-layout-mode="relativeAdjustable"] #centerOverlayImage,
 body[data-viewport-layout-mode="relativeAdjustable"] #centerOverlayImageAlt,
 body[data-viewport-layout-mode="relativeAdjustable"] #rsvpLayer,
@@ -421,6 +457,8 @@ body[data-viewport-layout-mode="relative166"] #myCanvasFlowersFront,
 body[data-viewport-layout-mode="relative166"] #wash1Layer,
 body[data-viewport-layout-mode="relative166"] #wash2Layer,
 body[data-viewport-layout-mode="relative166"] video,
+body[data-viewport-layout-mode="relative166"] #foliageVideoLower,
+body[data-viewport-layout-mode="relative166"] #foliageVideoUpper,
 body[data-viewport-layout-mode="relative166"] #centerOverlayImage,
 body[data-viewport-layout-mode="relative166"] #centerOverlayImageAlt,
 body[data-viewport-layout-mode="relative166"] #rsvpLayer,

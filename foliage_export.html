@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f9fbfc" />
+    <meta
+      name="description"
+      content="Foliage branch growth animation exporter"
+    />
+    <title>Foliage Export - Zeina Envyte</title>
+
+    <!-- Styles -->
+    <link rel="stylesheet" href="styles.css" />
+
+    <style>
+      /* Export-specific styles to hide non-foliage elements */
+      body.export-mode video {
+        opacity: 0 !important;
+        pointer-events: none !important;
+      }
+      
+      body.export-mode #loadingScreen,
+      body.export-mode #clickToStartScreen,
+      body.export-mode #centerOverlayImage,
+      body.export-mode #centerOverlayImageAlt,
+      body.export-mode #rsvpLayer,
+      body.export-mode #wash1Layer,
+      body.export-mode #wash2Layer,
+      body.export-mode #scrollHintLayer,
+      body.export-mode #section2ButtonLayer,
+      body.export-mode #section1LabelLayer {
+        opacity: 0 !important;
+        pointer-events: none !important;
+        display: none !important;
+      }
+      
+      body.export-mode #myCanvas,
+      body.export-mode #myCanvasFront,
+      body.export-mode #myCanvasFlowersBack,
+      body.export-mode #myCanvasFlowersFront {
+        background: transparent !important;
+      }
+      
+      /* Export UI overlay */
+      #exportUI {
+        position: fixed;
+        top: 20px;
+        left: 20px;
+        z-index: 99999;
+        background: rgba(0, 0, 0, 0.85);
+        color: #fff;
+        padding: 16px;
+        border-radius: 12px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-size: 14px;
+        min-width: 280px;
+        backdrop-filter: blur(8px);
+      }
+      
+      #exportUI h2 {
+        margin: 0 0 12px 0;
+        font-size: 16px;
+        font-weight: 600;
+      }
+      
+      #exportUI .status {
+        margin-bottom: 12px;
+        padding: 8px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 6px;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 12px;
+        line-height: 1.4;
+      }
+      
+      #exportUI .controls {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      
+      #exportUI button {
+        flex: 1;
+        min-width: 100px;
+        padding: 10px 16px;
+        border: 0;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: opacity 0.2s;
+      }
+      
+      #exportUI button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      
+      #exportUI button.start-btn {
+        background: #2f6842;
+        color: #fff;
+      }
+      
+      #exportUI button.stop-btn {
+        background: #c92a2a;
+        color: #fff;
+      }
+      
+      #exportUI .progress {
+        margin-top: 12px;
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.8);
+      }
+      
+      #exportUI .layer-select {
+        margin-bottom: 12px;
+        display: flex;
+        gap: 16px;
+      }
+      
+      #exportUI .layer-select label {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      
+      #exportUI .layer-select input[type="radio"] {
+        cursor: pointer;
+      }
+      
+      #exportUI .hint {
+        margin-top: 8px;
+        font-size: 11px;
+        color: rgba(255, 255, 255, 0.6);
+        line-height: 1.4;
+      }
+    </style>
+  </head>
+  <body class="export-mode">
+    <!-- Existing elements (hidden via CSS) -->
+    <div id="loadingScreen" role="status" aria-live="polite" aria-atomic="true">
+      <div class="loading-card">
+        <div id="loadingMessage">please wait, something special is loading</div>
+        <div class="loading-dots" aria-hidden="true">
+          <span></span><span></span><span></span>
+        </div>
+      </div>
+    </div>
+    <div id="clickToStartScreen" role="button" aria-label="Click to start">
+      <div class="loading-card">
+        <div id="clickToStartMessage">click to start</div>
+      </div>
+    </div>
+    <header>
+      <h1></h1>
+    </header>
+
+    <main>
+      <canvas id="myCanvas"></canvas>
+      <canvas id="myCanvasFront"></canvas>
+    </main>
+
+    <footer>
+    </footer>
+
+    <!-- Export UI -->
+    <div id="exportUI">
+      <h2>Foliage Export</h2>
+      <div class="status" id="exportStatus">Initializing...</div>
+      <div class="layer-select">
+        <label>
+          <input type="radio" name="layer" value="back" checked>
+          Back Layer
+        </label>
+        <label>
+          <input type="radio" name="layer" value="front">
+          Front Layer
+        </label>
+      </div>
+      <div class="layer-select">
+        <label>
+          <input type="checkbox" id="manualStopMode">
+          Manual Stop Mode (capture until you click Stop)
+        </label>
+      </div>
+      <div class="controls">
+        <button id="startExportBtn" class="start-btn">Start Export</button>
+        <button id="stopExportBtn" class="stop-btn" disabled>Stop</button>
+      </div>
+      <div class="progress" id="exportProgress"></div>
+      <div class="hint">
+        Exports selected layer PNG sequence at 30fps during branch growth and flower opening.
+        Refresh page to reset animation and export the other layer.
+        Video and UI elements are hidden during export.
+      </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="manual_templates.registry.js"></script>
+    <script src="script_11.user.config.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pixi.js@7.4.3/dist/pixi.min.js" defer></script>
+    <script src="script_11_flowers_export.js" defer></script>
+    <script src="script_11_export.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/noisejs@2.1.0/index.min.js"></script>
+    <script src="foliage_exporter.js" defer></script>
+  </body>
+</html>

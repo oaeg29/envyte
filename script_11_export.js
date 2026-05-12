@@ -1,0 +1,21512 @@
+/*
+  script_11.js
+  -----------------------------------------------------------------------------
+  Multi-branch architecture
+  -----------------------------------------------------------------------------
+  Key change from the previous setup:
+  - We no longer keep a single active path in global state.
+  - Each branch is its own object with its own seed, points, and path data.
+  - A BranchGarden object owns many Branch instances and renders all of them.
+
+  This makes setSeeds()/plantSeeds() naturally support many branches without
+  branches overwriting each other.
+*/
+
+// =========================
+// 1) Canvas
+// =========================
+const canvas = document.getElementById('myCanvas');
+const ctx = canvas.getContext('2d');
+let frontCanvas = document.getElementById('myCanvasFront');
+if (!frontCanvas) {
+  frontCanvas = document.createElement('canvas');
+  frontCanvas.id = 'myCanvasFront';
+}
+let flowersBackCanvas = document.getElementById('myCanvasFlowersBack');
+if (!flowersBackCanvas) {
+  flowersBackCanvas = document.createElement('canvas');
+  flowersBackCanvas.id = 'myCanvasFlowersBack';
+}
+let flowersFrontCanvas = document.getElementById('myCanvasFlowersFront');
+if (!flowersFrontCanvas) {
+  flowersFrontCanvas = document.createElement('canvas');
+  flowersFrontCanvas.id = 'myCanvasFlowersFront';
+}
+const video = document.createElement('video');
+const centerOverlayImageLayer = document.createElement('img');
+const centerOverlayImageLayerAlt = document.createElement('img');
+const centerOverlayImageLayers = [centerOverlayImageLayer, centerOverlayImageLayerAlt];
+const swipeSectionsScrollHintWrapperLayer = document.createElement('div');
+const swipeSectionsScrollHintLayer = document.createElement('img');
+const swipeSectionsScrollHintDebugRect = document.createElement('div');
+const rsvpLayer = document.createElement('div');
+const rsvpNameInput = document.createElement('input');
+const rsvpYesButton = document.createElement('button');
+const rsvpNoButton = document.createElement('button');
+const rsvpConfirmButton = document.createElement('button');
+const rsvpYesButtonImage = document.createElement('img');
+const rsvpNoButtonImage = document.createElement('img');
+const rsvpConfirmButtonImage = document.createElement('img');
+const rsvpNameDebugRect = document.createElement('div');
+const rsvpYesDebugRect = document.createElement('div');
+const rsvpNoDebugRect = document.createElement('div');
+const rsvpConfirmDebugRect = document.createElement('div');
+const rsvpNameFitMeasureCanvas = document.createElement('canvas');
+const rsvpNameFitMeasureCtx = rsvpNameFitMeasureCanvas.getContext('2d');
+const wash1Layer = document.createElement('div');
+const wash2Layer = document.createElement('div');
+const section2ButtonLayer = document.createElement('div');
+const section2Button = document.createElement('button');
+const section1LabelLayer = document.createElement('div');
+const section1LabelEl = document.createElement('div');
+
+// =========================
+// 2) Config
+// =========================
+let valScaling = 0.01;
+const defaultCountPerSide = 2;
+const FILTER_CACHE_HUE_STEP_DEG = 2;
+const FILTER_CACHE_BRIGHTNESS_STEP = 0.02;
+const HERO_VIDEO_PATH_DEFAULT = './hero_final.webm';
+const HERO_VIDEO_PATH_APPLE_SAFARI = './hero_final_foriOS.mov';
+const HERO_VIDEO_SOURCE_RUNTIME = {
+  candidates: [],
+  activeIndex: -1,
+  fallbackUsed: false,
+  errorEvents: 0,
+  errorListenerInstalled: false,
+};
+const HERO_VIDEO_DEBUG_LABEL_ID = 'heroVideoDebugLabel';
+const VIEWPORT_LAYOUT_MODE_COVER = 'cover';
+const VIEWPORT_LAYOUT_MODE_DYNAMIC = 'dynamic';
+const VIEWPORT_LAYOUT_MODE_LEGACY = 'legacy';
+const VIEWPORT_LAYOUT_MODE_RELATIVE_112 = 'relative112';
+const VIEWPORT_LAYOUT_MODE_RELATIVE_166 = 'relative166';
+const VIEWPORT_LAYOUT_MODE_RELATIVE_ADJUSTABLE = 'relativeAdjustable';
+const VIEWPORT_LAYOUT_MODE_RELATIVE_116 = 'relative116';
+const VIEWPORT_LAYOUT_MODE_RELATIVE_120 = 'relative120';
+const VIEWPORT_LAYOUT_MODE_RELATIVE_124 = 'relative124';
+const VIEWPORT_LAYOUT_MODE_RELATIVE_140 = 'relative140';
+const VIEWPORT_LAYOUT_MODE_RELATIVE_160 = 'relative160';
+const VIEWPORT_LAYOUT_MODE_RELATIVE_180 = 'relative180';
+const VIEWPORT_LAYOUT_MODE_RELATIVE_190 = 'relative190';
+const VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_20 = 'relativeBiasUp20';
+const VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_40 = 'relativeBiasUp40';
+const VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_60 = 'relativeBiasUp60';
+const VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_80 = 'relativeBiasUp80';
+const VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_120 = 'relativeBiasUp120';
+const VIEWPORT_LAYOUT_MODE_BODY_FIXED = 'bodyfixed';
+const VIEWPORT_LAYOUT_MODE_SCROLL_STAGE = 'scrollstage';
+const VIEWPORT_LAYOUT_MODE_ROOT_BG = 'rootbg';
+const VIEWPORT_LAYOUT_RELATIVE_116_OVERDRAW_PX = 8;
+const VIEWPORT_LAYOUT_RELATIVE_120_OVERDRAW_PX = 10;
+const VIEWPORT_LAYOUT_RELATIVE_124_OVERDRAW_PX = 12;
+const VIEWPORT_LAYOUT_RELATIVE_140_OVERDRAW_PX = 20;
+const VIEWPORT_LAYOUT_RELATIVE_160_OVERDRAW_PX = 30;
+const VIEWPORT_LAYOUT_RELATIVE_180_OVERDRAW_PX = 40;
+const VIEWPORT_LAYOUT_RELATIVE_190_OVERDRAW_PX = 45;
+const VIEWPORT_LAYOUT_RELATIVE_112_TOP_OVERDRAW_PX = 0;
+const VIEWPORT_LAYOUT_RELATIVE_112_EXTRA_HEIGHT_PX = 12;
+const VIEWPORT_LAYOUT_RELATIVE_166_TOP_OVERDRAW_PX = 0;
+const VIEWPORT_LAYOUT_RELATIVE_166_TARGET_VALUE = 116;
+const VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_20_TOP_OVERDRAW_PX = 20;
+const VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_20_EXTRA_HEIGHT_PX = 40;
+const VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_40_TOP_OVERDRAW_PX = 40;
+const VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_40_EXTRA_HEIGHT_PX = 70;
+const VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_60_TOP_OVERDRAW_PX = 60;
+const VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_60_EXTRA_HEIGHT_PX = 100;
+const VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_80_TOP_OVERDRAW_PX = 80;
+const VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_80_EXTRA_HEIGHT_PX = 130;
+const VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_120_TOP_OVERDRAW_PX = 120;
+const VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_120_EXTRA_HEIGHT_PX = 180;
+const VIEWPORT_LAYOUT_SCROLL_STAGE_OVERDRAW_PX = 300;
+const VIEWPORT_LAYOUT_ROOT_BG_OVERDRAW_PX = 160;
+const VIEWPORT_LAYOUT_MODE_QUERY_PARAM = 'viewportMode';
+const VIEWPORT_LAYOUT_DEBUG_QUERY_PARAM = 'viewportDebug';
+const VIEWPORT_LAYOUT_SCROLL_NUDGE_QUERY_PARAM = 'viewportScrollNudge';
+const VIEWPORT_LAYOUT_TOP_TINT_SHIM_QUERY_PARAM = 'viewportTopTintShim';
+const VIEWPORT_LAYOUT_TOP_TINT_EXPERIMENT_QUERY_PARAM = 'viewportTopTintExperiment';
+const VIEWPORT_LAYOUT_MODE_DEBUG_BUTTON_ID = 'viewportModeDebugToggle';
+const VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_CONTROLS_ID = 'viewportRelativeAdjustableControls';
+const VIEWPORT_LAYOUT_SCROLL_STAGE_ID = 'ios-scroll-stage';
+const SAFARI_TOP_TINT_SHIM_ID = 'safari-top-tint-shim';
+const SAFARI_TOP_TINT_CSS_VAR = '--safari-top-tint';
+const SAFARI_TOP_TINT_SHIM_OPACITY_CSS_VAR = '--safari-top-tint-shim-opacity';
+const THEME_COLOR_META_NAME = 'theme-color';
+const VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_DEFAULT_VALUE = 100;
+const VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_DEFAULT_IOS_SAFARI_VALUE = 166;
+const VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_MIN_VALUE = 100;
+const VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_MAX_VALUE = 240;
+const VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_STEP = 1;
+const VIEWPORT_PINCH_ZOOM_SCALE_EPSILON = 0.005;
+const VIEWPORT_POST_ZOOM_RESYNC_DELAY_MS = 220;
+const IOS_SAFARI_RUBBER_BAND_RESYNC_DELAY_MS = 850;
+const SWIPE_SECTIONS_EVENT_CHANGE = 'stemwarp:swipe-section-change';
+const SWIPE_SECTIONS_EVENT_RSVP_CHANGE = 'stemwarp:rsvp-change';
+
+function normalizeHostedAssetPath(path) {
+  if (typeof path !== 'string') {
+    return path;
+  }
+  const trimmed = path.trim();
+  if (trimmed.length === 0) {
+    return trimmed;
+  }
+  if (/^(?:[a-z]+:)?\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+  if (/^(?:data:|blob:|about:|javascript:)/i.test(trimmed)) {
+    return trimmed;
+  }
+  if (trimmed.startsWith('/')) {
+    return `.${trimmed}`;
+  }
+  return trimmed;
+}
+
+function setLoadingScreenMessage(message) {
+  const messageEl = document.getElementById('loadingMessage');
+  if (!messageEl || typeof message !== 'string') {
+    return;
+  }
+  messageEl.textContent = message;
+}
+
+function resolveLoadingScreenConfig(
+  configCandidate = (
+    typeof CONFIG !== 'undefined'
+    && CONFIG
+    && typeof CONFIG === 'object'
+    ? CONFIG.loadingScreen
+    : null
+  ),
+) {
+  const safeConfig = isPlainConfigObject(configCandidate) ? configCandidate : {};
+  const sanitizeColor = (value, fallback) => (
+    typeof value === 'string' && value.trim().length > 0 ? value.trim() : fallback
+  );
+  const sanitizeText = (value, fallback) => {
+    if (typeof value !== 'string') {
+      return fallback;
+    }
+    return value.trim().length > 0 ? value : fallback;
+  };
+  const sanitizeNumber = (value, fallback, min = null) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) {
+      return fallback;
+    }
+    if (Number.isFinite(min)) {
+      return Math.max(min, numeric);
+    }
+    return numeric;
+  };
+  const clampUnit = (value, fallback) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) {
+      return clamp(fallback, 0, 1);
+    }
+    return clamp(numeric, 0, 1);
+  };
+  const normalizeHue = (value, fallback) => {
+    const numeric = Number.isFinite(Number(value)) ? Number(value) : fallback;
+    const wrapped = numeric % 360;
+    return wrapped < 0 ? wrapped + 360 : wrapped;
+  };
+  const clampPercent = (value, fallback) => (
+    clamp(sanitizeNumber(value, fallback), 0, 100)
+  );
+  const formatNum = (value, fallback = 0, decimals = 3) => (
+    Number((Number.isFinite(value) ? value : fallback).toFixed(decimals))
+  );
+  const toHslCss = (hue, saturation, lightness, alpha = null) => {
+    const h = formatNum(normalizeHue(hue, 0), 0, 3);
+    const s = formatNum(clamp(saturation, 0, 100), 0, 3);
+    const l = formatNum(clamp(lightness, 0, 100), 0, 3);
+    if (alpha === null) {
+      return `hsl(${h}, ${s}%, ${l}%)`;
+    }
+    const a = formatNum(clamp(alpha, 0, 1), 1, 4);
+    return `hsla(${h}, ${s}%, ${l}%, ${a})`;
+  };
+  const buildHslStopFromStep = (hslParams, stepValue, alphaValue, fallbackStep, fallbackAlpha) => {
+    const step = sanitizeNumber(stepValue, fallbackStep);
+    const hue = hslParams.baseHue + (hslParams.hueInterval * step);
+    const saturation = hslParams.baseSaturation + (hslParams.saturationInterval * step);
+    const lightness = hslParams.baseLightness + (hslParams.lightnessInterval * step);
+    return toHslCss(hue, saturation, lightness, clampUnit(alphaValue, fallbackAlpha));
+  };
+  const parseHslOffsetTriplet = (candidate, fallback) => {
+    const safeFallback = Array.isArray(fallback) && fallback.length >= 3
+      ? fallback
+      : [0, 0, 0];
+    if (Array.isArray(candidate) && candidate.length >= 3) {
+      const h = Number(candidate[0]);
+      const s = Number(candidate[1]);
+      const l = Number(candidate[2]);
+      if (Number.isFinite(h) && Number.isFinite(s) && Number.isFinite(l)) {
+        return [h, s, l];
+      }
+    }
+    if (isPlainConfigObject(candidate)) {
+      const h = Number(candidate.h);
+      const s = Number(candidate.s);
+      const l = Number(candidate.l);
+      if (Number.isFinite(h) && Number.isFinite(s) && Number.isFinite(l)) {
+        return [h, s, l];
+      }
+    }
+    return [safeFallback[0], safeFallback[1], safeFallback[2]];
+  };
+  const buildHslStopFromOffset = (hslParams, offsetTriplet, alphaValue, fallbackAlpha) => {
+    const offset = Array.isArray(offsetTriplet) ? offsetTriplet : [0, 0, 0];
+    const hue = hslParams.baseHue + (Number.isFinite(Number(offset[0])) ? Number(offset[0]) : 0);
+    const saturation = hslParams.baseSaturation + (Number.isFinite(Number(offset[1])) ? Number(offset[1]) : 0);
+    const lightness = hslParams.baseLightness + (Number.isFinite(Number(offset[2])) ? Number(offset[2]) : 0);
+    return toHslCss(hue, saturation, lightness, clampUnit(alphaValue, fallbackAlpha));
+  };
+
+  const colorModel = (
+    typeof safeConfig.colorModel === 'string' && safeConfig.colorModel.trim().toLowerCase() === 'explicit'
+  )
+    ? 'explicit'
+    : 'hslOffsets';
+  const hslParams = {
+    baseHue: normalizeHue(safeConfig.hslBaseHue, 214),
+    baseSaturation: clampPercent(safeConfig.hslBaseSaturation, 36),
+    baseLightness: clampPercent(safeConfig.hslBaseLightness, 10),
+    hueInterval: sanitizeNumber(safeConfig.hslHueInterval, 0),
+    saturationInterval: sanitizeNumber(safeConfig.hslSaturationInterval, 0),
+    lightnessInterval: sanitizeNumber(safeConfig.hslLightnessInterval, 10),
+  };
+  const legacyGradientSteps = {
+    linearBottom: sanitizeNumber(safeConfig.gradientStepLinearBottom, 0),
+    linearMid: sanitizeNumber(safeConfig.gradientStepLinearMid, 1),
+    linearTop: sanitizeNumber(safeConfig.gradientStepLinearTop, 2),
+    radialEnd: sanitizeNumber(safeConfig.gradientStepRadialEnd, 2),
+    radialMid: sanitizeNumber(safeConfig.gradientStepRadialMid, 4),
+    radialStart: sanitizeNumber(safeConfig.gradientStepRadialStart, 6),
+  };
+  const gradientAlphas = {
+    linearBottom: clampUnit(safeConfig.gradientLinearBottomAlpha, 0.995),
+    linearMid: clampUnit(safeConfig.gradientLinearMidAlpha, 0.985),
+    linearTop: clampUnit(safeConfig.gradientLinearTopAlpha, 0.97),
+    radialEnd: clampUnit(safeConfig.gradientRadialEndAlpha, 0),
+    radialMid: clampUnit(safeConfig.gradientRadialMidAlpha, 0.16),
+    radialStart: clampUnit(safeConfig.gradientRadialStartAlpha, 0.36),
+  };
+  const legacyOffsetDefaults = {
+    linearBottom: [
+      hslParams.hueInterval * legacyGradientSteps.linearBottom,
+      hslParams.saturationInterval * legacyGradientSteps.linearBottom,
+      hslParams.lightnessInterval * legacyGradientSteps.linearBottom,
+    ],
+    linearMid: [
+      hslParams.hueInterval * legacyGradientSteps.linearMid,
+      hslParams.saturationInterval * legacyGradientSteps.linearMid,
+      hslParams.lightnessInterval * legacyGradientSteps.linearMid,
+    ],
+    linearTop: [
+      hslParams.hueInterval * legacyGradientSteps.linearTop,
+      hslParams.saturationInterval * legacyGradientSteps.linearTop,
+      hslParams.lightnessInterval * legacyGradientSteps.linearTop,
+    ],
+    radialEnd: [
+      hslParams.hueInterval * legacyGradientSteps.radialEnd,
+      hslParams.saturationInterval * legacyGradientSteps.radialEnd,
+      hslParams.lightnessInterval * legacyGradientSteps.radialEnd,
+    ],
+    radialMid: [
+      hslParams.hueInterval * legacyGradientSteps.radialMid,
+      hslParams.saturationInterval * legacyGradientSteps.radialMid,
+      hslParams.lightnessInterval * legacyGradientSteps.radialMid,
+    ],
+    radialStart: [
+      hslParams.hueInterval * legacyGradientSteps.radialStart,
+      hslParams.saturationInterval * legacyGradientSteps.radialStart,
+      hslParams.lightnessInterval * legacyGradientSteps.radialStart,
+    ],
+  };
+  const rawStopOffsets = isPlainConfigObject(safeConfig.hslStopOffsets)
+    ? safeConfig.hslStopOffsets
+    : {};
+  const hslStopOffsets = {
+    linearBottom: parseHslOffsetTriplet(rawStopOffsets.linearBottom, legacyOffsetDefaults.linearBottom),
+    linearMid: parseHslOffsetTriplet(rawStopOffsets.linearMid, legacyOffsetDefaults.linearMid),
+    linearTop: parseHslOffsetTriplet(rawStopOffsets.linearTop, legacyOffsetDefaults.linearTop),
+    radialEnd: parseHslOffsetTriplet(rawStopOffsets.radialEnd, legacyOffsetDefaults.radialEnd),
+    radialMid: parseHslOffsetTriplet(rawStopOffsets.radialMid, legacyOffsetDefaults.radialMid),
+    radialStart: parseHslOffsetTriplet(rawStopOffsets.radialStart, legacyOffsetDefaults.radialStart),
+  };
+  const hslGradientColors = {
+    gradientLinearBottom: buildHslStopFromOffset(hslParams, hslStopOffsets.linearBottom, gradientAlphas.linearBottom, 0.995),
+    gradientLinearMid: buildHslStopFromOffset(hslParams, hslStopOffsets.linearMid, gradientAlphas.linearMid, 0.985),
+    gradientLinearTop: buildHslStopFromOffset(hslParams, hslStopOffsets.linearTop, gradientAlphas.linearTop, 0.97),
+    gradientRadialEnd: buildHslStopFromOffset(hslParams, hslStopOffsets.radialEnd, gradientAlphas.radialEnd, 0),
+    gradientRadialMid: buildHslStopFromOffset(hslParams, hslStopOffsets.radialMid, gradientAlphas.radialMid, 0.16),
+    gradientRadialStart: buildHslStopFromOffset(hslParams, hslStopOffsets.radialStart, gradientAlphas.radialStart, 0.36),
+  };
+  const explicitGradientColors = {
+    gradientRadialStart: sanitizeColor(safeConfig.gradientRadialStart, 'rgba(62, 92, 126, 0.34)'),
+    gradientRadialMid: sanitizeColor(safeConfig.gradientRadialMid, 'rgba(28, 44, 63, 0.14)'),
+    gradientRadialEnd: sanitizeColor(safeConfig.gradientRadialEnd, 'rgba(11, 16, 24, 0)'),
+    gradientLinearTop: sanitizeColor(safeConfig.gradientLinearTop, 'rgba(16, 24, 36, 0.97)'),
+    gradientLinearMid: sanitizeColor(safeConfig.gradientLinearMid, 'rgba(12, 18, 27, 0.985)'),
+    gradientLinearBottom: sanitizeColor(safeConfig.gradientLinearBottom, 'rgba(9, 14, 21, 0.995)'),
+  };
+  const gradientColors = colorModel === 'explicit' ? explicitGradientColors : hslGradientColors;
+  const parsedTopTintRgb = parseCssColorToRgb(gradientColors.gradientLinearTop);
+  const topTintSampleColor = parsedTopTintRgb
+    ? rgbColorToCss(parsedTopTintRgb)
+    : toHslCss(
+      hslParams.baseHue + hslStopOffsets.linearTop[0],
+      hslParams.baseSaturation + hslStopOffsets.linearTop[1],
+      hslParams.baseLightness + hslStopOffsets.linearTop[2],
+      null,
+    );
+  const washCenterStopPercentRaw = clamp(sanitizeNumber(safeConfig.washCenterStopPercent, 0), 0, 100);
+  const washMidStopPercentRaw = clamp(sanitizeNumber(safeConfig.washMidStopPercent, 25), 0, 100);
+  const washMid2StopPercentRaw = clamp(sanitizeNumber(safeConfig.washMid2StopPercent, 48), 0, 100);
+  const washEdgeStopPercentRaw = clamp(sanitizeNumber(safeConfig.washEdgeStopPercent, 72), 0, 100);
+  const washOuterStopPercentRaw = clamp(sanitizeNumber(safeConfig.washOuterStopPercent, 100), 0, 100);
+  const washCenterStopPercent = washCenterStopPercentRaw;
+  const washMidStopPercent = Math.max(washCenterStopPercent, washMidStopPercentRaw);
+  const washMid2StopPercent = Math.max(washMidStopPercent, washMid2StopPercentRaw);
+  const washEdgeStopPercent = Math.max(washMid2StopPercent, washEdgeStopPercentRaw);
+  const washOuterStopPercent = Math.max(washEdgeStopPercent, washOuterStopPercentRaw);
+
+  return {
+    enabled: safeConfig.enabled !== false,
+    messageText: sanitizeText(safeConfig.messageText, 'please wait, something special is loading'),
+    textSizePx: sanitizeNumber(safeConfig.textSizePx, 18, 8),
+    edgePaddingPx: sanitizeNumber(safeConfig.edgePaddingPx, 26, 0),
+    messageMaxWidthPx: sanitizeNumber(safeConfig.messageMaxWidthPx, 760, 120),
+    dotsGapFromTextPx: sanitizeNumber(safeConfig.dotsGapFromTextPx, 8),
+    fontFamily: (
+      typeof safeConfig.fontFamily === 'string' && safeConfig.fontFamily.trim().length > 0
+        ? safeConfig.fontFamily.trim()
+        : '"Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, "Times New Roman", serif'
+    ),
+    fontWeight: sanitizeNumber(safeConfig.fontWeight, 700, 100),
+    lineHeight: sanitizeNumber(safeConfig.lineHeight, 1.28, 0.6),
+    textColor: sanitizeColor(safeConfig.textColor, '#f2f6fa'),
+    colorModel,
+    hslBaseHue: hslParams.baseHue,
+    hslBaseSaturation: hslParams.baseSaturation,
+    hslBaseLightness: hslParams.baseLightness,
+    hslHueInterval: hslParams.hueInterval,
+    hslSaturationInterval: hslParams.saturationInterval,
+    hslLightnessInterval: hslParams.lightnessInterval,
+    hslStopOffsets,
+    gradientStepLinearBottom: legacyGradientSteps.linearBottom,
+    gradientStepLinearMid: legacyGradientSteps.linearMid,
+    gradientStepLinearTop: legacyGradientSteps.linearTop,
+    gradientStepRadialEnd: legacyGradientSteps.radialEnd,
+    gradientStepRadialMid: legacyGradientSteps.radialMid,
+    gradientStepRadialStart: legacyGradientSteps.radialStart,
+    gradientLinearBottomAlpha: gradientAlphas.linearBottom,
+    gradientLinearMidAlpha: gradientAlphas.linearMid,
+    gradientLinearTopAlpha: gradientAlphas.linearTop,
+    gradientRadialEndAlpha: gradientAlphas.radialEnd,
+    gradientRadialMidAlpha: gradientAlphas.radialMid,
+    gradientRadialStartAlpha: gradientAlphas.radialStart,
+    gradientRadialStart: gradientColors.gradientRadialStart,
+    gradientRadialMid: gradientColors.gradientRadialMid,
+    gradientRadialEnd: gradientColors.gradientRadialEnd,
+    gradientLinearTop: gradientColors.gradientLinearTop,
+    gradientLinearMid: gradientColors.gradientLinearMid,
+    gradientLinearBottom: gradientColors.gradientLinearBottom,
+    topTintSampleColor,
+    textDropShadowEnabled: safeConfig.textDropShadowEnabled !== false,
+    debugFreezeVisible: safeConfig.debugFreezeVisible === true,
+    dotsLineHeight: sanitizeNumber(safeConfig.dotsLineHeight, 1.0, 0.1),
+    washEnabled: safeConfig.washEnabled !== false,
+    washDurationMs: sanitizeNumber(safeConfig.washDurationMs, 620, 80),
+    fadeOutDurationMs: sanitizeNumber(safeConfig.fadeOutDurationMs, 240, 80),
+    washCenterColor: sanitizeColor(safeConfig.washCenterColor, 'rgba(255, 255, 255, 0.98)'),
+    washMidColor: sanitizeColor(safeConfig.washMidColor, 'rgba(255, 255, 255, 0.80)'),
+    washMid2Color: sanitizeColor(safeConfig.washMid2Color, 'rgba(255, 255, 255, 0.45)'),
+    washEdgeColor: sanitizeColor(safeConfig.washEdgeColor, 'rgba(255, 255, 255, 0)'),
+    washOuterColor: sanitizeColor(safeConfig.washOuterColor, 'rgba(255, 255, 255, 0)'),
+    washScaleStart: sanitizeNumber(safeConfig.washScaleStart, 0.05, 0),
+    washScaleEnd: sanitizeNumber(safeConfig.washScaleEnd, 2.4, 0.1),
+    washOpacityStart: clampUnit(safeConfig.washOpacityStart, 0),
+    washOpacityPeak: clampUnit(safeConfig.washOpacityPeak, 0.82),
+    washOpacityEnd: clampUnit(safeConfig.washOpacityEnd, 1),
+    washCenterStopPercent,
+    washMidStopPercent,
+    washMid2StopPercent,
+    washEdgeStopPercent,
+    washOuterStopPercent,
+  };
+}
+
+function applyLoadingScreenConfig(configCandidate = null) {
+  const splash = document.getElementById('loadingScreen');
+  if (!splash || !splash.style) {
+    return;
+  }
+  const config = resolveLoadingScreenConfig(configCandidate);
+  splash.style.setProperty('--loading-font-size', `${config.textSizePx}px`);
+  splash.style.setProperty('--loading-edge-padding', `${config.edgePaddingPx}px`);
+  splash.style.setProperty('--loading-message-max-width', `${config.messageMaxWidthPx}px`);
+  splash.style.setProperty('--loading-dots-gap', `${config.dotsGapFromTextPx}px`);
+  splash.style.setProperty('--loading-font-family', config.fontFamily);
+  splash.style.setProperty('--loading-font-weight', String(config.fontWeight));
+  splash.style.setProperty('--loading-line-height', String(config.lineHeight));
+  splash.style.setProperty('--loading-text-color', config.textColor);
+  splash.style.setProperty(
+    '--loading-text-shadow',
+    config.textDropShadowEnabled === true ? '0 1px 8px rgba(0, 0, 0, 0.34)' : 'none',
+  );
+  splash.style.setProperty('--loading-hsl-base-h', String(config.hslBaseHue));
+  splash.style.setProperty('--loading-hsl-base-s', `${config.hslBaseSaturation}%`);
+  splash.style.setProperty('--loading-hsl-base-l', `${config.hslBaseLightness}%`);
+  splash.style.setProperty('--loading-hsl-hue-interval', String(config.hslHueInterval));
+  splash.style.setProperty('--loading-hsl-saturation-interval', String(config.hslSaturationInterval));
+  splash.style.setProperty('--loading-hsl-lightness-interval', String(config.hslLightnessInterval));
+  splash.style.setProperty('--loading-dots-line-height', String(config.dotsLineHeight));
+  splash.style.setProperty('--loading-gradient-radial-start', config.gradientRadialStart);
+  splash.style.setProperty('--loading-gradient-radial-mid', config.gradientRadialMid);
+  splash.style.setProperty('--loading-gradient-radial-end', config.gradientRadialEnd);
+  splash.style.setProperty('--loading-gradient-linear-top', config.gradientLinearTop);
+  splash.style.setProperty('--loading-gradient-linear-mid', config.gradientLinearMid);
+  splash.style.setProperty('--loading-gradient-linear-bottom', config.gradientLinearBottom);
+  splash.style.setProperty('--loading-wash-duration', `${config.washDurationMs}ms`);
+  splash.style.setProperty('--loading-wash-center-color', config.washCenterColor);
+  splash.style.setProperty('--loading-wash-mid-color', config.washMidColor);
+  splash.style.setProperty('--loading-wash-mid2-color', config.washMid2Color);
+  splash.style.setProperty('--loading-wash-edge-color', config.washEdgeColor);
+  splash.style.setProperty('--loading-wash-outer-color', config.washOuterColor);
+  splash.style.setProperty('--loading-wash-scale-start', String(config.washScaleStart));
+  splash.style.setProperty('--loading-wash-scale-end', String(config.washScaleEnd));
+  splash.style.setProperty('--loading-wash-opacity-start', String(config.washOpacityStart));
+  splash.style.setProperty('--loading-wash-opacity-peak', String(config.washOpacityPeak));
+  splash.style.setProperty('--loading-wash-opacity-end', String(config.washOpacityEnd));
+  splash.style.setProperty('--loading-wash-center-stop', `${config.washCenterStopPercent}%`);
+  splash.style.setProperty('--loading-wash-mid-stop', `${config.washMidStopPercent}%`);
+  splash.style.setProperty('--loading-wash-mid2-stop', `${config.washMid2StopPercent}%`);
+  splash.style.setProperty('--loading-wash-edge-stop', `${config.washEdgeStopPercent}%`);
+  splash.style.setProperty('--loading-wash-outer-stop', `${config.washOuterStopPercent}%`);
+}
+
+function getDefaultLoadingScreenMessage() {
+  const config = resolveLoadingScreenConfig();
+  return typeof config.messageText === 'string' && config.messageText.length > 0
+    ? config.messageText
+    : 'please wait, something special is loading';
+}
+
+function resolveWash1Config(configCandidate = CONFIG.wash1) {
+  const safeConfig = isPlainObjectLiteral(configCandidate) ? configCandidate : {};
+  const loadingConfig = resolveLoadingScreenConfig(CONFIG.loadingScreen);
+  const sanitizeNumber = (value, fallback) => {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : fallback;
+  };
+  const sanitizeColor = (value, fallback) => (
+    typeof value === 'string' && value.trim().length > 0 ? value.trim() : fallback
+  );
+  const positionBasis = (
+    safeConfig.positionBasis === 'video' || safeConfig.positionBasis === 'viewport'
+  )
+    ? safeConfig.positionBasis
+    : 'video';
+  const centerStopPercentRaw = clamp(sanitizeNumber(safeConfig.centerStopPercent, loadingConfig.washCenterStopPercent), 0, 100);
+  const midStopPercentRaw = clamp(sanitizeNumber(safeConfig.midStopPercent, loadingConfig.washMidStopPercent), 0, 100);
+  const mid2StopPercentRaw = clamp(
+    sanitizeNumber(safeConfig.mid2StopPercent, loadingConfig.washMid2StopPercent),
+    0,
+    100,
+  );
+  const edgeStopPercentRaw = clamp(sanitizeNumber(safeConfig.edgeStopPercent, loadingConfig.washEdgeStopPercent), 0, 100);
+  const outerStopPercentRaw = clamp(
+    sanitizeNumber(safeConfig.outerStopPercent, loadingConfig.washOuterStopPercent),
+    0,
+    100,
+  );
+  const centerStopPercent = centerStopPercentRaw;
+  const midStopPercent = Math.max(centerStopPercent, midStopPercentRaw);
+  const mid2StopPercent = Math.max(midStopPercent, mid2StopPercentRaw);
+  const edgeStopPercent = Math.max(mid2StopPercent, edgeStopPercentRaw);
+  const outerStopPercent = Math.max(edgeStopPercent, outerStopPercentRaw);
+  return {
+    enabled: safeConfig.enabled === true,
+    triggerFrame: Math.max(0, Math.floor(sanitizeNumber(safeConfig.triggerFrame, 0))),
+    retriggerOnLoop: safeConfig.retriggerOnLoop !== false,
+    positionBasis,
+    centerXRatio: clamp(sanitizeNumber(safeConfig.centerXRatio, 0.5), 0, 1),
+    centerYRatio: clamp(sanitizeNumber(safeConfig.centerYRatio, 0.5), 0, 1),
+    offsetXPx: sanitizeNumber(safeConfig.offsetXPx, 0),
+    offsetYPx: sanitizeNumber(safeConfig.offsetYPx, 0),
+    durationMs: Math.max(40, sanitizeNumber(safeConfig.durationMs, loadingConfig.washDurationMs)),
+    centerColor: sanitizeColor(safeConfig.centerColor, loadingConfig.washCenterColor),
+    midColor: sanitizeColor(safeConfig.midColor, loadingConfig.washMidColor),
+    mid2Color: sanitizeColor(safeConfig.mid2Color, loadingConfig.washMid2Color),
+    edgeColor: sanitizeColor(safeConfig.edgeColor, loadingConfig.washEdgeColor),
+    outerColor: sanitizeColor(safeConfig.outerColor, loadingConfig.washOuterColor),
+    scaleStart: Math.max(0, sanitizeNumber(safeConfig.scaleStart, loadingConfig.washScaleStart)),
+    scaleEnd: Math.max(0.01, sanitizeNumber(safeConfig.scaleEnd, loadingConfig.washScaleEnd)),
+    opacityStart: clamp(sanitizeNumber(safeConfig.opacityStart, loadingConfig.washOpacityStart), 0, 1),
+    opacityPeak: clamp(sanitizeNumber(safeConfig.opacityPeak, loadingConfig.washOpacityPeak), 0, 1),
+    opacityEnd: clamp(sanitizeNumber(safeConfig.opacityEnd, loadingConfig.washOpacityEnd), 0, 1),
+    centerStopPercent,
+    midStopPercent,
+    mid2StopPercent,
+    edgeStopPercent,
+    outerStopPercent,
+  };
+}
+
+function triggerWash1Pulse() {
+  if (!wash1Layer) {
+    return;
+  }
+  wash1Layer.classList.remove('is-active');
+  void wash1Layer.offsetWidth;
+  wash1Layer.classList.add('is-active');
+}
+
+function syncWash1Layer(currentFrame = null) {
+  if (!wash1Layer || !wash1Layer.style) {
+    return;
+  }
+  const config = resolveWash1Config();
+  if (config.enabled !== true) {
+    wash1Layer.classList.remove('is-active');
+    wash1Layer.style.display = 'none';
+    STATE.wash1LastFrame = Number.NaN;
+    STATE.wash1LoopCounter = 0;
+    STATE.wash1LastTriggeredLoopCounter = -1;
+    STATE.wash1TriggeredOnce = false;
+    return;
+  }
+
+  const videoRect = getHeroVideoRenderedRect();
+  let centerX = (Number.isFinite(STATE.viewportWidth) ? STATE.viewportWidth : window.innerWidth) * 0.5;
+  let centerY = (Number.isFinite(STATE.viewportHeight) ? STATE.viewportHeight : window.innerHeight) * 0.5;
+  if (
+    config.positionBasis === 'video'
+    && videoRect
+    && Number.isFinite(videoRect.left)
+    && Number.isFinite(videoRect.top)
+    && Number.isFinite(videoRect.width)
+    && Number.isFinite(videoRect.height)
+    && videoRect.width > 0
+    && videoRect.height > 0
+  ) {
+    centerX = videoRect.left + videoRect.width * config.centerXRatio;
+    centerY = videoRect.top + videoRect.height * config.centerYRatio;
+  } else {
+    const vw = Number.isFinite(STATE.viewportWidth) ? STATE.viewportWidth : window.innerWidth;
+    const vh = Number.isFinite(STATE.viewportHeight) ? STATE.viewportHeight : window.innerHeight;
+    centerX = vw * config.centerXRatio;
+    centerY = vh * config.centerYRatio;
+  }
+  centerX += config.offsetXPx;
+  centerY += config.offsetYPx;
+
+  wash1Layer.style.display = 'block';
+  wash1Layer.style.setProperty('--wash1-duration', `${config.durationMs}ms`);
+  wash1Layer.style.setProperty('--wash1-center-color', config.centerColor);
+  wash1Layer.style.setProperty('--wash1-mid-color', config.midColor);
+  wash1Layer.style.setProperty('--wash1-mid2-color', config.mid2Color);
+  wash1Layer.style.setProperty('--wash1-edge-color', config.edgeColor);
+  wash1Layer.style.setProperty('--wash1-outer-color', config.outerColor);
+  wash1Layer.style.setProperty('--wash1-scale-start', String(config.scaleStart));
+  wash1Layer.style.setProperty('--wash1-scale-end', String(config.scaleEnd));
+  wash1Layer.style.setProperty('--wash1-opacity-start', String(config.opacityStart));
+  wash1Layer.style.setProperty('--wash1-opacity-peak', String(config.opacityPeak));
+  wash1Layer.style.setProperty('--wash1-opacity-end', String(config.opacityEnd));
+  wash1Layer.style.setProperty('--wash1-center-stop', `${config.centerStopPercent}%`);
+  wash1Layer.style.setProperty('--wash1-mid-stop', `${config.midStopPercent}%`);
+  wash1Layer.style.setProperty('--wash1-mid2-stop', `${config.mid2StopPercent}%`);
+  wash1Layer.style.setProperty('--wash1-edge-stop', `${config.edgeStopPercent}%`);
+  wash1Layer.style.setProperty('--wash1-outer-stop', `${config.outerStopPercent}%`);
+  wash1Layer.style.setProperty('--wash1-center-x', `${centerX}px`);
+  wash1Layer.style.setProperty('--wash1-center-y', `${centerY}px`);
+  wash1Layer.style.transformOrigin = `${centerX}px ${centerY}px`;
+
+  const frameNow = Number.isFinite(currentFrame)
+    ? currentFrame
+    : getCurrentHeroVideoFrame(resolveHeroPlaybackGateConfig());
+  if (!Number.isFinite(frameNow)) {
+    return;
+  }
+  const previousFrame = STATE.wash1LastFrame;
+  const hasPrevious = Number.isFinite(previousFrame);
+  const looped = hasPrevious && frameNow + 0.5 < previousFrame;
+  if (looped) {
+    STATE.wash1LoopCounter += 1;
+  }
+  const crossed = (
+    frameNow >= config.triggerFrame
+    && (!hasPrevious || previousFrame < config.triggerFrame || looped)
+  );
+  const loopId = STATE.wash1LoopCounter;
+  if (crossed) {
+    const allowTrigger = config.retriggerOnLoop
+      ? STATE.wash1LastTriggeredLoopCounter !== loopId
+      : STATE.wash1TriggeredOnce !== true;
+    if (allowTrigger) {
+      triggerWash1Pulse();
+      STATE.wash1LastTriggeredLoopCounter = loopId;
+      STATE.wash1TriggeredOnce = true;
+    }
+  }
+  STATE.wash1LastFrame = frameNow;
+}
+
+function resolveWash2Config(configCandidate = CONFIG.wash2) {
+  const safeConfig = isPlainObjectLiteral(configCandidate) ? configCandidate : {};
+  const loadingConfig = resolveLoadingScreenConfig(CONFIG.loadingScreen);
+  const sanitizeNumber = (value, fallback) => {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : fallback;
+  };
+  const sanitizeColor = (value, fallback) => (
+    typeof value === 'string' && value.trim().length > 0 ? value.trim() : fallback
+  );
+  const positionBasis = (
+    safeConfig.positionBasis === 'video' || safeConfig.positionBasis === 'viewport'
+  )
+    ? safeConfig.positionBasis
+    : 'video';
+  const centerStopPercentRaw = clamp(sanitizeNumber(safeConfig.centerStopPercent, loadingConfig.washCenterStopPercent), 0, 100);
+  const midStopPercentRaw = clamp(sanitizeNumber(safeConfig.midStopPercent, loadingConfig.washMidStopPercent), 0, 100);
+  const mid2StopPercentRaw = clamp(
+    sanitizeNumber(safeConfig.mid2StopPercent, loadingConfig.washMid2StopPercent),
+    0,
+    100,
+  );
+  const edgeStopPercentRaw = clamp(sanitizeNumber(safeConfig.edgeStopPercent, loadingConfig.washEdgeStopPercent), 0, 100);
+  const outerStopPercentRaw = clamp(
+    sanitizeNumber(safeConfig.outerStopPercent, loadingConfig.washOuterStopPercent),
+    0,
+    100,
+  );
+  const centerStopPercent = centerStopPercentRaw;
+  const midStopPercent = Math.max(centerStopPercent, midStopPercentRaw);
+  const mid2StopPercent = Math.max(midStopPercent, mid2StopPercentRaw);
+  const edgeStopPercent = Math.max(mid2StopPercent, edgeStopPercentRaw);
+  const outerStopPercent = Math.max(edgeStopPercent, outerStopPercentRaw);
+  return {
+    enabled: safeConfig.enabled === true,
+    triggerFrame: Math.max(0, Math.floor(sanitizeNumber(safeConfig.triggerFrame, 0))),
+    retriggerOnLoop: safeConfig.retriggerOnLoop !== false,
+    positionBasis,
+    centerXRatio: clamp(sanitizeNumber(safeConfig.centerXRatio, 0.5), 0, 1),
+    centerYRatio: clamp(sanitizeNumber(safeConfig.centerYRatio, 0.5), 0, 1),
+    offsetXPx: sanitizeNumber(safeConfig.offsetXPx, 0),
+    offsetYPx: sanitizeNumber(safeConfig.offsetYPx, 0),
+    durationMs: Math.max(40, sanitizeNumber(safeConfig.durationMs, loadingConfig.washDurationMs)),
+    centerColor: sanitizeColor(safeConfig.centerColor, loadingConfig.washCenterColor),
+    midColor: sanitizeColor(safeConfig.midColor, loadingConfig.washMidColor),
+    mid2Color: sanitizeColor(safeConfig.mid2Color, loadingConfig.washMid2Color),
+    edgeColor: sanitizeColor(safeConfig.edgeColor, loadingConfig.washEdgeColor),
+    outerColor: sanitizeColor(safeConfig.outerColor, loadingConfig.washOuterColor),
+    scaleStart: Math.max(0, sanitizeNumber(safeConfig.scaleStart, loadingConfig.washScaleStart)),
+    scaleEnd: Math.max(0.01, sanitizeNumber(safeConfig.scaleEnd, loadingConfig.washScaleEnd)),
+    opacityStart: clamp(sanitizeNumber(safeConfig.opacityStart, loadingConfig.washOpacityStart), 0, 1),
+    opacityPeak: clamp(sanitizeNumber(safeConfig.opacityPeak, loadingConfig.washOpacityPeak), 0, 1),
+    opacityEnd: clamp(sanitizeNumber(safeConfig.opacityEnd, loadingConfig.washOpacityEnd), 0, 1),
+    centerStopPercent,
+    midStopPercent,
+    mid2StopPercent,
+    edgeStopPercent,
+    outerStopPercent,
+  };
+}
+
+function triggerWash2Pulse() {
+  if (!wash2Layer) {
+    return;
+  }
+  wash2Layer.classList.remove('is-active');
+  void wash2Layer.offsetWidth;
+  wash2Layer.classList.add('is-active');
+}
+
+function syncWash2Layer(currentFrame = null) {
+  if (!wash2Layer || !wash2Layer.style) {
+    return;
+  }
+  const config = resolveWash2Config();
+  if (config.enabled !== true) {
+    wash2Layer.classList.remove('is-active');
+    wash2Layer.style.display = 'none';
+    STATE.wash2LastFrame = Number.NaN;
+    STATE.wash2LoopCounter = 0;
+    STATE.wash2LastTriggeredLoopCounter = -1;
+    STATE.wash2TriggeredOnce = false;
+    return;
+  }
+
+  const videoRect = getHeroVideoRenderedRect();
+  let centerX = (Number.isFinite(STATE.viewportWidth) ? STATE.viewportWidth : window.innerWidth) * 0.5;
+  let centerY = (Number.isFinite(STATE.viewportHeight) ? STATE.viewportHeight : window.innerHeight) * 0.5;
+  if (
+    config.positionBasis === 'video'
+    && videoRect
+    && Number.isFinite(videoRect.left)
+    && Number.isFinite(videoRect.top)
+    && Number.isFinite(videoRect.width)
+    && Number.isFinite(videoRect.height)
+    && videoRect.width > 0
+    && videoRect.height > 0
+  ) {
+    centerX = videoRect.left + videoRect.width * config.centerXRatio;
+    centerY = videoRect.top + videoRect.height * config.centerYRatio;
+  } else {
+    const vw = Number.isFinite(STATE.viewportWidth) ? STATE.viewportWidth : window.innerWidth;
+    const vh = Number.isFinite(STATE.viewportHeight) ? STATE.viewportHeight : window.innerHeight;
+    centerX = vw * config.centerXRatio;
+    centerY = vh * config.centerYRatio;
+  }
+  centerX += config.offsetXPx;
+  centerY += config.offsetYPx;
+
+  wash2Layer.style.display = 'block';
+  wash2Layer.style.setProperty('--wash2-duration', `${config.durationMs}ms`);
+  wash2Layer.style.setProperty('--wash2-center-color', config.centerColor);
+  wash2Layer.style.setProperty('--wash2-mid-color', config.midColor);
+  wash2Layer.style.setProperty('--wash2-mid2-color', config.mid2Color);
+  wash2Layer.style.setProperty('--wash2-edge-color', config.edgeColor);
+  wash2Layer.style.setProperty('--wash2-outer-color', config.outerColor);
+  wash2Layer.style.setProperty('--wash2-scale-start', String(config.scaleStart));
+  wash2Layer.style.setProperty('--wash2-scale-end', String(config.scaleEnd));
+  wash2Layer.style.setProperty('--wash2-opacity-start', String(config.opacityStart));
+  wash2Layer.style.setProperty('--wash2-opacity-peak', String(config.opacityPeak));
+  wash2Layer.style.setProperty('--wash2-opacity-end', String(config.opacityEnd));
+  wash2Layer.style.setProperty('--wash2-center-stop', `${config.centerStopPercent}%`);
+  wash2Layer.style.setProperty('--wash2-mid-stop', `${config.midStopPercent}%`);
+  wash2Layer.style.setProperty('--wash2-mid2-stop', `${config.mid2StopPercent}%`);
+  wash2Layer.style.setProperty('--wash2-edge-stop', `${config.edgeStopPercent}%`);
+  wash2Layer.style.setProperty('--wash2-outer-stop', `${config.outerStopPercent}%`);
+  wash2Layer.style.setProperty('--wash2-center-x', `${centerX}px`);
+  wash2Layer.style.setProperty('--wash2-center-y', `${centerY}px`);
+  wash2Layer.style.transformOrigin = `${centerX}px ${centerY}px`;
+
+  const frameNow = Number.isFinite(currentFrame)
+    ? currentFrame
+    : getCurrentHeroVideoFrame(resolveHeroPlaybackGateConfig());
+  if (!Number.isFinite(frameNow)) {
+    return;
+  }
+  const previousFrame = STATE.wash2LastFrame;
+  const hasPrevious = Number.isFinite(previousFrame);
+  const looped = hasPrevious && frameNow + 0.5 < previousFrame;
+  if (looped) {
+    STATE.wash2LoopCounter += 1;
+  }
+  const crossed = (
+    frameNow >= config.triggerFrame
+    && (!hasPrevious || previousFrame < config.triggerFrame || looped)
+  );
+  const loopId = STATE.wash2LoopCounter;
+  if (crossed) {
+    const allowTrigger = config.retriggerOnLoop
+      ? STATE.wash2LastTriggeredLoopCounter !== loopId
+      : STATE.wash2TriggeredOnce !== true;
+    if (allowTrigger) {
+      triggerWash2Pulse();
+      STATE.wash2LastTriggeredLoopCounter = loopId;
+      STATE.wash2TriggeredOnce = true;
+    }
+  }
+  STATE.wash2LastFrame = frameNow;
+}
+
+let loadingScreenHideTimerId = null;
+const loadingScreenGoneCallbacks = [];
+let visualViewportHandlersInstalled = false;
+let viewportLayoutDebugToggleButton = null;
+let viewportRelativeAdjustableControls = null;
+let safariTopTintShimElement = null;
+let lastSafariTopTint = '';
+let loadingScreenTopTintOverride = '';
+let themeColorMetaElement = null;
+let lastThemeColor = '';
+let pageBackgroundGradientStops = [];
+let viewportScrollNudgeApplied = false;
+let viewportBodyFixedOriginalInlineStyles = null;
+let viewportBodyFixedStylesApplied = false;
+let iosRelative166StabilizationRafId = null;
+let iosRelative166StabilizationNestedRafId = null;
+const iosRelative166StabilizationTimeoutIds = [];
+let iosRelative166VisualViewportRerenderQueued = false;
+let viewportPinchZoomWasActive = false;
+let viewportPostZoomResyncTimer = null;
+let postZoomViewportRecoveryActive = false;
+let lastAppliedStableViewportLayoutSignature = '';
+
+function flushLoadingScreenGoneCallbacks() {
+  if (loadingScreenGoneCallbacks.length <= 0) {
+    return;
+  }
+  const pending = loadingScreenGoneCallbacks.splice(0, loadingScreenGoneCallbacks.length);
+  for (let i = 0; i < pending.length; i += 1) {
+    const callback = pending[i];
+    if (typeof callback !== 'function') {
+      continue;
+    }
+    try {
+      callback();
+    } catch (_error) {
+      // Ignore callback exceptions; splash gating should not break runtime.
+    }
+  }
+}
+
+function isLoadingScreenGone() {
+  const splashConfig = resolveLoadingScreenConfig();
+  if (splashConfig.enabled !== true) {
+    return true;
+  }
+  const splash = document.getElementById('loadingScreen');
+  if (!splash) {
+    return true;
+  }
+  return splash.classList.contains('is-gone');
+}
+
+function runWhenLoadingScreenGone(callback) {
+  if (typeof callback !== 'function') {
+    return;
+  }
+  if (isLoadingScreenGone()) {
+    callback();
+    return;
+  }
+  loadingScreenGoneCallbacks.push(callback);
+}
+
+function setLoadingScreenVisible(visible) {
+  const splash = document.getElementById('loadingScreen');
+  if (!splash) {
+    loadingScreenTopTintOverride = '';
+    syncSafariTopTintShim();
+    if (!visible) {
+      flushLoadingScreenGoneCallbacks();
+    }
+    return;
+  }
+  const splashConfig = resolveLoadingScreenConfig();
+  applyLoadingScreenConfig(splashConfig);
+  if (splashConfig.enabled !== true) {
+    if (loadingScreenHideTimerId !== null) {
+      clearTimeout(loadingScreenHideTimerId);
+      loadingScreenHideTimerId = null;
+    }
+    splash.classList.remove('is-hidden', 'is-washing');
+    splash.classList.add('is-gone');
+    loadingScreenTopTintOverride = '';
+    syncSafariTopTintShim();
+    flushLoadingScreenGoneCallbacks();
+    return;
+  }
+  loadingScreenTopTintOverride = splashConfig.topTintSampleColor;
+  syncSafariTopTintShim();
+  if (splashConfig.debugFreezeVisible === true) {
+    if (loadingScreenHideTimerId !== null) {
+      clearTimeout(loadingScreenHideTimerId);
+      loadingScreenHideTimerId = null;
+    }
+    splash.classList.remove('is-hidden', 'is-washing', 'is-gone');
+    if (!visible) {
+      flushLoadingScreenGoneCallbacks();
+    }
+    return;
+  }
+  if (visible) {
+    if (loadingScreenHideTimerId !== null) {
+      clearTimeout(loadingScreenHideTimerId);
+      loadingScreenHideTimerId = null;
+    }
+    splash.classList.remove('is-hidden', 'is-washing', 'is-gone');
+    return;
+  }
+  if (splashConfig.washEnabled) {
+    splash.classList.remove('is-hidden');
+    splash.classList.add('is-washing');
+  } else {
+    splash.classList.remove('is-washing');
+    splash.classList.add('is-hidden');
+  }
+  if (loadingScreenHideTimerId !== null) {
+    clearTimeout(loadingScreenHideTimerId);
+  }
+  const hideDelayMs = splashConfig.washEnabled
+    ? splashConfig.washDurationMs
+    : splashConfig.fadeOutDurationMs;
+  loadingScreenHideTimerId = window.setTimeout(() => {
+    loadingScreenHideTimerId = null;
+    splash.classList.add('is-gone');
+    loadingScreenTopTintOverride = '';
+    syncSafariTopTintShim();
+    flushLoadingScreenGoneCallbacks();
+  }, hideDelayMs);
+}
+
+function isLikelyIOSDevice() {
+  if (typeof navigator === 'undefined') {
+    return false;
+  }
+  const userAgent = typeof navigator.userAgent === 'string' ? navigator.userAgent : '';
+  const platform = typeof navigator.platform === 'string' ? navigator.platform : '';
+  const maxTouchPoints = Number.isFinite(Number(navigator.maxTouchPoints))
+    ? Number(navigator.maxTouchPoints)
+    : 0;
+  const hasTouchEndEvent = typeof document !== 'undefined' && 'ontouchend' in document;
+  const hasMsStream = typeof window !== 'undefined' && typeof window.MSStream !== 'undefined';
+  const isIOSFamily = /iPad|iPhone|iPod/i.test(userAgent);
+  const isIpadOsDesktopMode = (
+    (platform === 'MacIntel' && maxTouchPoints > 1)
+    || (/Macintosh/i.test(userAgent) && hasTouchEndEvent)
+  );
+  return (isIOSFamily || isIpadOsDesktopMode) && !hasMsStream;
+}
+
+function parseIOSMajorVersion() {
+  if (!isLikelyIOSDevice() || typeof navigator === 'undefined') {
+    return null;
+  }
+  const userAgent = typeof navigator.userAgent === 'string' ? navigator.userAgent : '';
+  const directMatch = userAgent.match(/OS\s+(\d+)[._]/i);
+  if (directMatch && directMatch[1]) {
+    const major = Number(directMatch[1]);
+    return Number.isFinite(major) ? major : null;
+  }
+  const versionMatch = userAgent.match(/Version\/(\d+)(?:\.\d+)?/i);
+  if (versionMatch && versionMatch[1]) {
+    const major = Number(versionMatch[1]);
+    return Number.isFinite(major) ? major : null;
+  }
+  return null;
+}
+
+function isLikelyIOS26OrLater() {
+  const major = parseIOSMajorVersion();
+  return Number.isFinite(major) && major >= 26;
+}
+
+function sanitizeViewportLayoutMode(value, fallback = '') {
+  if (value === VIEWPORT_LAYOUT_MODE_COVER) {
+    return VIEWPORT_LAYOUT_MODE_COVER;
+  }
+  if (value === VIEWPORT_LAYOUT_MODE_DYNAMIC) {
+    return VIEWPORT_LAYOUT_MODE_DYNAMIC;
+  }
+  if (value === VIEWPORT_LAYOUT_MODE_LEGACY) {
+    return VIEWPORT_LAYOUT_MODE_LEGACY;
+  }
+  if (value === VIEWPORT_LAYOUT_MODE_RELATIVE_112) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_112;
+  }
+  if (value === VIEWPORT_LAYOUT_MODE_RELATIVE_166) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_166;
+  }
+  if (value === VIEWPORT_LAYOUT_MODE_RELATIVE_ADJUSTABLE) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_ADJUSTABLE;
+  }
+  if (value === VIEWPORT_LAYOUT_MODE_RELATIVE_116) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_116;
+  }
+  if (value === VIEWPORT_LAYOUT_MODE_RELATIVE_120) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_120;
+  }
+  if (value === VIEWPORT_LAYOUT_MODE_RELATIVE_124) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_124;
+  }
+  if (value === VIEWPORT_LAYOUT_MODE_RELATIVE_140) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_140;
+  }
+  if (value === VIEWPORT_LAYOUT_MODE_RELATIVE_160) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_160;
+  }
+  if (value === VIEWPORT_LAYOUT_MODE_RELATIVE_180) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_180;
+  }
+  if (value === VIEWPORT_LAYOUT_MODE_RELATIVE_190) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_190;
+  }
+  if (value === VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_20) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_20;
+  }
+  if (value === VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_40) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_40;
+  }
+  if (value === VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_60) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_60;
+  }
+  if (value === VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_80) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_80;
+  }
+  if (value === VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_120) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_120;
+  }
+  if (value === VIEWPORT_LAYOUT_MODE_BODY_FIXED) {
+    return VIEWPORT_LAYOUT_MODE_BODY_FIXED;
+  }
+  if (value === VIEWPORT_LAYOUT_MODE_SCROLL_STAGE) {
+    return VIEWPORT_LAYOUT_MODE_SCROLL_STAGE;
+  }
+  if (value === VIEWPORT_LAYOUT_MODE_ROOT_BG) {
+    return VIEWPORT_LAYOUT_MODE_ROOT_BG;
+  }
+  return fallback;
+}
+
+function resolveRelativeViewportOverdrawPx(mode) {
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_116) {
+    return VIEWPORT_LAYOUT_RELATIVE_116_OVERDRAW_PX;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_120) {
+    return VIEWPORT_LAYOUT_RELATIVE_120_OVERDRAW_PX;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_124) {
+    return VIEWPORT_LAYOUT_RELATIVE_124_OVERDRAW_PX;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_140) {
+    return VIEWPORT_LAYOUT_RELATIVE_140_OVERDRAW_PX;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_160) {
+    return VIEWPORT_LAYOUT_RELATIVE_160_OVERDRAW_PX;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_180) {
+    return VIEWPORT_LAYOUT_RELATIVE_180_OVERDRAW_PX;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_190) {
+    return VIEWPORT_LAYOUT_RELATIVE_190_OVERDRAW_PX;
+  }
+  return 0;
+}
+
+function resolveViewportLayoutRelativeAdjustableOverdrawConfig() {
+  const normalizedValue = sanitizeViewportRelativeAdjustableValue(
+    STATE && Number.isFinite(STATE.viewportRelativeAdjustableValue)
+      ? STATE.viewportRelativeAdjustableValue
+      : VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_DEFAULT_VALUE,
+    VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_DEFAULT_VALUE,
+  );
+  if (STATE) {
+    STATE.viewportRelativeAdjustableValue = normalizedValue;
+  }
+  return {
+    topPx: 0,
+    extraHeightPx: Math.max(0, normalizedValue - 100),
+  };
+}
+
+function resolveViewportLayoutConfig() {
+  const safeConfig = isPlainObjectLiteral(CONFIG.viewportLayout) ? CONFIG.viewportLayout : {};
+  const targetValueInput = Number(safeConfig.iosSafariRelative166TargetValue);
+  return {
+    iosSafariRelative166TargetValue: Number.isFinite(targetValueInput)
+      ? clamp(Math.round(targetValueInput), 100, 400)
+      : VIEWPORT_LAYOUT_RELATIVE_166_TARGET_VALUE,
+  };
+}
+
+function resolveViewportLayoutBiasOverdrawConfig(mode) {
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_112) {
+    return {
+      topPx: VIEWPORT_LAYOUT_RELATIVE_112_TOP_OVERDRAW_PX,
+      extraHeightPx: VIEWPORT_LAYOUT_RELATIVE_112_EXTRA_HEIGHT_PX,
+    };
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_166) {
+    const viewportLayoutConfig = resolveViewportLayoutConfig();
+    return {
+      topPx: VIEWPORT_LAYOUT_RELATIVE_166_TOP_OVERDRAW_PX,
+      extraHeightPx: Math.max(0, viewportLayoutConfig.iosSafariRelative166TargetValue - 100),
+    };
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_ADJUSTABLE) {
+    return resolveViewportLayoutRelativeAdjustableOverdrawConfig();
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_20) {
+    return {
+      topPx: VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_20_TOP_OVERDRAW_PX,
+      extraHeightPx: VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_20_EXTRA_HEIGHT_PX,
+    };
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_40) {
+    return {
+      topPx: VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_40_TOP_OVERDRAW_PX,
+      extraHeightPx: VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_40_EXTRA_HEIGHT_PX,
+    };
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_60) {
+    return {
+      topPx: VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_60_TOP_OVERDRAW_PX,
+      extraHeightPx: VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_60_EXTRA_HEIGHT_PX,
+    };
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_80) {
+    return {
+      topPx: VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_80_TOP_OVERDRAW_PX,
+      extraHeightPx: VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_80_EXTRA_HEIGHT_PX,
+    };
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_120) {
+    return {
+      topPx: VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_120_TOP_OVERDRAW_PX,
+      extraHeightPx: VIEWPORT_LAYOUT_RELATIVE_BIAS_UP_120_EXTRA_HEIGHT_PX,
+    };
+  }
+  return null;
+}
+
+function resolveViewportLayoutOverdrawConfig(mode) {
+  const relativeOverdrawPx = resolveRelativeViewportOverdrawPx(mode);
+  if (relativeOverdrawPx > 0) {
+    return {
+      topPx: relativeOverdrawPx,
+      extraHeightPx: relativeOverdrawPx * 2,
+    };
+  }
+  const biasOverdrawConfig = resolveViewportLayoutBiasOverdrawConfig(mode);
+  if (biasOverdrawConfig) {
+    return biasOverdrawConfig;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_ROOT_BG) {
+    return {
+      topPx: VIEWPORT_LAYOUT_ROOT_BG_OVERDRAW_PX,
+      extraHeightPx: VIEWPORT_LAYOUT_ROOT_BG_OVERDRAW_PX * 2,
+    };
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_SCROLL_STAGE) {
+    return {
+      topPx: VIEWPORT_LAYOUT_SCROLL_STAGE_OVERDRAW_PX,
+      extraHeightPx: VIEWPORT_LAYOUT_SCROLL_STAGE_OVERDRAW_PX * 2,
+    };
+  }
+  return {
+    topPx: 0,
+    extraHeightPx: 0,
+  };
+}
+
+function readViewportLayoutModeFromSearchParams() {
+  if (!window || !window.location || typeof window.location.search !== 'string') {
+    return '';
+  }
+  try {
+    const searchParams = new URLSearchParams(window.location.search);
+    const rawModeInput = String(searchParams.get(VIEWPORT_LAYOUT_MODE_QUERY_PARAM) || '').trim();
+    const rawModeLower = rawModeInput.toLowerCase();
+    let requestedMode = rawModeInput;
+    if (rawModeLower === 'relativeadjustable') {
+      requestedMode = VIEWPORT_LAYOUT_MODE_RELATIVE_ADJUSTABLE;
+    } else if (rawModeLower === 'rootbg') {
+      requestedMode = VIEWPORT_LAYOUT_MODE_ROOT_BG;
+    }
+    const rawMode = sanitizeViewportLayoutMode(
+      requestedMode,
+      '',
+    );
+    // Keep only explicit testing modes externally addressable.
+    if (rawMode === VIEWPORT_LAYOUT_MODE_ROOT_BG || rawMode === VIEWPORT_LAYOUT_MODE_RELATIVE_ADJUSTABLE) {
+      return rawMode;
+    }
+    return '';
+  } catch (_error) {
+    return '';
+  }
+}
+
+function shouldEnableViewportLayoutDebugToggle() {
+  return false;
+}
+
+function shouldEnableViewportScrollNudge() {
+  return false;
+}
+
+function isViewportDebugLoggingEnabled() {
+  if (isSwayPerfLogEnabled()) {
+    return true;
+  }
+  if (!window || !window.location || typeof window.location.search !== 'string') {
+    return false;
+  }
+  try {
+    const searchParams = new URLSearchParams(window.location.search);
+    const rawFlag = String(searchParams.get(VIEWPORT_LAYOUT_DEBUG_QUERY_PARAM) || '').trim().toLowerCase();
+    return rawFlag === '1' || rawFlag === 'true' || rawFlag === 'yes' || rawFlag === 'on';
+  } catch (_error) {
+    return false;
+  }
+}
+
+function viewportDebugLog(...parts) {
+  if (!isViewportDebugLoggingEnabled()) {
+    return;
+  }
+  console.log('[ViewportDebug]', ...parts);
+}
+
+function readViewportTopTintShimOverrideFromSearchParams() {
+  if (!window || !window.location || typeof window.location.search !== 'string') {
+    return null;
+  }
+  try {
+    const searchParams = new URLSearchParams(window.location.search);
+    const rawFlag = String(searchParams.get(VIEWPORT_LAYOUT_TOP_TINT_SHIM_QUERY_PARAM) || '').trim().toLowerCase();
+    if (rawFlag === '1' || rawFlag === 'true' || rawFlag === 'yes' || rawFlag === 'on') {
+      return true;
+    }
+    if (rawFlag === '0' || rawFlag === 'false' || rawFlag === 'no' || rawFlag === 'off') {
+      return false;
+    }
+    return null;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function shouldEnableViewportTopTintExperiment() {
+  if (!window || !window.location || typeof window.location.search !== 'string') {
+    return false;
+  }
+  try {
+    const searchParams = new URLSearchParams(window.location.search);
+    const rawFlag = String(searchParams.get(VIEWPORT_LAYOUT_TOP_TINT_EXPERIMENT_QUERY_PARAM) || '').trim().toLowerCase();
+    return rawFlag === '1' || rawFlag === 'true' || rawFlag === 'yes' || rawFlag === 'on';
+  } catch (_error) {
+    return false;
+  }
+}
+
+function resolveInitialViewportLayoutMode() {
+  const modeFromSearchParams = readViewportLayoutModeFromSearchParams();
+  if (modeFromSearchParams) {
+    return modeFromSearchParams;
+  }
+  if (isLikelySafariOnIOS()) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_166;
+  }
+  // Use normal baseline layout outside iOS Safari.
+  return VIEWPORT_LAYOUT_MODE_LEGACY;
+}
+
+function resolveSafariTopTintShimConfig() {
+  const safeConfig = isPlainObjectLiteral(CONFIG.safariTopTintShim) ? CONFIG.safariTopTintShim : {};
+  const opacityInput = Number(safeConfig.opacity);
+  const iosMinMajorInput = Number(safeConfig.iosMinMajor);
+  return {
+    enabled: safeConfig.enabled !== false,
+    iosOnly: safeConfig.iosOnly !== false,
+    iosMinMajor: Number.isFinite(iosMinMajorInput) ? Math.max(0, Math.floor(iosMinMajorInput)) : 26,
+    rootBackgroundOnly: safeConfig.rootBackgroundOnly === true,
+    opacity: Number.isFinite(opacityInput)
+      ? clamp(opacityInput, 0.01, 1)
+      : 0.01,
+  };
+}
+
+function ensureSafariTopTintShimElement() {
+  if (!document || !document.body) {
+    return null;
+  }
+  if (safariTopTintShimElement && safariTopTintShimElement.parentNode === document.body) {
+    return safariTopTintShimElement;
+  }
+  let element = document.getElementById(SAFARI_TOP_TINT_SHIM_ID);
+  if (!element) {
+    element = document.createElement('div');
+    element.id = SAFARI_TOP_TINT_SHIM_ID;
+    element.setAttribute('aria-hidden', 'true');
+    document.body.insertBefore(element, document.body.firstChild);
+  }
+  safariTopTintShimElement = element;
+  return safariTopTintShimElement;
+}
+
+function setSafariTopTint(color) {
+  if (!document || !document.documentElement || typeof color !== 'string') {
+    return;
+  }
+  const trimmed = color.trim();
+  if (trimmed.length <= 0) {
+    return;
+  }
+  document.documentElement.style.setProperty(SAFARI_TOP_TINT_CSS_VAR, trimmed);
+}
+
+function lerpColorChannel(a, b, t) {
+  const safeA = Number.isFinite(a) ? a : 0;
+  const safeB = Number.isFinite(b) ? b : 0;
+  const safeT = Number.isFinite(t) ? t : 0;
+  return Math.round(safeA + ((safeB - safeA) * safeT));
+}
+
+function interpolateRgbColor(colorA, colorB, t) {
+  return {
+    r: clamp(lerpColorChannel(colorA.r, colorB.r, t), 0, 255),
+    g: clamp(lerpColorChannel(colorA.g, colorB.g, t), 0, 255),
+    b: clamp(lerpColorChannel(colorA.b, colorB.b, t), 0, 255),
+  };
+}
+
+function rgbColorToCss(color) {
+  if (!color) {
+    return 'rgb(0, 0, 0)';
+  }
+  const r = Number.isFinite(color.r) ? clamp(Math.round(color.r), 0, 255) : 0;
+  const g = Number.isFinite(color.g) ? clamp(Math.round(color.g), 0, 255) : 0;
+  const b = Number.isFinite(color.b) ? clamp(Math.round(color.b), 0, 255) : 0;
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+function getGradientColorAt(stops, position) {
+  const safeStops = Array.isArray(stops) ? stops.filter((stop) => (
+    stop
+    && Number.isFinite(stop.pos)
+    && stop.color
+    && Number.isFinite(stop.color.r)
+    && Number.isFinite(stop.color.g)
+    && Number.isFinite(stop.color.b)
+  )) : [];
+  if (safeStops.length <= 0) {
+    return 'rgb(0, 0, 0)';
+  }
+  safeStops.sort((a, b) => a.pos - b.pos);
+  const safePosition = Number.isFinite(position) ? position : 0;
+  if (safePosition <= safeStops[0].pos) {
+    return rgbColorToCss(safeStops[0].color);
+  }
+  for (let i = 0; i < safeStops.length - 1; i += 1) {
+    const left = safeStops[i];
+    const right = safeStops[i + 1];
+    if (safePosition < left.pos || safePosition > right.pos) {
+      continue;
+    }
+    const span = right.pos - left.pos;
+    const t = span > 1e-8 ? clamp((safePosition - left.pos) / span, 0, 1) : 0;
+    return rgbColorToCss(interpolateRgbColor(left.color, right.color, t));
+  }
+  return rgbColorToCss(safeStops[safeStops.length - 1].color);
+}
+
+function parseCssColorToRgb(colorValue) {
+  if (typeof colorValue !== 'string') {
+    return null;
+  }
+  const trimmed = colorValue.trim();
+  if (trimmed.length <= 0) {
+    return null;
+  }
+  if (!document || typeof document.createElement !== 'function') {
+    return null;
+  }
+  const probe = document.createElement('span');
+  probe.style.position = 'absolute';
+  probe.style.opacity = '0';
+  probe.style.pointerEvents = 'none';
+  probe.style.color = '#000000';
+  probe.style.color = trimmed;
+  const parent = document.body || document.documentElement;
+  if (!parent) {
+    return null;
+  }
+  parent.appendChild(probe);
+  let normalized = probe.style.color;
+  if (typeof window.getComputedStyle === 'function') {
+    const computedColor = window.getComputedStyle(probe).color;
+    if (typeof computedColor === 'string' && computedColor.trim().length > 0) {
+      normalized = computedColor.trim();
+    }
+  }
+  probe.remove();
+  if (typeof normalized !== 'string' || normalized.length <= 0) {
+    return null;
+  }
+  const rgbMatch = normalized.match(/^rgba?\(([^)]+)\)$/i);
+  if (!rgbMatch || !rgbMatch[1]) {
+    return null;
+  }
+  const parts = rgbMatch[1].split(',');
+  if (parts.length < 3) {
+    return null;
+  }
+  const r = Number(parts[0]);
+  const g = Number(parts[1]);
+  const b = Number(parts[2]);
+  if (!Number.isFinite(r) || !Number.isFinite(g) || !Number.isFinite(b)) {
+    return null;
+  }
+  return {
+    r: clamp(Math.round(r), 0, 255),
+    g: clamp(Math.round(g), 0, 255),
+    b: clamp(Math.round(b), 0, 255),
+  };
+}
+
+function setPageBackgroundGradientColors(topColor, midColor, bottomColor) {
+  if (document && document.documentElement && document.documentElement.style) {
+    const rootStyle = document.documentElement.style;
+    if (typeof topColor === 'string' && topColor.trim().length > 0) {
+      rootStyle.setProperty('--app-page-bg-top', topColor.trim());
+    }
+    if (typeof midColor === 'string' && midColor.trim().length > 0) {
+      rootStyle.setProperty('--app-page-bg-mid', midColor.trim());
+    }
+    if (typeof bottomColor === 'string' && bottomColor.trim().length > 0) {
+      rootStyle.setProperty('--app-page-bg-bottom', bottomColor.trim());
+    }
+  }
+
+  const topRgb = parseCssColorToRgb(topColor);
+  const midRgb = parseCssColorToRgb(midColor);
+  const bottomRgb = parseCssColorToRgb(bottomColor);
+  const stops = [];
+  if (topRgb) {
+    stops.push({ pos: 0, color: topRgb });
+  }
+  if (midRgb) {
+    stops.push({ pos: 0.5, color: midRgb });
+  }
+  if (bottomRgb) {
+    stops.push({ pos: 1, color: bottomRgb });
+  }
+  pageBackgroundGradientStops = stops;
+  if (stops.length > 0) {
+    lastSafariTopTint = '';
+  }
+}
+
+function resolvePageBackgroundGradientStopsFromCssVariables() {
+  if (Array.isArray(pageBackgroundGradientStops) && pageBackgroundGradientStops.length > 0) {
+    return pageBackgroundGradientStops;
+  }
+  if (!document || !document.documentElement || typeof window.getComputedStyle !== 'function') {
+    return [];
+  }
+  const rootStyle = window.getComputedStyle(document.documentElement);
+  const topColor = parseCssColorToRgb(rootStyle.getPropertyValue('--app-page-bg-top'));
+  const midColor = parseCssColorToRgb(rootStyle.getPropertyValue('--app-page-bg-mid'));
+  const bottomColor = parseCssColorToRgb(rootStyle.getPropertyValue('--app-page-bg-bottom'));
+  const stops = [];
+  if (topColor) {
+    stops.push({ pos: 0, color: topColor });
+  }
+  if (midColor) {
+    stops.push({ pos: 0.5, color: midColor });
+  }
+  if (bottomColor) {
+    stops.push({ pos: 1, color: bottomColor });
+  }
+  return stops;
+}
+
+function updateSafariTopTintFromGradient() {
+  const splashTintOverride = typeof loadingScreenTopTintOverride === 'string'
+    ? loadingScreenTopTintOverride.trim()
+    : '';
+  if (splashTintOverride.length > 0) {
+    if (splashTintOverride !== lastSafariTopTint) {
+      setSafariTopTint(splashTintOverride);
+      lastSafariTopTint = splashTintOverride;
+    }
+    return splashTintOverride;
+  }
+  const gradientStops = resolvePageBackgroundGradientStopsFromCssVariables();
+  const nextTint = getGradientColorAt(gradientStops, 0);
+  if (nextTint === lastSafariTopTint) {
+    return nextTint;
+  }
+  setSafariTopTint(nextTint);
+  lastSafariTopTint = nextTint;
+  return nextTint;
+}
+
+function ensureThemeColorMetaElement() {
+  if (!document || !document.head || typeof document.querySelector !== 'function') {
+    return null;
+  }
+  if (themeColorMetaElement && themeColorMetaElement.parentNode === document.head) {
+    return themeColorMetaElement;
+  }
+  let meta = document.querySelector(`meta[name="${THEME_COLOR_META_NAME}"]`);
+  if (!meta) {
+    meta = document.createElement('meta');
+    meta.setAttribute('name', THEME_COLOR_META_NAME);
+    document.head.appendChild(meta);
+  }
+  themeColorMetaElement = meta;
+  return themeColorMetaElement;
+}
+
+function setDynamicThemeColor(color) {
+  if (typeof color !== 'string') {
+    return;
+  }
+  const trimmed = color.trim();
+  if (trimmed.length <= 0 || trimmed === lastThemeColor) {
+    return;
+  }
+  const meta = ensureThemeColorMetaElement();
+  if (!meta) {
+    return;
+  }
+  meta.setAttribute('content', trimmed);
+  lastThemeColor = trimmed;
+}
+
+function shouldSyncDynamicThemeColor() {
+  if (typeof navigator === 'undefined') {
+    return false;
+  }
+  return isLikelyIOSDevice();
+}
+
+function shouldEnableSafariTopTintShim() {
+  const override = readViewportTopTintShimOverrideFromSearchParams();
+  if (override === false) {
+    return false;
+  }
+
+  const config = resolveSafariTopTintShimConfig();
+  if (config.enabled !== true && override !== true) {
+    return false;
+  }
+  if (config.iosOnly !== false && !isLikelyIOSDevice()) {
+    return false;
+  }
+  if (config.iosMinMajor > 0) {
+    const major = parseIOSMajorVersion();
+    if (!Number.isFinite(major) || major < config.iosMinMajor) {
+      return false;
+    }
+  }
+  if (config.rootBackgroundOnly !== false && STATE.viewportLayoutMode !== VIEWPORT_LAYOUT_MODE_ROOT_BG) {
+    return false;
+  }
+  return override === true || config.enabled === true;
+}
+
+function syncSafariTopTintShim() {
+  if (!document || !document.body || !document.documentElement) {
+    return;
+  }
+  ensureSafariTopTintShimElement();
+  const enabled = shouldEnableSafariTopTintShim();
+  const experimentEnabled = shouldEnableViewportTopTintExperiment();
+  const config = resolveSafariTopTintShimConfig();
+  const shouldSyncThemeColor = shouldSyncDynamicThemeColor();
+  let topTint = null;
+  if (enabled || shouldSyncThemeColor) {
+    topTint = updateSafariTopTintFromGradient();
+  }
+  document.documentElement.style.setProperty(
+    SAFARI_TOP_TINT_SHIM_OPACITY_CSS_VAR,
+    String(clamp(config.opacity, 0.01, 1)),
+  );
+  document.body.classList.toggle('ios-safari-top-tint-shim', enabled);
+  document.body.classList.toggle('ios-safari-top-tint-shim-experiment', enabled && experimentEnabled);
+  document.documentElement.classList.toggle('ios-safari-top-tint-fallback', enabled && experimentEnabled);
+  if (shouldSyncThemeColor && typeof topTint === 'string' && topTint.trim().length > 0) {
+    setDynamicThemeColor(topTint);
+  }
+}
+
+function isLikelySafariOnMacDesktop() {
+  if (typeof navigator === 'undefined') {
+    return false;
+  }
+  const userAgent = typeof navigator.userAgent === 'string' ? navigator.userAgent : '';
+  const platform = typeof navigator.platform === 'string' ? navigator.platform : '';
+  const maxTouchPoints = Number.isFinite(Number(navigator.maxTouchPoints))
+    ? Number(navigator.maxTouchPoints)
+    : 0;
+  const isMacPlatform = /^Mac/i.test(platform);
+  const isIpadDesktopMode = platform === 'MacIntel' && maxTouchPoints > 1;
+  if (!isMacPlatform || isIpadDesktopMode) {
+    return false;
+  }
+  const hasSafariToken = /Safari\//i.test(userAgent);
+  const hasVersionToken = /Version\//i.test(userAgent);
+  const hasOtherBrowserToken = /(Chrome|Chromium|CriOS|Edg|OPR|FxiOS|Firefox|Brave|Vivaldi|YaBrowser)/i.test(userAgent);
+  return hasSafariToken && hasVersionToken && !hasOtherBrowserToken;
+}
+
+function isLikelySafariOnIOS() {
+  if (!isLikelyIOSDevice() || typeof navigator === 'undefined') {
+    return false;
+  }
+  const userAgent = typeof navigator.userAgent === 'string' ? navigator.userAgent : '';
+  const vendor = typeof navigator.vendor === 'string' ? navigator.vendor : '';
+  const uaData = navigator.userAgentData && typeof navigator.userAgentData === 'object'
+    ? navigator.userAgentData
+    : null;
+  const brands = uaData && Array.isArray(uaData.brands) ? uaData.brands : [];
+  const hasSafariToken = /Safari\//i.test(userAgent);
+  const hasAppleWebKitToken = /AppleWebKit\//i.test(userAgent);
+  const hasAppleVendor = vendor.length <= 0 || /Apple/i.test(vendor);
+  const hasOtherBrowserToken = /(?:CriOS|FxiOS|EdgiOS|OPiOS|OPT\/|YaBrowser|DuckDuckGo|Brave|GSA|Instagram|FBAN|FBAV|Twitter|Line|Snapchat|SamsungBrowser|Vivaldi|UCBrowser|Puffin|QQBrowser|Baidu|Naver|Whale|Focus|Yandex|Firefox|Chrome|EdgA|Edg|OPR)/i.test(userAgent);
+  const hasOtherBrandToken = brands.some((entry) => (
+    entry
+    && typeof entry.brand === 'string'
+    && /Chrom(e|ium)|Edge|Opera|Firefox|Samsung|Brave|DuckDuckGo|Vivaldi|Yandex/i.test(entry.brand)
+  ));
+  if (hasOtherBrowserToken || hasOtherBrandToken) {
+    return false;
+  }
+  return hasAppleWebKitToken && hasSafariToken && hasAppleVendor;
+}
+
+function resolveInitialViewportRelativeAdjustableValue() {
+  if (isLikelySafariOnIOS()) {
+    return VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_DEFAULT_IOS_SAFARI_VALUE;
+  }
+  return VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_DEFAULT_VALUE;
+}
+
+function resolveHeroVideoSourcePath() {
+  if (isLikelyIOSDevice() || isLikelySafariOnMacDesktop()) {
+    return HERO_VIDEO_PATH_APPLE_SAFARI;
+  }
+  return HERO_VIDEO_PATH_DEFAULT;
+}
+
+function setHeroVideoSourcePath(path, options = {}) {
+  const safeOptions = (options && typeof options === 'object') ? options : {};
+  const shouldForceLoad = safeOptions.forceLoad !== false;
+  const sourceType = (
+    typeof safeOptions.sourceType === 'string'
+    && safeOptions.sourceType.trim().length > 0
+  )
+    ? safeOptions.sourceType.trim()
+    : '';
+  const normalizedPath = normalizeHostedAssetPath(path);
+  if (typeof normalizedPath !== 'string' || normalizedPath.trim().length <= 0) {
+    return false;
+  }
+  const nextPath = normalizedPath.trim();
+  const assignedPath = String(video.getAttribute('data-hero-video-source-path') || '').trim();
+  const assignedType = String(video.getAttribute('data-hero-video-source-type') || '').trim();
+  if (assignedPath === nextPath && assignedType === sourceType) {
+    return true;
+  }
+  const existingSources = video.querySelectorAll('source');
+  for (let i = 0; i < existingSources.length; i += 1) {
+    existingSources[i].remove();
+  }
+  if (sourceType.length > 0) {
+    video.setAttribute('data-hero-video-source-type', sourceType);
+  } else {
+    video.removeAttribute('data-hero-video-source-type');
+  }
+  try {
+    video.pause();
+  } catch (_error) {
+    // Ignore pause errors during source switching.
+  }
+  try {
+    video.currentTime = 0;
+  } catch (_error) {
+    // Ignore seek exceptions before metadata is available.
+  }
+  video.setAttribute('data-hero-video-source-path', nextPath);
+  video.setAttribute('src', nextPath);
+  video.src = nextPath;
+  if (shouldForceLoad && typeof video.load === 'function') {
+    try {
+      video.load();
+    } catch (_error) {
+      // Ignore load() exceptions and rely on media events.
+    }
+  }
+  return true;
+}
+
+function buildHeroVideoSourceCandidates() {
+  const primaryPath = normalizeHostedAssetPath(resolveHeroVideoSourcePath());
+  const candidates = [];
+  if (typeof primaryPath === 'string' && primaryPath.trim().length > 0) {
+    candidates.push(primaryPath.trim());
+  }
+  return candidates;
+}
+
+function getHeroVideoCurrentSourcePath() {
+  return String(video.currentSrc || video.src || '').trim();
+}
+
+function setHeroVideoSourceByIndex(index, options = {}) {
+  const candidates = HERO_VIDEO_SOURCE_RUNTIME.candidates;
+  if (!Array.isArray(candidates) || candidates.length <= 0) {
+    return false;
+  }
+  if (!Number.isFinite(index) || index < 0 || index >= candidates.length) {
+    return false;
+  }
+  const nextPath = candidates[index];
+  if (typeof nextPath !== 'string' || nextPath.trim().length <= 0) {
+    return false;
+  }
+  const normalizedNextPath = nextPath.trim();
+  HERO_VIDEO_SOURCE_RUNTIME.activeIndex = index;
+  return setHeroVideoSourcePath(normalizedNextPath, options);
+}
+
+function readHeroVideoMediaErrorLabel() {
+  const mediaError = video && video.error ? video.error : null;
+  if (!mediaError || !Number.isFinite(mediaError.code)) {
+    return 'unknown';
+  }
+  switch (mediaError.code) {
+    case 1:
+      return 'aborted';
+    case 2:
+      return 'network';
+    case 3:
+      return 'decode';
+    case 4:
+      return 'src_not_supported';
+    default:
+      return String(mediaError.code);
+  }
+}
+
+function tryAdvanceHeroVideoSourceCandidate(reason = 'unknown') {
+  const candidates = HERO_VIDEO_SOURCE_RUNTIME.candidates;
+  if (!Array.isArray(candidates) || candidates.length <= 1) {
+    return false;
+  }
+  const nextIndex = Number.isFinite(HERO_VIDEO_SOURCE_RUNTIME.activeIndex)
+    ? HERO_VIDEO_SOURCE_RUNTIME.activeIndex + 1
+    : 1;
+  if (nextIndex < 0 || nextIndex >= candidates.length) {
+    return false;
+  }
+  const switched = setHeroVideoSourceByIndex(nextIndex, { forceLoad: true });
+  if (!switched) {
+    return false;
+  }
+  HERO_VIDEO_SOURCE_RUNTIME.fallbackUsed = true;
+  console.warn(`[HeroVideo] Switching source due to ${reason}: ${candidates[nextIndex]}`);
+  return true;
+}
+
+function configureHeroVideoElement() {
+  video.controls = false;
+  video.preload = 'auto';
+  video.defaultMuted = false;
+  video.muted = false;
+  video.autoplay = false;
+  video.playsInline = true;
+  video.loop = true;
+  video.disablePictureInPicture = true;
+  video.controlsList = 'nodownload noplaybackrate noremoteplayback nofullscreen';
+  video.removeAttribute('muted');
+  video.setAttribute('playsinline', '');
+  video.setAttribute('webkit-playsinline', '');
+  video.setAttribute('loop', '');
+  video.setAttribute('disablepictureinpicture', '');
+  video.setAttribute('controlslist', 'nodownload noplaybackrate noremoteplayback nofullscreen');
+  video.removeAttribute('autoplay');
+
+  HERO_VIDEO_SOURCE_RUNTIME.candidates = buildHeroVideoSourceCandidates();
+  HERO_VIDEO_SOURCE_RUNTIME.activeIndex = -1;
+  HERO_VIDEO_SOURCE_RUNTIME.fallbackUsed = false;
+  setHeroVideoSourceByIndex(0, { forceLoad: false });
+
+  if (!HERO_VIDEO_SOURCE_RUNTIME.errorListenerInstalled) {
+    video.addEventListener('error', () => {
+      HERO_VIDEO_SOURCE_RUNTIME.errorEvents += 1;
+      const errorLabel = readHeroVideoMediaErrorLabel();
+      if (tryAdvanceHeroVideoSourceCandidate(`video-error:${errorLabel}`)) {
+        return;
+      }
+      console.warn(`[HeroVideo] Media error (${errorLabel}) on source: ${getHeroVideoCurrentSourcePath()}`);
+    });
+    HERO_VIDEO_SOURCE_RUNTIME.errorListenerInstalled = true;
+  }
+}
+
+function resolveHeroVideoDebugConfig(configCandidate = CONFIG.heroVideoDebug) {
+  const safeConfig = isPlainObjectLiteral(configCandidate) ? configCandidate : {};
+  const candidateSourcesSource = Array.isArray(safeConfig.candidateSources)
+    ? safeConfig.candidateSources
+    : [];
+  const candidatePathsSource = Array.isArray(safeConfig.candidatePaths)
+    ? safeConfig.candidatePaths
+    : [];
+  const seenPaths = new Set();
+  const candidateEntriesByKey = new Set();
+  const candidateEntries = [];
+  const candidatePaths = [];
+  function upsertCandidate(pathValue, sourceTypeValue = '') {
+    const normalizedPath = normalizeHostedAssetPath(pathValue);
+    if (typeof normalizedPath !== 'string') {
+      return;
+    }
+    const trimmedPath = normalizedPath.trim();
+    if (trimmedPath.length <= 0) {
+      return;
+    }
+    const normalizedType = (
+      typeof sourceTypeValue === 'string'
+      && sourceTypeValue.trim().length > 0
+    )
+      ? sourceTypeValue.trim()
+      : '';
+    const dedupeKey = `${trimmedPath}|||${normalizedType}`;
+    if (candidateEntriesByKey.has(dedupeKey)) {
+      return;
+    }
+    candidateEntriesByKey.add(dedupeKey);
+    candidateEntries.push({
+      path: trimmedPath,
+      sourceType: normalizedType,
+    });
+    if (!seenPaths.has(trimmedPath)) {
+      seenPaths.add(trimmedPath);
+      candidatePaths.push(trimmedPath);
+    }
+  }
+
+  for (let i = 0; i < candidatePathsSource.length; i += 1) {
+    const normalized = normalizeHostedAssetPath(candidatePathsSource[i]);
+    if (typeof normalized !== 'string') {
+      continue;
+    }
+    const trimmed = normalized.trim();
+    if (trimmed.length <= 0 || seenPaths.has(trimmed)) {
+      continue;
+    }
+    upsertCandidate(trimmed, '');
+  }
+  for (let i = 0; i < candidateSourcesSource.length; i += 1) {
+    const entry = candidateSourcesSource[i];
+    if (!isPlainObjectLiteral(entry)) {
+      continue;
+    }
+    const entryPath = (
+      typeof entry.path === 'string' && entry.path.trim().length > 0
+    )
+      ? entry.path
+      : entry.src;
+    const entryType = (
+      typeof entry.type === 'string' && entry.type.trim().length > 0
+    )
+      ? entry.type
+      : entry.sourceType;
+    upsertCandidate(entryPath, entryType);
+  }
+  const frameRate = Number.isFinite(Number(safeConfig.frameRate))
+    ? Math.max(1, Number(safeConfig.frameRate))
+    : 30;
+  const testFrameCount = Number.isFinite(Number(safeConfig.testFrameCount))
+    ? Math.max(1, Math.floor(Number(safeConfig.testFrameCount)))
+    : 150;
+  return {
+    enabled: safeConfig.enabled === true,
+    iosOnly: safeConfig.iosOnly !== false,
+    frameRate,
+    testFrameCount,
+    candidateEntries,
+    candidatePaths,
+    requireCanPlayTypeCheck: safeConfig.requireCanPlayTypeCheck !== false,
+    labelEnabled: safeConfig.labelEnabled !== false,
+    holdAfterEachMs: Number.isFinite(Number(safeConfig.holdAfterEachMs))
+      ? clamp(Number(safeConfig.holdAfterEachMs), 0, 2000)
+      : 250,
+    loadTimeoutMs: Number.isFinite(Number(safeConfig.loadTimeoutMs))
+      ? clamp(Number(safeConfig.loadTimeoutMs), 500, 45000)
+      : 12000,
+    playTimeoutMs: Number.isFinite(Number(safeConfig.playTimeoutMs))
+      ? clamp(Number(safeConfig.playTimeoutMs), 500, 45000)
+      : 12000,
+    chooseFirstPlayableAsFinalSource: safeConfig.chooseFirstPlayableAsFinalSource !== false,
+  };
+}
+
+function shouldRunHeroVideoDebugCycle(debugConfig = resolveHeroVideoDebugConfig()) {
+  if (!debugConfig || debugConfig.enabled !== true) {
+    return false;
+  }
+  if (debugConfig.iosOnly !== false && !isLikelyIOSDevice()) {
+    return false;
+  }
+  return Array.isArray(debugConfig.candidateEntries) && debugConfig.candidateEntries.length > 0;
+}
+
+function ensureHeroVideoDebugLabelElement() {
+  let labelEl = document.getElementById(HERO_VIDEO_DEBUG_LABEL_ID);
+  if (!labelEl) {
+    labelEl = document.createElement('div');
+    labelEl.id = HERO_VIDEO_DEBUG_LABEL_ID;
+    labelEl.style.position = 'fixed';
+    labelEl.style.left = '12px';
+    labelEl.style.top = '12px';
+    labelEl.style.zIndex = '22000';
+    labelEl.style.pointerEvents = 'none';
+    labelEl.style.fontFamily = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+    labelEl.style.fontSize = '12px';
+    labelEl.style.lineHeight = '1.35';
+    labelEl.style.letterSpacing = '0.02em';
+    labelEl.style.color = '#f7fbff';
+    labelEl.style.background = 'rgba(11, 16, 23, 0.62)';
+    labelEl.style.padding = '6px 8px';
+    labelEl.style.borderRadius = '4px';
+    labelEl.style.backdropFilter = 'blur(1.5px)';
+    labelEl.style.whiteSpace = 'nowrap';
+    labelEl.style.display = 'none';
+    document.body.appendChild(labelEl);
+  }
+  return labelEl;
+}
+
+function setHeroVideoDebugLabel(message, options = null) {
+  const safeOptions = isPlainObjectLiteral(options) ? options : {};
+  const visible = safeOptions.visible !== false;
+  const isError = safeOptions.isError === true;
+  const labelEl = ensureHeroVideoDebugLabelElement();
+  if (!visible) {
+    labelEl.style.display = 'none';
+    return;
+  }
+  labelEl.style.display = 'block';
+  labelEl.style.color = isError ? '#ffd7d7' : '#f7fbff';
+  labelEl.style.background = isError ? 'rgba(92, 22, 22, 0.7)' : 'rgba(11, 16, 23, 0.62)';
+  labelEl.textContent = typeof message === 'string' ? message : '';
+}
+
+function sleepMs(durationMs = 0) {
+  const safeDuration = Number.isFinite(Number(durationMs)) ? Math.max(0, Number(durationMs)) : 0;
+  if (safeDuration <= 0) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, safeDuration);
+  });
+}
+
+function waitForHeroVideoReadyOrError(timeoutMs = 12000) {
+  if (isInitialHeroVideoReadyForStartup()) {
+    return Promise.resolve({ ready: true, error: null, timedOut: false });
+  }
+  return new Promise((resolve) => {
+    let settled = false;
+    const timeoutId = window.setTimeout(() => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      resolve({
+        ready: isInitialHeroVideoReadyForStartup(),
+        error: 'timeout',
+        timedOut: true,
+      });
+    }, Math.max(500, timeoutMs));
+    const finish = (payload) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      resolve(payload);
+    };
+    const onReady = () => {
+      if (!isInitialHeroVideoReadyForStartup()) {
+        return;
+      }
+      finish({ ready: true, error: null, timedOut: false });
+    };
+    const onError = () => {
+      finish({
+        ready: false,
+        error: readHeroVideoMediaErrorLabel(),
+        timedOut: false,
+      });
+    };
+    const cleanup = () => {
+      clearTimeout(timeoutId);
+      video.removeEventListener('loadeddata', onReady);
+      video.removeEventListener('canplay', onReady);
+      video.removeEventListener('loadedmetadata', onReady);
+      video.removeEventListener('error', onError);
+    };
+    video.addEventListener('loadeddata', onReady);
+    video.addEventListener('canplay', onReady);
+    video.addEventListener('loadedmetadata', onReady);
+    video.addEventListener('error', onError);
+  });
+}
+
+function playHeroVideoForSampleWindow(sampleDurationSec, timeoutMs = 12000) {
+  const safeSampleDurationSec = Number.isFinite(Number(sampleDurationSec))
+    ? Math.max(0.05, Number(sampleDurationSec))
+    : 0.05;
+  const safeTimeoutMs = Number.isFinite(Number(timeoutMs)) ? Math.max(500, Number(timeoutMs)) : 12000;
+  return new Promise((resolve) => {
+    let settled = false;
+    let rafId = null;
+    const startPerfMs = performance.now();
+    const startTimeSec = Number.isFinite(Number(video.currentTime)) ? Math.max(0, Number(video.currentTime)) : 0;
+    const targetTimeSec = startTimeSec + safeSampleDurationSec;
+    const finish = (payload) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      video.removeEventListener('error', onError);
+      try {
+        video.pause();
+      } catch (_error) {
+        // Ignore pause errors in debug sampling.
+      }
+      resolve(payload);
+    };
+    const onError = () => {
+      finish({
+        ok: false,
+        reason: `error:${readHeroVideoMediaErrorLabel()}`,
+        reachedSec: Number.isFinite(Number(video.currentTime)) ? Number(video.currentTime) : startTimeSec,
+      });
+    };
+    const tick = () => {
+      if (settled) {
+        return;
+      }
+      const nowSec = Number.isFinite(Number(video.currentTime)) ? Number(video.currentTime) : startTimeSec;
+      if (video.ended === true || nowSec >= targetTimeSec) {
+        finish({ ok: true, reason: 'reached_target', reachedSec: nowSec });
+        return;
+      }
+      if ((performance.now() - startPerfMs) >= safeTimeoutMs) {
+        finish({ ok: false, reason: 'play_timeout', reachedSec: nowSec });
+        return;
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+    video.addEventListener('error', onError, { once: true });
+    const playPromise = video.play();
+    if (playPromise && typeof playPromise.catch === 'function') {
+      playPromise.catch((error) => {
+        const reason = (error && typeof error.name === 'string' && error.name.length > 0)
+          ? `play_rejected:${error.name}`
+          : 'play_rejected';
+        finish({
+          ok: false,
+          reason,
+          reachedSec: Number.isFinite(Number(video.currentTime)) ? Number(video.currentTime) : startTimeSec,
+        });
+      });
+    }
+    rafId = requestAnimationFrame(tick);
+  });
+}
+
+async function runHeroVideoDebugCycle(debugConfig = resolveHeroVideoDebugConfig()) {
+  const result = {
+    ready: false,
+    unsupported: false,
+    selectedPath: null,
+    results: [],
+  };
+  if (!shouldRunHeroVideoDebugCycle(debugConfig)) {
+    return result;
+  }
+
+  const candidateEntries = debugConfig.candidateEntries.slice();
+  const candidatePaths = candidateEntries.map((entry) => entry.path);
+  const sampleDurationSec = debugConfig.testFrameCount / debugConfig.frameRate;
+  if (debugConfig.labelEnabled) {
+    setHeroVideoDebugLabel('iOS video debug: starting', { visible: true });
+  }
+
+  for (let i = 0; i < candidateEntries.length; i += 1) {
+    const candidate = candidateEntries[i];
+    const candidatePath = candidate.path;
+    const candidateSourceType = candidate.sourceType;
+    const shortName = candidatePath.split('/').pop() || candidatePath;
+    const canPlayResult = (
+      candidateSourceType.length > 0
+      && video
+      && typeof video.canPlayType === 'function'
+    )
+      ? String(video.canPlayType(candidateSourceType) || '').trim().toLowerCase()
+      : '';
+    if (debugConfig.labelEnabled) {
+      const canPlayLabel = canPlayResult.length > 0 ? ` canPlayType=${canPlayResult}` : '';
+      setHeroVideoDebugLabel(
+        `iOS video debug ${i + 1}/${candidateEntries.length}: loading ${shortName}${canPlayLabel}`,
+        { visible: true },
+      );
+    }
+    if (
+      debugConfig.requireCanPlayTypeCheck === true
+      && candidateSourceType.length > 0
+      && canPlayResult !== 'maybe'
+      && canPlayResult !== 'probably'
+    ) {
+      const candidateResult = {
+        path: candidatePath,
+        sourceType: candidateSourceType,
+        loaded: false,
+        played: false,
+        error: `canplaytype:${canPlayResult || 'none'}`,
+        reachedSec: 0,
+      };
+      result.results.push(candidateResult);
+      if (debugConfig.labelEnabled) {
+        setHeroVideoDebugLabel(
+          `iOS video debug ${i + 1}/${candidateEntries.length}: ${shortName} skipped (${candidateResult.error})`,
+          { visible: true, isError: true },
+        );
+      }
+      await sleepMs(debugConfig.holdAfterEachMs);
+      continue;
+    }
+    setHeroVideoSourcePath(candidatePath, { forceLoad: true, sourceType: candidateSourceType });
+    const loadStatus = await waitForHeroVideoReadyOrError(debugConfig.loadTimeoutMs);
+
+    const candidateResult = {
+      path: candidatePath,
+      sourceType: candidateSourceType,
+      loaded: Boolean(loadStatus && loadStatus.ready),
+      played: false,
+      error: loadStatus && loadStatus.error ? loadStatus.error : null,
+      reachedSec: 0,
+    };
+
+    if (!candidateResult.loaded) {
+      result.results.push(candidateResult);
+      if (debugConfig.labelEnabled) {
+        setHeroVideoDebugLabel(
+          `iOS video debug ${i + 1}/${candidateEntries.length}: ${shortName} failed (${candidateResult.error || 'load_failed'})`,
+          { visible: true, isError: true },
+        );
+      }
+      await sleepMs(debugConfig.holdAfterEachMs);
+      continue;
+    }
+
+    try {
+      video.currentTime = 0;
+    } catch (_error) {
+      // Ignore seek errors and continue.
+    }
+
+    if (debugConfig.labelEnabled) {
+      setHeroVideoDebugLabel(`iOS video debug ${i + 1}/${candidateEntries.length}: testing ${shortName}`, { visible: true });
+    }
+    const playStatus = await playHeroVideoForSampleWindow(sampleDurationSec, debugConfig.playTimeoutMs);
+    candidateResult.played = Boolean(playStatus && playStatus.ok);
+    candidateResult.reachedSec = (playStatus && Number.isFinite(Number(playStatus.reachedSec)))
+      ? Number(playStatus.reachedSec)
+      : 0;
+    if (!candidateResult.played && playStatus && typeof playStatus.reason === 'string') {
+      candidateResult.error = playStatus.reason;
+    }
+    result.results.push(candidateResult);
+    if (debugConfig.labelEnabled) {
+      setHeroVideoDebugLabel(
+        `iOS video debug ${i + 1}/${candidateEntries.length}: ${shortName} ${candidateResult.played ? 'ok' : `failed (${candidateResult.error || 'play_failed'})`}`,
+        { visible: true, isError: candidateResult.played !== true },
+      );
+    }
+    await sleepMs(debugConfig.holdAfterEachMs);
+  }
+
+  const playableResults = result.results.filter((entry) => entry.loaded === true && entry.played === true);
+  const selectedResult = playableResults.length > 0
+    ? (debugConfig.chooseFirstPlayableAsFinalSource ? playableResults[0] : playableResults[playableResults.length - 1])
+    : null;
+  result.selectedPath = selectedResult ? selectedResult.path : null;
+  result.selectedSourceType = selectedResult && typeof selectedResult.sourceType === 'string'
+    ? selectedResult.sourceType
+    : '';
+  result.ready = Boolean(selectedResult);
+  result.unsupported = result.ready !== true;
+
+  if (result.selectedPath) {
+    setHeroVideoSourcePath(result.selectedPath, { forceLoad: true, sourceType: result.selectedSourceType });
+    await waitForHeroVideoReadyOrError(debugConfig.loadTimeoutMs);
+    if (debugConfig.labelEnabled) {
+      const shortName = result.selectedPath.split('/').pop() || result.selectedPath;
+      setHeroVideoDebugLabel(`iOS video debug final: ${shortName}`, { visible: true });
+    }
+  } else if (debugConfig.labelEnabled) {
+    setHeroVideoDebugLabel('iOS video debug: no candidate could play', { visible: true, isError: true });
+  }
+
+  HERO_VIDEO_SOURCE_RUNTIME.candidates = candidatePaths.slice();
+  if (result.selectedPath) {
+    HERO_VIDEO_SOURCE_RUNTIME.activeIndex = HERO_VIDEO_SOURCE_RUNTIME.candidates.indexOf(result.selectedPath);
+  } else {
+    HERO_VIDEO_SOURCE_RUNTIME.activeIndex = 0;
+  }
+  if (HERO_VIDEO_SOURCE_RUNTIME.activeIndex < 0) {
+    HERO_VIDEO_SOURCE_RUNTIME.activeIndex = 0;
+  }
+
+  return result;
+}
+
+configureHeroVideoElement();
+
+// Set up click-to-start screen
+const clickToStartScreen = document.getElementById('clickToStartScreen');
+if (clickToStartScreen) {
+  clickToStartScreen.addEventListener('click', function(event) {
+    clickToStartScreen.classList.add('is-hidden');
+    setTimeout(() => {
+      clickToStartScreen.classList.add('is-gone');
+    }, 220);
+    tryResumeHeroVideoPlaybackFromUserGesture(event);
+    startBackgroundMusic();
+  });
+}
+centerOverlayImageLayer.id = 'centerOverlayImage';
+centerOverlayImageLayer.alt = '';
+centerOverlayImageLayer.draggable = false;
+centerOverlayImageLayerAlt.id = 'centerOverlayImageAlt';
+centerOverlayImageLayerAlt.alt = '';
+centerOverlayImageLayerAlt.draggable = false;
+rsvpLayer.id = 'rsvpLayer';
+rsvpLayer.setAttribute('aria-hidden', 'true');
+rsvpNameInput.id = 'rsvpNameInput';
+rsvpNameInput.type = 'text';
+rsvpNameInput.autocomplete = 'name';
+rsvpNameInput.autocapitalize = 'words';
+rsvpNameInput.spellcheck = false;
+rsvpNameInput.setAttribute('aria-label', 'RSVP name');
+rsvpNameInput.setAttribute('data-rsvp-control', 'name');
+rsvpYesButton.id = 'rsvpYesButton';
+rsvpYesButton.type = 'button';
+rsvpYesButton.setAttribute('aria-label', 'RSVP yes');
+rsvpYesButton.setAttribute('data-rsvp-control', 'yes');
+rsvpYesButton.dataset.rsvpResponse = 'yes';
+rsvpNoButton.id = 'rsvpNoButton';
+rsvpNoButton.type = 'button';
+rsvpNoButton.setAttribute('aria-label', 'RSVP no');
+rsvpNoButton.setAttribute('data-rsvp-control', 'no');
+rsvpNoButton.dataset.rsvpResponse = 'no';
+rsvpConfirmButton.id = 'rsvpConfirmButton';
+rsvpConfirmButton.type = 'button';
+rsvpConfirmButton.setAttribute('aria-label', 'RSVP confirm');
+rsvpConfirmButton.setAttribute('data-rsvp-control', 'confirm');
+rsvpConfirmButton.dataset.rsvpResponse = 'confirm';
+rsvpYesButtonImage.id = 'rsvpYesButtonImage';
+rsvpYesButtonImage.alt = '';
+rsvpYesButtonImage.draggable = false;
+rsvpNoButtonImage.id = 'rsvpNoButtonImage';
+rsvpNoButtonImage.alt = '';
+rsvpNoButtonImage.draggable = false;
+rsvpConfirmButtonImage.id = 'rsvpConfirmButtonImage';
+rsvpConfirmButtonImage.alt = '';
+rsvpConfirmButtonImage.draggable = false;
+swipeSectionsScrollHintDebugRect.id = 'swipeSectionsScrollHintDebugRect';
+swipeSectionsScrollHintDebugRect.className = 'scrollHintDebugRect';
+rsvpNameDebugRect.id = 'rsvpNameDebugRect';
+rsvpNameDebugRect.className = 'rsvpDebugRect';
+rsvpYesDebugRect.id = 'rsvpYesDebugRect';
+rsvpYesDebugRect.className = 'rsvpDebugRect';
+rsvpNoDebugRect.id = 'rsvpNoDebugRect';
+rsvpNoDebugRect.className = 'rsvpDebugRect';
+rsvpConfirmDebugRect.id = 'rsvpConfirmDebugRect';
+rsvpConfirmDebugRect.className = 'rsvpDebugRect';
+rsvpYesButton.appendChild(rsvpYesButtonImage);
+rsvpNoButton.appendChild(rsvpNoButtonImage);
+rsvpConfirmButton.appendChild(rsvpConfirmButtonImage);
+rsvpLayer.appendChild(rsvpNameDebugRect);
+rsvpLayer.appendChild(rsvpYesDebugRect);
+rsvpLayer.appendChild(rsvpNoDebugRect);
+rsvpLayer.appendChild(rsvpConfirmDebugRect);
+rsvpLayer.appendChild(rsvpNameInput);
+rsvpLayer.appendChild(rsvpYesButton);
+rsvpLayer.appendChild(rsvpNoButton);
+rsvpLayer.appendChild(rsvpConfirmButton);
+wash1Layer.id = 'wash1Layer';
+wash2Layer.id = 'wash2Layer';
+section2ButtonLayer.id = 'section2ButtonLayer';
+section2ButtonLayer.setAttribute('aria-hidden', 'true');
+section2Button.id = 'section2Button';
+section2Button.type = 'button';
+section2Button.setAttribute('aria-label', 'View Location');
+section2Button.textContent = 'View Location';
+section2ButtonLayer.appendChild(section2Button);
+// video.height = window.innerHeight;   // Set height in pixels
+
+document.body.appendChild(flowersBackCanvas);
+document.body.appendChild(wash1Layer);
+document.body.appendChild(wash2Layer);
+document.body.appendChild(video);  // Adds it to the page
+document.body.appendChild(centerOverlayImageLayer);
+document.body.appendChild(centerOverlayImageLayerAlt);
+swipeSectionsScrollHintWrapperLayer.id = 'scrollHintLayer';
+swipeSectionsScrollHintWrapperLayer.setAttribute('aria-hidden', 'true');
+swipeSectionsScrollHintWrapperLayer.appendChild(swipeSectionsScrollHintLayer);
+swipeSectionsScrollHintWrapperLayer.appendChild(swipeSectionsScrollHintDebugRect);
+document.body.appendChild(swipeSectionsScrollHintWrapperLayer);
+document.body.appendChild(rsvpLayer);
+document.body.appendChild(section2ButtonLayer);
+section1LabelLayer.id = 'section1LabelLayer';
+section1LabelLayer.setAttribute('aria-hidden', 'true');
+section1LabelEl.id = 'section1Label';
+section1LabelLayer.appendChild(section1LabelEl);
+document.body.appendChild(section1LabelLayer);
+// Keep front overlay canvas in root stacking context so it can render above the video.
+document.body.appendChild(frontCanvas);
+document.body.appendChild(flowersFrontCanvas);
+setupRsvpLayerEventHandlers();
+section2Button.addEventListener('mouseenter', onSection2ButtonHoverEnter);
+section2Button.addEventListener('mouseleave', onSection2ButtonHoverLeave);
+section2Button.addEventListener('focus', onSection2ButtonHoverEnter);
+section2Button.addEventListener('blur', onSection2ButtonHoverLeave);
+section2Button.addEventListener('click', onSection2ButtonClick);
+wash1Layer.addEventListener('animationend', (event) => {
+  if (event && event.animationName === 'wash1Pulse') {
+    wash1Layer.classList.remove('is-active');
+  }
+});
+wash2Layer.addEventListener('animationend', (event) => {
+  if (event && event.animationName === 'wash2Pulse') {
+    wash2Layer.classList.remove('is-active');
+  }
+});
+const frontCtx = frontCanvas.getContext('2d');
+
+
+// // Define your color values
+// let h = 205; // Blue hue
+// let s = 33;  // 50% saturation
+// let l = 59;  // 60% lightness
+// let color1 = `hsl(${h}, ${s}%, ${l}%)`;
+
+// h = 208;
+// s = 34;
+// l = 49; 
+// let color2 = `hsl(${h}, ${s}%, ${l}%)`;
+
+// h = 202;
+// s = 30;
+// l = 42; 
+// let color3 = `hsl(${h}, ${s}%, ${l}%)`;
+
+
+// Define your color values
+// let h = 10; // Blue hue
+// let s = 10;  // 50% saturation
+// let l = 80;  // 60% lightness
+// let color1 = `hsl(${h}, ${s}%, ${l}%)`;
+
+// h = 40;
+// s = 10;
+// l = 80; 
+// let color2 = `hsl(${h}, ${s}%, ${l}%)`;
+
+// h = 40;
+// s = 10;
+// l = 70; 
+// let color3 = `hsl(${h}, ${s}%, ${l}%)`;
+// let basehue = 40;
+
+// let h = basehue; // Blue hue
+// let s = 10;  // 50% saturation
+// let l = 90;  // 60% lightness
+// let color1 = `hsl(${h}, ${s}%, ${l}%)`;
+
+// h = basehue;
+// s = 10;
+// l = 80; 
+// let color2 = `hsl(${h}, ${s}%, ${l}%)`;
+
+// h = basehue;
+// s = 10;
+// l = 70; 
+// let color3 = `hsl(${h}, ${s}%, ${l}%)`;
+
+// let base_hue = 200;
+// let base_sat = 20;
+// let base_lit = 60;
+
+// let base_hue = 210;
+// let base_sat = 10;
+// let base_lit = 60;
+
+// let h = base_hue + 5; // Blue hue
+// let s = base_sat + 5;  // 50% saturation
+// let l = base_lit + 10;  // 60% lightness
+// let color1 = `hsl(${h}, ${s}%, ${l}%)`;
+
+// h = base_hue + 8;
+// s = base_sat + 15;
+// l = base_lit - 1; 
+// let color2 = `hsl(${h}, ${s}%, ${l}%)`;
+
+// h = base_hue + 8;
+// s = base_sat + 20;
+// l = base_lit - 8; 
+// let color3 = `hsl(${h}, ${s}%, ${l}%)`;
+
+let base_hue = 200;
+let base_sat = 10;
+let base_lit = 90;
+
+let h = base_hue + 5; // Blue hue
+let s = base_sat + 5;  // 50% saturation
+let l = base_lit + 10;  // 60% lightness
+
+let color1 = `hsl(${h}, ${s}%, ${l}%)`;
+
+h = base_hue + 8;
+s = base_sat + 5;
+l = base_lit - 1; 
+let color2 = `hsl(${h}, ${s}%, ${l}%)`;
+
+h = base_hue + 8;
+s = base_sat + 10;
+l = base_lit - 8; 
+let color3 = `hsl(${h}, ${s}%, ${l}%)`;
+
+
+// Define your color values
+// let h = 220; // Blue hue
+// let s = 100;  // 50% saturation
+// let l = 50;  // 60% lightness
+// let color1 = `hsl(${h}, ${s}%, ${l}%)`;
+
+
+
+let gradient = ctx.createLinearGradient(0, 0, 0, window.innerHeight );
+gradient.addColorStop(0, color1);
+gradient.addColorStop(0.5, color2);
+gradient.addColorStop(1, color3);
+setPageBackgroundGradientColors(color1, color2, color3);
+
+
+// Apply as a string to the backgroundColor property
+
+function isPlainConfigObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+// ---------------------------------------------------------------------------
+// USER CONFIG (primary tweak area)
+// ---------------------------------------------------------------------------
+const CONFIG = (
+  typeof window !== 'undefined'
+  && isPlainConfigObject(window.STEM_WARP_USER_CONFIG)
+)
+  ? window.STEM_WARP_USER_CONFIG
+  : null;
+
+if (!CONFIG) {
+  throw new Error('Missing user config object. Make sure script_11.user.config.js loads before script_11.js.');
+}
+
+applyLoadingScreenConfig(CONFIG.loadingScreen);
+
+// Backward compatibility: `animation` now maps to `branchGrowth`.
+CONFIG.animation = CONFIG.branchGrowth;
+// Backward compatibility alias.
+CONFIG.offshoots = CONFIG.offshoot;
+CONFIG.swipeSections = resolveSwipeSectionsConfig(CONFIG.swipeSections);
+
+// =========================
+// 3) Runtime State
+// =========================
+const STATE = {
+  dpr: resolveEffectiveRenderDpr(),
+  viewportWidth: 0,
+  viewportHeight: 0,
+  pointerX: Number.NEGATIVE_INFINITY,
+  pointerY: Number.NEGATIVE_INFINITY,
+  pointerSpeedPxPerSec: 0,
+  pointerLastSampleX: Number.NEGATIVE_INFINITY,
+  pointerLastSampleY: Number.NEGATIVE_INFINITY,
+  pointerLastSampleMs: 0,
+
+  windInfluencers: [],
+  windInfluencerPositions: [],
+  windLastTickMs: 0,
+
+  noiseInstance: null,
+  stemImage: null,
+  stemImageFlippedX: null,
+  leafImage: null,
+  openButtonArrowImage: null,
+  openButtonArrowImagePath: '',
+  openButtonArrowImagePendingPath: '',
+  openButtonArrowImageLoadPromise: null,
+  centerOverlayImagePath: '',
+  centerOverlayImageTargetPath: '',
+  centerOverlayImagePendingPath: '',
+  centerOverlayImageLoadPromise: null,
+  centerOverlayImagePreloadEntries: new Map(),
+  centerOverlayImageIsLoaded: false,
+  centerOverlayImageFailedPath: '',
+  centerOverlayImageVisibleSinceMs: 0,
+  centerOverlayImageLastShouldBeVisible: false,
+  centerOverlayImageLayerVisibleSinceMs: [0, 0],
+  centerOverlayImageLayerLastShouldBeVisible: [false, false],
+  wash1LastFrame: Number.NaN,
+  wash1LoopCounter: 0,
+  wash1LastTriggeredLoopCounter: -1,
+  wash1TriggeredOnce: false,
+  wash2LastFrame: Number.NaN,
+  wash2LoopCounter: 0,
+  wash2LastTriggeredLoopCounter: -1,
+  wash2TriggeredOnce: false,
+  masterSound: {
+    triggeredFrames: new Set(),
+    lastFrame: null,
+    backgroundMusicAudio: null,
+    backgroundMusicStarted: false,
+  },
+  flowerSystem: null,
+  flowerInteractionRafId: null,
+  flowerPerfLastLogMs: 0,
+
+  branchGarden: null,
+  branchEndpoints: [],
+  lastSeedPacket: null,
+  hasBootstrapped: false,
+  foliageLoad: {
+    videoReady: false,
+    stemReady: false,
+    leafReady: false,
+    flowerReady: false,
+    ready: false,
+  },
+
+  manualTemplateRegistryLoaded: false,
+  manualTemplateRegistryTemplates: [],
+  manualTemplateRegistryWarnings: [],
+
+  branchGrowth: {
+    rafId: null,
+    running: false,
+    startTimeMs: 0,
+    elapsedSec: 0,
+    globalRatePxPerSec: 0,
+    criticalPathDistance: 0,
+    maxCompletionSec: 0,
+    lastGrowthRenderMs: 0,
+  },
+  flowerGrowth: {
+    dynamicEndpointsActive: false,
+    lastEndpointSignature: -1,
+    openTimerId: null,
+    openScheduled: false,
+    openTriggered: false,
+    openSweepStartMs: 0,
+    openSweepElapsedSec: 0,
+    openSweepLastTickMs: 0,
+    openSweepCompleted: false,
+    openStateLatched: false,
+    cycleToken: 0,
+    branchCompleteReached: false,
+  },
+  lastInteractionRenderMs: 0,
+  nextInteractionFrameDueMs: 0,
+
+  performance: {
+    intervalStartMs: 0,
+    lastLogMs: 0,
+    intervalFrames: 0,
+    intervalFrameMs: 0,
+    intervalSamples: 0,
+    intervalActiveBranches: 0,
+    intervalCacheBuilds: 0,
+    intervalCacheBuildMs: 0,
+    intervalCacheReuses: 0,
+    intervalLeafDrawMs: 0,
+    intervalStemDrawMs: 0,
+    intervalFlowerDrawMs: 0,
+    intervalFlowerUpdateMs: 0,
+    intervalLeavesDrawn: 0,
+    intervalLeavesCulled: 0,
+    intervalFlowersDrawn: 0,
+    intervalFlowersCulled: 0,
+    intervalBackSkippedStems: 0,
+    intervalBackSkippedLeaves: 0,
+    intervalBackSkippedFlowers: 0,
+    intervalCacheMissReasons: {
+      invalid: 0,
+      pathData: 0,
+      image: 0,
+      brush: 0,
+    },
+    lastSummary: null,
+  },
+
+  filteredStemTextureCache: new WeakMap(),
+
+  completedLayer: {
+    canvas: null,
+    ctx: null,
+    committedBranchIds: new Set(),
+    committedStemEndByBranchId: new Map(),
+    leavesConfigKey: '',
+  },
+  completedLayerBack: {
+    canvas: null,
+    ctx: null,
+    committedBranchIds: new Set(),
+    committedStemEndByBranchId: new Map(),
+    leavesConfigKey: '',
+  },
+  completedLayerFront: {
+    canvas: null,
+    ctx: null,
+    committedBranchIds: new Set(),
+    committedStemEndByBranchId: new Map(),
+    leavesConfigKey: '',
+  },
+  leafOverlayCache: {
+    valid: false,
+    layoutKey: '',
+    branchCount: 0,
+    branchPathRefs: [],
+    leaves: [],
+  },
+  overlayWrapPromotion: new Map(),
+  lastFloralResponsiveScaleFactor: null,
+  lastAppliedGlobalFoliageScale: null,
+  viewportLayoutMode: VIEWPORT_LAYOUT_MODE_LEGACY,
+  viewportRelativeAdjustableValue: resolveInitialViewportRelativeAdjustableValue(),
+  viewportOffsetLeftPx: 0,
+  viewportOffsetTopPx: 0,
+  useIOSFixedViewportWorkaround: false,
+  heroVideoReferenceRect: null,
+  heroVideoReferenceRectLocked: false,
+  priorityZonesCache: {
+    signature: '',
+    rects: [],
+    radiusPx: 0,
+  },
+  priorityDebugLastCulledCircles: [],
+  heroPlaybackGate: {
+    monitorRafId: null,
+    monitorVideoFrameCallbackId: null,
+    stage: 'idle', // idle | introPlaying | waitingForOpenButton | postOpenButtonPlaying | postOpenButtonPaused
+    pendingStartAfterSplashDismiss: false,
+    pendingStartAfterSplashDelay: false,
+    startAfterSplashDelayTimerId: null,
+    awaitingUserPlaybackStart: false,
+    growthFrameReached: false,
+    growthStarted: false,
+    growthAnimationEnabledByConfig: false,
+    openButtonClickedAtMs: null,
+    openButtonArrowRenderedPresence: false,
+    openButtonArrowLastRenderMs: 0,
+    videoWiggleRafId: null,
+    videoWiggleDelayTimerId: null,
+    videoWiggleActive: false,
+  },
+  swipeSections: {
+    activeSectionIndex: -1,
+    activeSectionId: '',
+    isTransitioning: false,
+    transitionRafId: null,
+    transitionFromFrame: 0,
+    transitionToFrame: 0,
+    transitionStartMs: 0,
+    transitionDurationMs: 0,
+    transitionFromSectionIndex: -1,
+    transitionToSectionIndex: -1,
+    transitionDirection: 0,
+    wheelAccumulatedDeltaY: 0,
+    wheelLastTriggerMs: 0,
+    wheelLastEventMs: 0,
+    wheelGestureConsumed: false,
+    wheelGestureDirection: 0,
+    touchTracking: {
+      active: false,
+      touchIdentifier: null,
+      startClientX: 0,
+      startClientY: 0,
+      startSceneX: 0,
+      startSceneY: 0,
+      startMs: 0,
+      sawMultiTouch: false,
+      swipeIntentLocked: false,
+    },
+    centerOverlayImagePathOverride: '',
+    overlayOpacityMultiplier: 1,
+    overlayOutgoingOpacityMultiplier: 0,
+    overlayTransitionMode: 'none',
+    overlayTransitionSwapProgress: 0.85,
+    overlayTransitionFadeOutRatio: 0.3,
+    overlayTransitionFadeInStartProgress: 0.8,
+    overlayTransitionHasSwappedPath: false,
+    scrollHint: {
+      pendingJumpTimerId: null,
+      jumpAnimation: null,
+      currentSectionId: '',
+      section1InitialJumpTriggered: false,
+      visibleSinceMs: 0,
+    },
+    rsvp: {
+      initialized: false,
+      visible: false,
+      sectionId: 'section-3',
+      name: '',
+      response: null,
+      confirmPressed: false,
+      updatedAtMs: 0,
+      hoverResponse: '',
+      activeFontKey: '',
+      fontLoadPromise: null,
+      fontLoadEntries: new Map(),
+      spriteSheetKey: '',
+      spriteLoadPromise: null,
+      spriteLoadStatus: 'idle',
+      spriteFrameSources: {
+        yesDefault: '',
+        yesSelected: '',
+        noDefault: '',
+        noSelected: '',
+      },
+    },
+  },
+};
+
+// Backward compatibility: `animation` now maps to `branchGrowth`.
+STATE.animation = STATE.branchGrowth;
+
+// =========================
+// 4) Small Utilities
+// =========================
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function sanitizeViewportRelativeAdjustableValue(
+  value,
+  fallback = VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_DEFAULT_VALUE,
+) {
+  const numeric = Number(value);
+  const safeFallback = Number.isFinite(Number(fallback))
+    ? Math.floor(Number(fallback))
+    : VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_DEFAULT_VALUE;
+  if (!Number.isFinite(numeric)) {
+    return clamp(
+      safeFallback,
+      VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_MIN_VALUE,
+      VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_MAX_VALUE,
+    );
+  }
+  return clamp(
+    Math.floor(numeric),
+    VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_MIN_VALUE,
+    VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_MAX_VALUE,
+  );
+}
+
+function resolveGlobalFoliageScale() {
+  const numeric = Number(CONFIG.globalFoliageScale);
+  if (!Number.isFinite(numeric)) {
+    return 1;
+  }
+  return Math.max(0.01, numeric);
+}
+
+function resolveResponsiveFoliageScale() {
+  return resolveGlobalFoliageScale() * resolveFloralResponsiveScaleFactor();
+}
+
+function syncGlobalFoliageScaleIfNeeded() {
+  const nextScale = resolveResponsiveFoliageScale();
+  if (!Number.isFinite(STATE.lastAppliedGlobalFoliageScale)) {
+    STATE.lastAppliedGlobalFoliageScale = nextScale;
+    return false;
+  }
+  if (Math.abs(nextScale - STATE.lastAppliedGlobalFoliageScale) <= 1e-8) {
+    return false;
+  }
+  STATE.lastAppliedGlobalFoliageScale = nextScale;
+  if (!STATE.branchGarden) {
+    return false;
+  }
+  STATE.branchGarden.rebuildBranches({ regenerateRoots: true, resetRootTimeCursor: true });
+  return true;
+}
+
+function positiveModulo(value, mod) {
+  if (mod === 0) {
+    return 0;
+  }
+  return ((value % mod) + mod) % mod;
+}
+
+function getModifierStepMultiplier(event) {
+  if (!event || typeof event !== 'object') {
+    return 1;
+  }
+  const hasShift = event.shiftKey === true;
+  const hasCmdOrCtrl = event.metaKey === true || event.ctrlKey === true;
+  if (hasShift && hasCmdOrCtrl) {
+    return 100;
+  }
+  if (hasShift) {
+    return 10;
+  }
+  return 1;
+}
+
+function normalizeTemplateNoiseHighpassWindow(value, fallback = 7) {
+  const fallbackNumeric = Number.isFinite(fallback) ? fallback : 7;
+  const numericValue = Number.isFinite(value) ? value : fallbackNumeric;
+  let windowSize = Math.round(numericValue);
+  windowSize = clamp(windowSize, 3, 51);
+  if (windowSize % 2 === 0) {
+    windowSize = windowSize + 1 <= 51 ? windowSize + 1 : windowSize - 1;
+  }
+  return windowSize;
+}
+
+function normalizeTemplateNoiseDirectionalBias(value, fallback = 0) {
+  const fallbackNumeric = Number.isFinite(fallback) ? fallback : 0;
+  const numericValue = Number.isFinite(value) ? value : fallbackNumeric;
+  return clamp(numericValue, 0, 1);
+}
+
+function resolvePathNoiseAxisAbsFlags(pathGenerationConfig = CONFIG.pathGeneration || {}) {
+  const useAbsoluteNoiseX = pathGenerationConfig.useAbsoluteNoiseX !== false;
+  const useAbsoluteNoiseY = pathGenerationConfig.useAbsoluteNoiseY !== false;
+  const absoluteNoiseXRatio = clamp(
+    Number.isFinite(Number(pathGenerationConfig.absoluteNoiseXRatio))
+      ? Number(pathGenerationConfig.absoluteNoiseXRatio)
+      : 0,
+    0,
+    1,
+  );
+  const absoluteNoiseYRatio = clamp(
+    Number.isFinite(Number(pathGenerationConfig.absoluteNoiseYRatio))
+      ? Number(pathGenerationConfig.absoluteNoiseYRatio)
+      : 0,
+    0,
+    1,
+  );
+  return {
+    useAbsoluteNoiseX,
+    useAbsoluteNoiseY,
+    absoluteNoiseXRatio,
+    absoluteNoiseYRatio,
+    xAbsBlend: useAbsoluteNoiseX ? 1 : absoluteNoiseXRatio,
+    yAbsBlend: useAbsoluteNoiseY ? 1 : absoluteNoiseYRatio,
+  };
+}
+
+function blendSignedNoiseWithAbsolute(sample, absoluteBlend = 0) {
+  const signed = Number.isFinite(sample) ? sample : 0;
+  const blend = clamp(Number.isFinite(absoluteBlend) ? absoluteBlend : 0, 0, 1);
+  if (blend <= 0) {
+    return signed;
+  }
+  if (blend >= 1) {
+    return Math.abs(signed);
+  }
+  return signed * (1 - blend) + Math.abs(signed) * blend;
+}
+
+function normalize(vec) {
+  const len = Math.hypot(vec.x, vec.y);
+  if (len < 1e-8) {
+    return { x: 1, y: 0 };
+  }
+  return { x: vec.x / len, y: vec.y / len };
+}
+
+function fallbackNoise2(x, y) {
+  return Math.sin(x * 12.9898 + y * 78.233);
+}
+
+function getNoiseInstance() {
+  if (typeof Noise !== 'function') {
+    return null;
+  }
+  if (!STATE.noiseInstance) {
+    STATE.noiseInstance = new Noise(Math.random());
+  }
+  return STATE.noiseInstance;
+}
+
+function sampleNoise2(x, y) {
+  const instance = getNoiseInstance();
+  if (instance) {
+    return instance.perlin2(x, y);
+  }
+  return fallbackNoise2(x, y);
+}
+
+function rotateVector(vec, angleRadians) {
+  const c = Math.cos(angleRadians);
+  const s = Math.sin(angleRadians);
+  return {
+    x: vec.x * c - vec.y * s,
+    y: vec.x * s + vec.y * c,
+  };
+}
+
+function rotatePointsAroundAnchor(points, anchorX, anchorY, angleRadians) {
+  if (!Array.isArray(points) || points.length <= 1 || !Number.isFinite(angleRadians)) {
+    return points;
+  }
+  if (Math.abs(angleRadians) <= 1e-10) {
+    return points;
+  }
+  const rotated = points.slice();
+  for (let i = 1; i < points.length; i += 1) {
+    const point = points[i];
+    const local = rotateVector(
+      {
+        x: point.x - anchorX,
+        y: point.y - anchorY,
+      },
+      angleRadians,
+    );
+    rotated[i] = {
+      x: anchorX + local.x,
+      y: anchorY + local.y,
+    };
+  }
+  return rotated;
+}
+
+function hashSeed(value) {
+  const text = String(value);
+  let hash = 2166136261 >>> 0;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function mulberry32(seed) {
+  let t = seed >>> 0;
+  return function random() {
+    t = (t + 0x6d2b79f5) >>> 0;
+    let r = Math.imul(t ^ (t >>> 15), 1 | t);
+    r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
+    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function sampleFloatRange(range, rng = Math.random) {
+  const min = range[0];
+  const max = range[1];
+  if (!Number.isFinite(min) || !Number.isFinite(max)) {
+    return 0;
+  }
+  if (max <= min) {
+    return min;
+  }
+  return min + (max - min) * rng();
+}
+
+function sampleIntRange(range, rng = Math.random) {
+  const min = Math.ceil(range[0]);
+  const max = Math.floor(range[1]);
+  if (!Number.isFinite(min) || !Number.isFinite(max)) {
+    return 0;
+  }
+  if (max <= min) {
+    return min;
+  }
+  return Math.floor(rng() * (max - min + 1)) + min;
+}
+
+function normalizeRangeInput(value, fallbackMin, fallbackMax) {
+  if (Array.isArray(value) && value.length >= 2) {
+    const a = Number(value[0]);
+    const b = Number(value[1]);
+    if (Number.isFinite(a) && Number.isFinite(b)) {
+      return [Math.min(a, b), Math.max(a, b)];
+    }
+  }
+  if (Number.isFinite(value)) {
+    return [value, value];
+  }
+  return [fallbackMin, fallbackMax];
+}
+
+function resolveRangeValue(rangeCandidate, fixedCandidate, fallbackValue, fallbackMin, fallbackMax) {
+  if (rangeCandidate !== undefined) {
+    return normalizeRangeInput(rangeCandidate, fallbackMin, fallbackMax);
+  }
+  if (Number.isFinite(fixedCandidate)) {
+    return [fixedCandidate, fixedCandidate];
+  }
+  return normalizeRangeInput(fallbackValue, fallbackMin, fallbackMax);
+}
+
+function normalizeOffshootInput(value) {
+  if (!value || typeof value !== 'object') {
+    return {};
+  }
+  return { ...value };
+}
+
+function normalizeAddBranchOptions(value) {
+  if (!value || typeof value !== 'object') {
+    return {};
+  }
+  const hasStructuredOptions = (
+    value.offshoot !== undefined ||
+    value.manualTemplateIndex !== undefined ||
+    value.stableKey !== undefined
+  );
+
+  if (hasStructuredOptions) {
+    return {
+      ...value,
+      offshoot: normalizeOffshootInput(value.offshoot),
+    };
+  }
+  return {
+    offshoot: normalizeOffshootInput(value),
+  };
+}
+
+function createBranchDefDedupeKey(def) {
+  if (!def || !Number.isFinite(def.x) || !Number.isFinite(def.y)) {
+    return '';
+  }
+  const direction = Number.isFinite(def.direction) && def.direction >= 0 ? 1 : -1;
+  const x = def.x.toFixed(4);
+  const y = def.y.toFixed(4);
+  return `${x}|${y}|${direction}`;
+}
+
+function getSideSign(mode, index, rng) {
+  if (mode === 'left') {
+    return -1;
+  }
+  if (mode === 'right') {
+    return 1;
+  }
+  if (mode === 'alternate') {
+    return index % 2 === 0 ? 1 : -1;
+  }
+  return rng() < 0.5 ? -1 : 1;
+}
+
+function sanitizeSideMode(value) {
+  if (value === 'left' || value === 'right' || value === 'alternate' || value === 'random') {
+    return value;
+  }
+  return 'random';
+}
+
+function sanitizeLeafSpawnBiasMode(value) {
+  if (value === 'uniform' || value === 'towardBase' || value === 'towardTip') {
+    return value;
+  }
+  return 'uniform';
+}
+
+function sanitizeLeafGrowthEaseMode(value) {
+  if (value === 'linear' || value === 'easeIn' || value === 'easeOut' || value === 'easeInOut') {
+    return value;
+  }
+  return 'easeOut';
+}
+
+function sanitizeSwayMode(value) {
+  if (value === 'always' || value === 'influence' || value === 'wind') {
+    return value;
+  }
+  return 'always';
+}
+
+function resolveGlobalSwayMode() {
+  const motionConfig = isPlainObjectLiteral(CONFIG.motion) ? CONFIG.motion : {};
+  return sanitizeSwayMode(motionConfig.swayMode);
+}
+
+function resolveGlobalMaxSwayFps() {
+  const motionConfig = isPlainObjectLiteral(CONFIG.motion) ? CONFIG.motion : {};
+  const fps = Number(motionConfig.maxSwayFps);
+  if (!Number.isFinite(fps) || fps <= 0) {
+    return 0;
+  }
+  return Math.max(1, fps);
+}
+
+function isLeafViewportCullingEnabled() {
+  const motionConfig = isPlainObjectLiteral(CONFIG.motion) ? CONFIG.motion : {};
+  return motionConfig.leafViewportCullingEnabled !== false;
+}
+
+function resolveLeafViewportCullBounds(paddingPx = 0) {
+  const width = Math.max(0, STATE.viewportWidth || 0);
+  const height = Math.max(0, STATE.viewportHeight || 0);
+  if (width <= 0 || height <= 0) {
+    return null;
+  }
+  const safePadding = Number.isFinite(paddingPx) ? paddingPx : 0;
+  return {
+    minX: -safePadding,
+    minY: -safePadding,
+    maxX: width + safePadding,
+    maxY: height + safePadding,
+  };
+}
+
+function isFlowerViewportCullingEnabled() {
+  const motionConfig = isPlainObjectLiteral(CONFIG.motion) ? CONFIG.motion : {};
+  return motionConfig.flowerViewportCullingEnabled !== false;
+}
+
+function isSwayFastPathEnabled() {
+  const motionConfig = isPlainObjectLiteral(CONFIG.motion) ? CONFIG.motion : {};
+  return motionConfig.swayFastPathEnabled !== false;
+}
+
+function isSwayPerfLogEnabled() {
+  const motionConfig = isPlainObjectLiteral(CONFIG.motion) ? CONFIG.motion : {};
+  return motionConfig.swayPerfLogEnabled === true;
+}
+
+function buildHeroVideoReferenceRectSnapshot() {
+  const viewportWidth = Number.isFinite(STATE.viewportWidth) && STATE.viewportWidth > 0
+    ? STATE.viewportWidth
+    : (Number.isFinite(window.innerWidth) && window.innerWidth > 0 ? window.innerWidth : 0);
+  const vvHeight = window.visualViewport && Number.isFinite(Number(window.visualViewport.height)) && Number(window.visualViewport.height) > 0
+    ? Number(window.visualViewport.height)
+    : 0;
+  const viewportHeight = Number.isFinite(STATE.viewportHeight) && STATE.viewportHeight > 0
+    ? STATE.viewportHeight
+    : (vvHeight > 0 ? vvHeight : (Number.isFinite(window.innerHeight) && window.innerHeight > 0 ? window.innerHeight : 0));
+  if (viewportWidth <= 0 || viewportHeight <= 0) {
+    return null;
+  }
+
+  let width = 0;
+  let height = 0;
+  const intrinsicWidth = Number(video && video.videoWidth);
+  const intrinsicHeight = Number(video && video.videoHeight);
+  if (Number.isFinite(intrinsicWidth) && intrinsicWidth > 0 && Number.isFinite(intrinsicHeight) && intrinsicHeight > 0) {
+    // Matches CSS sizing: height fills viewport, width follows intrinsic aspect ratio.
+    height = viewportHeight;
+    width = height * (intrinsicWidth / intrinsicHeight);
+  } else if (
+    video
+    && Number.isFinite(video.clientWidth)
+    && video.clientWidth > 0
+    && Number.isFinite(video.clientHeight)
+    && video.clientHeight > 0
+  ) {
+    width = Number(video.clientWidth);
+    height = Number(video.clientHeight);
+  } else if (video && typeof video.getBoundingClientRect === 'function') {
+    const rect = video.getBoundingClientRect();
+    if (rect && Number.isFinite(rect.width) && Number.isFinite(rect.height)) {
+      width = Math.max(0, rect.width);
+      height = Math.max(0, rect.height);
+    }
+  }
+
+  if (width <= 0 || height <= 0) {
+    return null;
+  }
+
+  const centerX = viewportWidth * 0.5;
+  const centerY = viewportHeight * 0.5;
+  const left = centerX - (width * 0.5);
+  const top = centerY - (height * 0.5);
+  return {
+    x: left,
+    y: top,
+    left,
+    top,
+    width,
+    height,
+    right: left + width,
+    bottom: top + height,
+  };
+}
+
+function refreshHeroVideoReferenceRect(options = null) {
+  const safeOptions = isPlainObjectLiteral(options) ? options : {};
+  const force = safeOptions.force === true;
+  if (STATE.heroVideoReferenceRectLocked === true && !force) {
+    viewportDebugLog('heroRect.cached', `locked=1`, `force=0`);
+    return STATE.heroVideoReferenceRect;
+  }
+  const refreshStartMs = performance.now();
+  const snapshot = buildHeroVideoReferenceRectSnapshot();
+  STATE.heroVideoReferenceRect = snapshot
+    ? { ...snapshot }
+    : null;
+  const hasIntrinsicVideoDimensions = (
+    Number.isFinite(Number(video.videoWidth))
+    && Number(video.videoWidth) > 0
+    && Number.isFinite(Number(video.videoHeight))
+    && Number(video.videoHeight) > 0
+  );
+  if (
+    hasIntrinsicVideoDimensions
+    && STATE.heroVideoReferenceRect
+    && STATE.heroVideoReferenceRect.width > 0
+    && STATE.heroVideoReferenceRect.height > 0
+  ) {
+    STATE.heroVideoReferenceRectLocked = true;
+  } else if (force) {
+    STATE.heroVideoReferenceRectLocked = false;
+  }
+  if (snapshot) {
+    viewportDebugLog(
+      'heroRect.refresh',
+      `force=${force ? 1 : 0}`,
+      `locked=${STATE.heroVideoReferenceRectLocked ? 1 : 0}`,
+      `size=${snapshot.width.toFixed(2)}x${snapshot.height.toFixed(2)}`,
+      `duration=${(performance.now() - refreshStartMs).toFixed(2)}ms`,
+    );
+  } else {
+    viewportDebugLog(
+      'heroRect.refresh',
+      `force=${force ? 1 : 0}`,
+      `locked=${STATE.heroVideoReferenceRectLocked ? 1 : 0}`,
+      'size=0x0',
+      `duration=${(performance.now() - refreshStartMs).toFixed(2)}ms`,
+    );
+  }
+  return STATE.heroVideoReferenceRect;
+}
+
+function resolveHeroVideoRenderedHeightPx() {
+  const rect = getHeroVideoRenderedRect();
+  if (rect && Number.isFinite(rect.height) && rect.height > 0) {
+    return rect.height;
+  }
+  if (Number.isFinite(STATE.viewportHeight) && STATE.viewportHeight > 0) {
+    return STATE.viewportHeight;
+  }
+  if (Number.isFinite(window.innerHeight) && window.innerHeight > 0) {
+    return window.innerHeight;
+  }
+  return 0;
+}
+
+function normalizeRatioOrPercentValue(value, fallback = 0) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return Math.max(0, fallback);
+  }
+  const normalized = numeric > 1 ? (numeric / 100) : numeric;
+  return Math.max(0, normalized);
+}
+
+function resolveOffshootCenterBlockArea(configCandidate = CONFIG.offshoot) {
+  const safeConfig = isPlainObjectLiteral(configCandidate) ? configCandidate : {};
+  const enabled = safeConfig.centerBlockEnabled === true;
+  const videoRect = getHeroVideoRenderedRect();
+  const videoHeightPx = (
+    videoRect
+    && Number.isFinite(videoRect.height)
+    && videoRect.height > 0
+  )
+    ? videoRect.height
+    : resolveHeroVideoRenderedHeightPx();
+  const centerX = (
+    videoRect
+    && Number.isFinite(videoRect.left)
+    && Number.isFinite(videoRect.width)
+    && videoRect.width > 0
+  )
+    ? (videoRect.left + videoRect.width * 0.5)
+    : (STATE.viewportWidth * 0.5);
+  const centerY = (
+    videoRect
+    && Number.isFinite(videoRect.top)
+    && Number.isFinite(videoRect.height)
+    && videoRect.height > 0
+  )
+    ? (videoRect.top + videoRect.height * 0.5)
+    : (STATE.viewportHeight * 0.5);
+
+  const halfWidthRatioSource = (
+    safeConfig.centerBlockHalfWidthPxVideoHeightRatio !== undefined
+      ? safeConfig.centerBlockHalfWidthPxVideoHeightRatio
+      : (
+        safeConfig.centerHalfWidthPxHeightRatio !== undefined
+          ? safeConfig.centerHalfWidthPxHeightRatio
+          : safeConfig.centerHaldWidthPxHeightRatio
+      )
+  );
+  const halfWidthRatio = normalizeRatioOrPercentValue(halfWidthRatioSource, 0);
+  const halfHeightAboveRatioSource = (
+    safeConfig.centerBlockHalfHeightAbovePxVideoHeightRatio !== undefined
+      ? safeConfig.centerBlockHalfHeightAbovePxVideoHeightRatio
+      : safeConfig.centerHalfHeightAbovePxHeightRatio
+  );
+  const halfHeightBelowRatioSource = (
+    safeConfig.centerBlockHalfHeightBelowPxVideoHeightRatio !== undefined
+      ? safeConfig.centerBlockHalfHeightBelowPxVideoHeightRatio
+      : safeConfig.centerHalfHeightBelowPxHeightRatio
+  );
+  const halfHeightAboveRatio = normalizeRatioOrPercentValue(halfHeightAboveRatioSource, 0);
+  const halfHeightBelowRatio = normalizeRatioOrPercentValue(
+    halfHeightBelowRatioSource,
+    halfHeightAboveRatio,
+  );
+
+  const safeVideoHeight = Number.isFinite(videoHeightPx) && videoHeightPx > 0 ? videoHeightPx : 0;
+  const halfWidthPx = safeVideoHeight * halfWidthRatio;
+  const halfHeightAbovePx = safeVideoHeight * halfHeightAboveRatio;
+  const halfHeightBelowPx = safeVideoHeight * halfHeightBelowRatio;
+
+  return {
+    enabled,
+    centerX,
+    centerY,
+    halfWidthPx,
+    halfHeightAbovePx,
+    halfHeightBelowPx,
+    leftX: centerX - halfWidthPx,
+    rightX: centerX + halfWidthPx,
+    topY: centerY - halfHeightAbovePx,
+    bottomY: centerY + halfHeightBelowPx,
+  };
+}
+
+function resolvePriorityConfig(configCandidate = CONFIG.priority) {
+  const safeConfig = isPlainObjectLiteral(configCandidate) ? configCandidate : {};
+  const rawSquares = Array.isArray(safeConfig.squares) ? safeConfig.squares : [];
+  const squares = [];
+  const maxSquares = 5;
+  for (let i = 0; i < rawSquares.length && squares.length < maxSquares; i += 1) {
+    const raw = isPlainObjectLiteral(rawSquares[i]) ? rawSquares[i] : {};
+    squares.push({
+      enabled: raw.enabled === true,
+      centerXRatio: clamp(
+        Number.isFinite(Number(raw.centerXRatio)) ? Number(raw.centerXRatio) : 0.5,
+        0,
+        1,
+      ),
+      centerYRatio: clamp(
+        Number.isFinite(Number(raw.centerYRatio)) ? Number(raw.centerYRatio) : 0.5,
+        0,
+        1,
+      ),
+      sizeXRatio: Math.max(0, Number.isFinite(Number(raw.sizeXRatio)) ? Number(raw.sizeXRatio) : 0),
+      sizeYRatio: Math.max(0, Number.isFinite(Number(raw.sizeYRatio)) ? Number(raw.sizeYRatio) : 0),
+    });
+  }
+  while (squares.length < maxSquares) {
+    squares.push({
+      enabled: false,
+      centerXRatio: 0.5,
+      centerYRatio: 0.5,
+      sizeXRatio: 0,
+      sizeYRatio: 0,
+    });
+  }
+
+  const safeDebug = isPlainObjectLiteral(safeConfig.debug) ? safeConfig.debug : {};
+  return {
+    enabled: safeConfig.enabled === true,
+    endpointCullRadiusPxVideoHeightRatio: Math.max(
+      0,
+      Number.isFinite(Number(safeConfig.endpointCullRadiusPxVideoHeightRatio))
+        ? Number(safeConfig.endpointCullRadiusPxVideoHeightRatio)
+        : 0,
+    ),
+    squares,
+    debug: {
+      enabled: safeDebug.enabled === true,
+      drawOnFrontLayer: safeDebug.drawOnFrontLayer !== false,
+      strokeStyle: (
+        typeof safeDebug.strokeStyle === 'string' && safeDebug.strokeStyle.length > 0
+      ) ? safeDebug.strokeStyle : 'rgba(255, 120, 70, 0.95)',
+      fillStyle: (
+        typeof safeDebug.fillStyle === 'string' && safeDebug.fillStyle.length > 0
+      ) ? safeDebug.fillStyle : 'rgba(255, 120, 70, 0.12)',
+      lineWidthPx: Number.isFinite(Number(safeDebug.lineWidthPx))
+        ? Math.max(0.25, Number(safeDebug.lineWidthPx))
+        : 2,
+      showCulledEndpointCircles: safeDebug.showCulledEndpointCircles !== false,
+      culledCircleStrokeStyle: (
+        typeof safeDebug.culledCircleStrokeStyle === 'string' && safeDebug.culledCircleStrokeStyle.length > 0
+      ) ? safeDebug.culledCircleStrokeStyle : 'rgba(255, 65, 65, 0.98)',
+      culledCircleFillStyle: (
+        typeof safeDebug.culledCircleFillStyle === 'string' && safeDebug.culledCircleFillStyle.length > 0
+      ) ? safeDebug.culledCircleFillStyle : 'rgba(255, 65, 65, 0.14)',
+    },
+  };
+}
+
+function resolvePriorityZoneRectsPx(priorityConfig = resolvePriorityConfig()) {
+  const config = resolvePriorityConfig(priorityConfig);
+  const rect = getHeroVideoRenderedRect();
+  const videoSizePx = (
+    rect
+    && Number.isFinite(rect.width)
+    && Number.isFinite(rect.height)
+    && rect.width > 0
+    && rect.height > 0
+  )
+    ? Math.min(rect.width, rect.height)
+    : 0;
+  const signature = JSON.stringify({
+    enabled: config.enabled,
+    videoSizePx: Number(videoSizePx.toFixed(4)),
+    rectLeft: rect ? Number(rect.left.toFixed(4)) : null,
+    rectTop: rect ? Number(rect.top.toFixed(4)) : null,
+    rectW: rect ? Number(rect.width.toFixed(4)) : null,
+    rectH: rect ? Number(rect.height.toFixed(4)) : null,
+    squares: config.squares,
+    radius: config.endpointCullRadiusPxVideoHeightRatio,
+  });
+  if (STATE.priorityZonesCache.signature === signature) {
+    return {
+      rects: STATE.priorityZonesCache.rects,
+      radiusPx: STATE.priorityZonesCache.radiusPx,
+    };
+  }
+
+  const resolvedRects = [];
+  if (rect && videoSizePx > 0) {
+    for (let i = 0; i < config.squares.length; i += 1) {
+      const sq = config.squares[i];
+      if (!sq || sq.enabled !== true) {
+        continue;
+      }
+      const widthPx = Math.max(0, videoSizePx * sq.sizeXRatio);
+      const heightPx = Math.max(0, videoSizePx * sq.sizeYRatio);
+      if (widthPx <= 1e-6 || heightPx <= 1e-6) {
+        continue;
+      }
+      const centerX = rect.left + (rect.width * sq.centerXRatio);
+      const centerY = rect.top + (rect.height * sq.centerYRatio);
+      resolvedRects.push({
+        centerX,
+        centerY,
+        widthPx,
+        heightPx,
+        left: centerX - widthPx * 0.5,
+        top: centerY - heightPx * 0.5,
+        right: centerX + widthPx * 0.5,
+        bottom: centerY + heightPx * 0.5,
+      });
+    }
+  }
+
+  const radiusPx = Math.max(0, videoSizePx * config.endpointCullRadiusPxVideoHeightRatio);
+  STATE.priorityZonesCache.signature = signature;
+  STATE.priorityZonesCache.rects = resolvedRects;
+  STATE.priorityZonesCache.radiusPx = radiusPx;
+  return {
+    rects: resolvedRects,
+    radiusPx,
+  };
+}
+
+function circleIntersectsRect(cx, cy, radius, rect) {
+  if (!Number.isFinite(cx) || !Number.isFinite(cy) || !Number.isFinite(radius) || !rect) {
+    return false;
+  }
+  const safeRadius = Math.max(0, radius);
+  const nearestX = clamp(cx, rect.left, rect.right);
+  const nearestY = clamp(cy, rect.top, rect.bottom);
+  const dx = cx - nearestX;
+  const dy = cy - nearestY;
+  return (dx * dx + dy * dy) <= (safeRadius * safeRadius);
+}
+
+function drawPriorityDebugOverlay(targetCtx = ctx) {
+  const priorityConfig = resolvePriorityConfig();
+  if (!targetCtx || !priorityConfig || priorityConfig.debug.enabled !== true) {
+    return;
+  }
+  const resolved = resolvePriorityZoneRectsPx(priorityConfig);
+  const rects = Array.isArray(resolved.rects) ? resolved.rects : [];
+  targetCtx.save();
+  targetCtx.lineWidth = priorityConfig.debug.lineWidthPx;
+  targetCtx.strokeStyle = priorityConfig.debug.strokeStyle;
+  targetCtx.fillStyle = priorityConfig.debug.fillStyle;
+  for (let i = 0; i < rects.length; i += 1) {
+    const rect = rects[i];
+    targetCtx.beginPath();
+    targetCtx.rect(rect.left, rect.top, rect.widthPx, rect.heightPx);
+    targetCtx.fill();
+    targetCtx.stroke();
+  }
+  if (priorityConfig.debug.showCulledEndpointCircles === true) {
+    const circles = Array.isArray(STATE.priorityDebugLastCulledCircles)
+      ? STATE.priorityDebugLastCulledCircles
+      : [];
+    targetCtx.strokeStyle = priorityConfig.debug.culledCircleStrokeStyle;
+    targetCtx.fillStyle = priorityConfig.debug.culledCircleFillStyle;
+    for (let i = 0; i < circles.length; i += 1) {
+      const entry = circles[i];
+      if (!entry || !Number.isFinite(entry.x) || !Number.isFinite(entry.y) || !Number.isFinite(entry.r)) {
+        continue;
+      }
+      targetCtx.beginPath();
+      targetCtx.arc(entry.x, entry.y, Math.max(0, entry.r), 0, Math.PI * 2);
+      targetCtx.fill();
+      targetCtx.stroke();
+    }
+  }
+  targetCtx.restore();
+}
+
+function isPointInsideOffshootCenterBlock(point, area) {
+  if (
+    !point
+    || !area
+    || area.enabled !== true
+    || !Number.isFinite(point.x)
+    || !Number.isFinite(point.y)
+    || !Number.isFinite(area.leftX)
+    || !Number.isFinite(area.rightX)
+    || !Number.isFinite(area.topY)
+    || !Number.isFinite(area.bottomY)
+  ) {
+    return false;
+  }
+  return (
+    point.x >= area.leftX
+    && point.x <= area.rightX
+    && point.y >= area.topY
+    && point.y <= area.bottomY
+  );
+}
+
+function resolveMasterSoundConfig(configCandidate = CONFIG.mastersound) {
+  const safeConfig = isPlainObjectLiteral(configCandidate) ? configCandidate : {};
+  const rawFilePaths = Array.isArray(safeConfig.filePaths) ? safeConfig.filePaths : [];
+  const rawTriggerFrames = Array.isArray(safeConfig.triggerFrames) ? safeConfig.triggerFrames : [];
+  const rawDelaysMs = Array.isArray(safeConfig.delaysMs) ? safeConfig.delaysMs : [];
+  const rawVolumes = Array.isArray(safeConfig.volumes) ? safeConfig.volumes : [];
+  const rawSpeeds = Array.isArray(safeConfig.speeds) ? safeConfig.speeds : [];
+  const rawEnabledFlags = Array.isArray(safeConfig.enabledFlags) ? safeConfig.enabledFlags : [];
+
+  const maxLength = Math.max(rawFilePaths.length, rawTriggerFrames.length, rawDelaysMs.length, rawVolumes.length, rawSpeeds.length, rawEnabledFlags.length);
+  const sounds = [];
+
+  for (let i = 0; i < maxLength; i += 1) {
+    const filePath = (
+      typeof rawFilePaths[i] === 'string'
+      && rawFilePaths[i].trim().length > 0
+    )
+      ? rawFilePaths[i].trim()
+      : '';
+    const triggerFrame = Number.isFinite(Number(rawTriggerFrames[i]))
+      ? Math.max(0, Math.floor(Number(rawTriggerFrames[i])))
+      : null;
+    const delayMs = Number.isFinite(Number(rawDelaysMs[i]))
+      ? Math.max(0, Number(rawDelaysMs[i]))
+      : 0;
+    const volume = clamp(
+      Number.isFinite(Number(rawVolumes[i])) ? Number(rawVolumes[i]) : 1.0,
+      0,
+      1,
+    );
+    const speed = clamp(
+      Number.isFinite(Number(rawSpeeds[i])) ? Number(rawSpeeds[i]) : 1.0,
+      0.1,
+      4.0,
+    );
+    const enabledFlag = rawEnabledFlags[i] === 1;
+
+    if (filePath.length > 0 && triggerFrame !== null) {
+      sounds.push({
+        filePath,
+        triggerFrame,
+        delayMs,
+        volume,
+        speed,
+        enabled: enabledFlag,
+      });
+    }
+  }
+
+  // Parse background music config
+  const safeBackgroundMusicConfig = isPlainObjectLiteral(safeConfig.backgroundMusic)
+    ? safeConfig.backgroundMusic
+    : {};
+  const backgroundMusic = {
+    enabled: safeBackgroundMusicConfig.enabled === true,
+    filePath: (
+      typeof safeBackgroundMusicConfig.filePath === 'string'
+      && safeBackgroundMusicConfig.filePath.trim().length > 0
+    )
+      ? safeBackgroundMusicConfig.filePath.trim()
+      : '',
+    volume: clamp(
+      Number.isFinite(Number(safeBackgroundMusicConfig.volume))
+        ? Number(safeBackgroundMusicConfig.volume)
+        : 0.5,
+      0,
+      1,
+    ),
+  };
+
+  return {
+    enabled: safeConfig.enabled === true,
+    sounds,
+    backgroundMusic,
+  };
+}
+
+function playSoundWithDelay(filePath, delayMs, volume = 1.0, speed = 1.0) {
+  const playAudio = () => {
+    try {
+      const audio = new Audio(filePath);
+      audio.volume = Math.max(0, Math.min(1, volume));
+      audio.playbackRate = Math.max(0.1, Math.min(4.0, speed));
+      audio.play().catch((err) => {
+        console.warn(`Failed to play sound: ${filePath}`, err.message);
+      });
+    } catch (err) {
+      console.warn(`Failed to create audio for sound: ${filePath}`, err.message);
+    }
+  };
+
+  if (delayMs > 0) {
+    setTimeout(playAudio, delayMs);
+  } else {
+    playAudio();
+  }
+}
+
+function checkAndTriggerMasterSounds(currentFrame) {
+  const masterSoundConfig = resolveMasterSoundConfig();
+  if (!masterSoundConfig.enabled || !STATE.masterSound) {
+    return;
+  }
+
+  const masterSoundState = STATE.masterSound;
+
+  // Save previous frame before updating so crossover detection works correctly
+  const previousFrame = typeof masterSoundState.lastFrame === 'number'
+    ? masterSoundState.lastFrame
+    : currentFrame;
+
+  // Detect video loop by checking if current frame is less than previous frame
+  if (currentFrame < previousFrame) {
+    resetMasterSoundTriggeredFrames();
+  }
+  masterSoundState.lastFrame = currentFrame;
+
+  const sounds = masterSoundConfig.sounds;
+
+  for (let i = 0; i < sounds.length; i += 1) {
+    const sound = sounds[i];
+    if (!sound.enabled) {
+      continue;
+    }
+
+    // Check if this sound has already been triggered
+    if (masterSoundState.triggeredFrames.has(sound.triggerFrame)) {
+      continue;
+    }
+
+    // Fire as soon as we cross or land on the trigger frame (works even when frames are dropped)
+    if (currentFrame >= sound.triggerFrame && previousFrame < sound.triggerFrame) {
+      masterSoundState.triggeredFrames.add(sound.triggerFrame);
+      playSoundWithDelay(sound.filePath, sound.delayMs, sound.volume, sound.speed);
+    }
+  }
+}
+
+function resetMasterSoundTriggeredFrames() {
+  if (STATE.masterSound && STATE.masterSound.triggeredFrames) {
+    STATE.masterSound.triggeredFrames.clear();
+  }
+}
+
+function startBackgroundMusic() {
+  const masterSoundConfig = resolveMasterSoundConfig();
+  if (!masterSoundConfig.enabled || !masterSoundConfig.backgroundMusic.enabled) {
+    return;
+  }
+
+  if (!masterSoundConfig.backgroundMusic.filePath) {
+    console.warn('Background music file path is empty');
+    return;
+  }
+
+  if (STATE.masterSound.backgroundMusicStarted) {
+    return;
+  }
+
+  try {
+    const audio = new Audio(masterSoundConfig.backgroundMusic.filePath);
+    audio.loop = true;
+    audio.volume = masterSoundConfig.backgroundMusic.volume;
+    audio.play().catch((err) => {
+      console.warn('Failed to play background music:', err.message);
+    });
+
+    STATE.masterSound.backgroundMusicAudio = audio;
+    STATE.masterSound.backgroundMusicStarted = true;
+  } catch (err) {
+    console.warn('Failed to create background audio:', err.message);
+  }
+}
+
+function stopBackgroundMusic() {
+  if (STATE.masterSound.backgroundMusicAudio) {
+    try {
+      STATE.masterSound.backgroundMusicAudio.pause();
+      STATE.masterSound.backgroundMusicAudio.currentTime = 0;
+      STATE.masterSound.backgroundMusicAudio = null;
+    } catch (err) {
+      console.warn('Failed to stop background music:', err.message);
+    }
+  }
+  STATE.masterSound.backgroundMusicStarted = false;
+}
+
+function resolveHeroPlaybackGateConfig(configCandidate = CONFIG.heroPlaybackGate) {
+  const safeConfig = isPlainObjectLiteral(configCandidate) ? configCandidate : {};
+  const safeLegacyButtonConfig = isPlainObjectLiteral(safeConfig.button) ? safeConfig.button : {};
+  const safeOpenButtonConfig = isPlainObjectLiteral(safeConfig.openButton)
+    ? safeConfig.openButton
+    : safeLegacyButtonConfig;
+  const safeOpenButtonDebugConfig = isPlainObjectLiteral(safeConfig.openButtonDebug)
+    ? safeConfig.openButtonDebug
+    : {};
+  const safeOpenButtonArrowConfig = isPlainObjectLiteral(safeConfig.openButtonArrow)
+    ? safeConfig.openButtonArrow
+    : {};
+  const safeWiggleButtonConfig = isPlainObjectLiteral(safeConfig.wiggleButton)
+    ? safeConfig.wiggleButton
+    : {};
+  const safeWiggleButtonDebugConfig = isPlainObjectLiteral(safeConfig.wiggleButtonDebug)
+    ? safeConfig.wiggleButtonDebug
+    : {};
+  const safeVideoWiggleConfig = isPlainObjectLiteral(safeConfig.videoWiggle)
+    ? safeConfig.videoWiggle
+    : {};
+  const frameRate = Number.isFinite(Number(safeConfig.frameRate))
+    ? Math.max(1, Number(safeConfig.frameRate))
+    : 30;
+  const introPauseFrame = Number.isFinite(Number(safeConfig.introPauseFrame))
+    ? Math.max(0, Math.floor(Number(safeConfig.introPauseFrame)))
+    : 150;
+  const postButtonPauseFrameRaw = Number.isFinite(Number(safeConfig.postButtonPauseFrame))
+    ? Math.max(0, Math.floor(Number(safeConfig.postButtonPauseFrame)))
+    : 285;
+  const growthStartFrameRaw = Number.isFinite(Number(safeConfig.growthStartFrame))
+    ? Math.max(0, Math.floor(Number(safeConfig.growthStartFrame)))
+    : 151;
+  const pauseGuardFrames = Number.isFinite(Number(safeConfig.pauseGuardFrames))
+    ? clamp(Number(safeConfig.pauseGuardFrames), 0, 12)
+    : 2;
+  const startDelayAfterSplashDismissMs = Number.isFinite(Number(safeConfig.startDelayAfterSplashDismissMs))
+    ? Math.max(0, Number(safeConfig.startDelayAfterSplashDismissMs))
+    : 500;
+  const monitorUseVideoFrameCallback = safeConfig.monitorUseVideoFrameCallback !== false;
+  const postButtonPauseFrame = Math.max(introPauseFrame, postButtonPauseFrameRaw);
+  const growthStartFrame = Math.min(growthStartFrameRaw, postButtonPauseFrame);
+  const safeOpenButtonSoundConfig = isPlainObjectLiteral(safeOpenButtonConfig.sound) ? safeOpenButtonConfig.sound : {};
+  const openButton = {
+    centerXRatio: clamp(
+      Number.isFinite(Number(safeOpenButtonConfig.centerXRatio)) ? Number(safeOpenButtonConfig.centerXRatio) : 0.498,
+      0,
+      1,
+    ),
+    centerYRatio: clamp(
+      Number.isFinite(Number(safeOpenButtonConfig.centerYRatio)) ? Number(safeOpenButtonConfig.centerYRatio) : 0.7897135,
+      0,
+      1,
+    ),
+    diameterRatio: Math.max(
+      0,
+      Number.isFinite(Number(safeOpenButtonConfig.diameterRatio)) ? Number(safeOpenButtonConfig.diameterRatio) : 0.062,
+    ),
+    hitMarginPercentOfButtonSize: clamp(
+      Number.isFinite(Number(safeOpenButtonConfig.hitMarginPercentOfButtonSize))
+        ? Number(safeOpenButtonConfig.hitMarginPercentOfButtonSize)
+        : 0,
+      0,
+      100,
+    ),
+    enableBeforeIntroPauseFrames: Number.isFinite(Number(safeOpenButtonConfig.enableBeforeIntroPauseFrames))
+      ? Math.max(0, Math.floor(Number(safeOpenButtonConfig.enableBeforeIntroPauseFrames)))
+      : 10,
+    sound: {
+      enabled: safeOpenButtonSoundConfig.enabled === true,
+      filePath: (
+        typeof safeOpenButtonSoundConfig.filePath === 'string'
+        && safeOpenButtonSoundConfig.filePath.trim().length > 0
+      )
+        ? safeOpenButtonSoundConfig.filePath.trim()
+        : '',
+      delayMs: Number.isFinite(Number(safeOpenButtonSoundConfig.delayMs))
+        ? Math.max(0, Number(safeOpenButtonSoundConfig.delayMs))
+        : 0,
+      volume: clamp(
+        Number.isFinite(Number(safeOpenButtonSoundConfig.volume)) ? Number(safeOpenButtonSoundConfig.volume) : 1.0,
+        0,
+        1,
+      ),
+    },
+  };
+  const openButtonDebug = {
+    enabled: safeOpenButtonDebugConfig.enabled === true,
+    drawOnFrontLayer: safeOpenButtonDebugConfig.drawOnFrontLayer !== false,
+    showBaseButtonCircle: safeOpenButtonDebugConfig.showBaseButtonCircle !== false,
+    showPaddedHitCircle: safeOpenButtonDebugConfig.showPaddedHitCircle !== false,
+    baseStrokeStyle: (
+      typeof safeOpenButtonDebugConfig.baseStrokeStyle === 'string'
+      && safeOpenButtonDebugConfig.baseStrokeStyle.length > 0
+    )
+      ? safeOpenButtonDebugConfig.baseStrokeStyle
+      : 'rgba(35, 208, 140, 0.95)',
+    baseFillStyle: (
+      typeof safeOpenButtonDebugConfig.baseFillStyle === 'string'
+      && safeOpenButtonDebugConfig.baseFillStyle.length > 0
+    )
+      ? safeOpenButtonDebugConfig.baseFillStyle
+      : 'rgba(35, 208, 140, 0.10)',
+    hitStrokeStyle: (
+      typeof safeOpenButtonDebugConfig.hitStrokeStyle === 'string'
+      && safeOpenButtonDebugConfig.hitStrokeStyle.length > 0
+    )
+      ? safeOpenButtonDebugConfig.hitStrokeStyle
+      : 'rgba(255, 170, 80, 0.98)',
+    hitFillStyle: (
+      typeof safeOpenButtonDebugConfig.hitFillStyle === 'string'
+      && safeOpenButtonDebugConfig.hitFillStyle.length > 0
+    )
+      ? safeOpenButtonDebugConfig.hitFillStyle
+      : 'rgba(255, 170, 80, 0.12)',
+    lineWidthPx: Number.isFinite(Number(safeOpenButtonDebugConfig.lineWidthPx))
+      ? Math.max(0.25, Number(safeOpenButtonDebugConfig.lineWidthPx))
+      : 2,
+  };
+  const openButtonArrow = {
+    enabled: safeOpenButtonArrowConfig.enabled !== false,
+    spritePath: (
+      typeof safeOpenButtonArrowConfig.spritePath === 'string'
+      && safeOpenButtonArrowConfig.spritePath.trim().length > 0
+    )
+      ? safeOpenButtonArrowConfig.spritePath.trim()
+      : './arrow_1.png',
+    centerXRatio: clamp(
+      Number.isFinite(Number(safeOpenButtonArrowConfig.centerXRatio))
+        ? Number(safeOpenButtonArrowConfig.centerXRatio)
+        : openButton.centerXRatio,
+      0,
+      1,
+    ),
+    centerYRatio: clamp(
+      Number.isFinite(Number(safeOpenButtonArrowConfig.centerYRatio))
+        ? Number(safeOpenButtonArrowConfig.centerYRatio)
+        : openButton.centerYRatio,
+      0,
+      1,
+    ),
+    sizeRatio: Math.max(
+      0,
+      Number.isFinite(Number(safeOpenButtonArrowConfig.sizeRatio))
+        ? Number(safeOpenButtonArrowConfig.sizeRatio)
+        : 0.11,
+    ),
+    appearAfterFrame: Number.isFinite(Number(safeOpenButtonArrowConfig.appearAfterFrame))
+      ? Math.max(0, Math.floor(Number(safeOpenButtonArrowConfig.appearAfterFrame)))
+      : 0,
+    maxOpacity: clamp(
+      Number.isFinite(Number(safeOpenButtonArrowConfig.maxOpacity))
+        ? Number(safeOpenButtonArrowConfig.maxOpacity)
+        : 1,
+      0,
+      1,
+    ),
+    fadeOutAfterOpenButtonClick: safeOpenButtonArrowConfig.fadeOutAfterOpenButtonClick !== false,
+    fadeOutDurationSec: Number.isFinite(Number(safeOpenButtonArrowConfig.fadeOutDurationSec))
+      ? Math.max(0, Number(safeOpenButtonArrowConfig.fadeOutDurationSec))
+      : 0.45,
+  };
+  const wiggleButton = {
+    enabled: safeWiggleButtonConfig.enabled !== false,
+    centerXRatio: clamp(
+      Number.isFinite(Number(safeWiggleButtonConfig.centerXRatio))
+        ? Number(safeWiggleButtonConfig.centerXRatio)
+        : openButton.centerXRatio,
+      0,
+      1,
+    ),
+    centerYRatio: clamp(
+      Number.isFinite(Number(safeWiggleButtonConfig.centerYRatio))
+        ? Number(safeWiggleButtonConfig.centerYRatio)
+        : openButton.centerYRatio,
+      0,
+      1,
+    ),
+    sizeXRatio: Math.max(
+      0,
+      Number.isFinite(Number(safeWiggleButtonConfig.sizeXRatio))
+        ? Number(safeWiggleButtonConfig.sizeXRatio)
+        : 0.24,
+    ),
+    sizeYRatio: Math.max(
+      0,
+      Number.isFinite(Number(safeWiggleButtonConfig.sizeYRatio))
+        ? Number(safeWiggleButtonConfig.sizeYRatio)
+        : 0.14,
+    ),
+    enableBeforeIntroPauseFrames: Number.isFinite(Number(safeWiggleButtonConfig.enableBeforeIntroPauseFrames))
+      ? Math.max(0, Math.floor(Number(safeWiggleButtonConfig.enableBeforeIntroPauseFrames)))
+      : 10,
+  };
+  const wiggleButtonDebug = {
+    enabled: safeWiggleButtonDebugConfig.enabled === true,
+    drawOnFrontLayer: safeWiggleButtonDebugConfig.drawOnFrontLayer !== false,
+    strokeStyle: (
+      typeof safeWiggleButtonDebugConfig.strokeStyle === 'string'
+      && safeWiggleButtonDebugConfig.strokeStyle.length > 0
+    )
+      ? safeWiggleButtonDebugConfig.strokeStyle
+      : 'rgba(95, 175, 255, 0.98)',
+    fillStyle: (
+      typeof safeWiggleButtonDebugConfig.fillStyle === 'string'
+      && safeWiggleButtonDebugConfig.fillStyle.length > 0
+    )
+      ? safeWiggleButtonDebugConfig.fillStyle
+      : 'rgba(95, 175, 255, 0.16)',
+    lineWidthPx: Number.isFinite(Number(safeWiggleButtonDebugConfig.lineWidthPx))
+      ? Math.max(0.25, Number(safeWiggleButtonDebugConfig.lineWidthPx))
+      : 2,
+  };
+  const videoWiggle = {
+    enabled: safeVideoWiggleConfig.enabled !== false,
+    maxAngleDeg: Number.isFinite(Number(safeVideoWiggleConfig.maxAngleDeg))
+      ? Math.max(0, Number(safeVideoWiggleConfig.maxAngleDeg))
+      : 2.4,
+    durationMs: Number.isFinite(Number(safeVideoWiggleConfig.durationMs))
+      ? Math.max(0, Number(safeVideoWiggleConfig.durationMs))
+      : 760,
+    speedHz: Number.isFinite(Number(safeVideoWiggleConfig.speedHz))
+      ? Math.max(0, Number(safeVideoWiggleConfig.speedHz))
+      : 5.8,
+    dampingStrength: Number.isFinite(Number(safeVideoWiggleConfig.dampingStrength))
+      ? Math.max(0, Number(safeVideoWiggleConfig.dampingStrength))
+      : 3.2,
+    anchorOffsetXRatio: Number.isFinite(Number(safeVideoWiggleConfig.anchorOffsetXRatio))
+      ? Number(safeVideoWiggleConfig.anchorOffsetXRatio)
+      : 0,
+    anchorOffsetYRatio: Number.isFinite(Number(safeVideoWiggleConfig.anchorOffsetYRatio))
+      ? Number(safeVideoWiggleConfig.anchorOffsetYRatio)
+      : 0,
+    delayAfterIntroPauseMs: Number.isFinite(Number(safeVideoWiggleConfig.delayAfterIntroPauseMs))
+      ? Number(safeVideoWiggleConfig.delayAfterIntroPauseMs)
+      : 120,
+  };
+
+  return {
+    enabled: safeConfig.enabled !== false,
+    frameRate,
+    introPauseFrame,
+    postButtonPauseFrame,
+    growthStartFrame,
+    pauseGuardFrames,
+    startDelayAfterSplashDismissMs,
+    monitorUseVideoFrameCallback,
+    videoWiggle,
+    openButton,
+    openButtonDebug,
+    // Backward-compatible alias for any external callers still using gateConfig.button.
+    button: openButton,
+    openButtonArrow,
+    wiggleButton,
+    wiggleButtonDebug,
+  };
+}
+
+function isFoliageReadyForGrowth() {
+  if (CONFIG.branchGrowth.requireFoliageLoadedBeforeStart === false) {
+    return true;
+  }
+  return Boolean(STATE.foliageLoad && STATE.foliageLoad.ready === true);
+}
+
+function setFoliageLoadReadyFlag(flagName, isReady) {
+  const loadState = STATE.foliageLoad;
+  if (!loadState || typeof flagName !== 'string' || !(flagName in loadState)) {
+    return;
+  }
+  loadState[flagName] = Boolean(isReady);
+  const nextReady = Boolean(loadState.stemReady && loadState.leafReady && loadState.flowerReady);
+  const justBecameReady = nextReady && loadState.ready !== true;
+  loadState.ready = nextReady;
+  if (!justBecameReady) {
+    return;
+  }
+  const gateConfig = resolveHeroPlaybackGateConfig();
+  const currentFrame = getCurrentHeroVideoFrame(gateConfig);
+  maybeStartGrowthAnimationFromHeroVideoFrame(currentFrame, gateConfig);
+  if (STATE.branchGarden) {
+    renderScene();
+  }
+  setLoadingScreenVisible(false);
+}
+
+function isInitialHeroVideoReadyForStartup() {
+  if (!video) {
+    return false;
+  }
+  const minReadyState = (
+    typeof HTMLMediaElement !== 'undefined'
+    && Number.isFinite(HTMLMediaElement.HAVE_CURRENT_DATA)
+  )
+    ? HTMLMediaElement.HAVE_CURRENT_DATA
+    : 2;
+  return Number.isFinite(video.readyState) && video.readyState >= minReadyState;
+}
+
+function isLikelyUnsupportedHeroVideoSource() {
+  if (!video || typeof video.canPlayType !== 'function') {
+    return false;
+  }
+  const src = String(video.currentSrc || video.src || '').toLowerCase();
+  if (!src.includes('.webm')) {
+    return false;
+  }
+  const canPlayWebm = video.canPlayType('video/webm') || video.canPlayType('video/webm; codecs="vp8,vorbis"') || video.canPlayType('video/webm; codecs="vp9,opus"');
+  return !canPlayWebm;
+}
+
+function waitForInitialHeroVideoReadyForStartup() {
+  if (isInitialHeroVideoReadyForStartup()) {
+    return Promise.resolve({ ready: true, unsupported: false });
+  }
+  if (isLikelyUnsupportedHeroVideoSource()) {
+    if (tryAdvanceHeroVideoSourceCandidate('initial-unsupported')) {
+      return waitForInitialHeroVideoReadyForStartup();
+    }
+    return Promise.resolve({ ready: false, unsupported: true });
+  }
+  return new Promise((resolve) => {
+    const onReady = () => {
+      if (!isInitialHeroVideoReadyForStartup()) {
+        return;
+      }
+      cleanup();
+      resolve({ ready: true, unsupported: false });
+    };
+    const onError = () => {
+      cleanup();
+      if (tryAdvanceHeroVideoSourceCandidate('initial-load-error')) {
+        waitForInitialHeroVideoReadyForStartup().then(resolve);
+        return;
+      }
+      resolve({
+        ready: false,
+        unsupported: isLikelyUnsupportedHeroVideoSource(),
+      });
+    };
+    const cleanup = () => {
+      video.removeEventListener('loadeddata', onReady);
+      video.removeEventListener('canplay', onReady);
+      video.removeEventListener('loadedmetadata', onReady);
+      video.removeEventListener('error', onError);
+    };
+    video.addEventListener('loadeddata', onReady);
+    video.addEventListener('canplay', onReady);
+    video.addEventListener('loadedmetadata', onReady);
+    video.addEventListener('error', onError);
+    try {
+      video.load();
+    } catch (_error) {
+      // Ignore load() errors and rely on normal media events.
+    }
+  });
+}
+
+function isHeroPlaybackGrowthStartBlocked(gateConfig = resolveHeroPlaybackGateConfig()) {
+  if (!isFoliageReadyForGrowth()) {
+    return true;
+  }
+  const gateState = STATE.heroPlaybackGate;
+  if (!gateConfig || gateConfig.enabled !== true || !gateState) {
+    return false;
+  }
+  // While splash is still up and hero gate startup is deferred, keep branch growth blocked.
+  if (gateState.pendingStartAfterSplashDismiss === true) {
+    return true;
+  }
+  if (gateState.pendingStartAfterSplashDelay === true) {
+    return true;
+  }
+  if (gateState.growthAnimationEnabledByConfig !== true) {
+    return false;
+  }
+  return gateState.growthStarted !== true;
+}
+
+function getHeroVideoRenderedRect() {
+  const cachedRect = STATE.heroVideoReferenceRect;
+  if (
+    cachedRect
+    && Number.isFinite(cachedRect.width)
+    && Number.isFinite(cachedRect.height)
+    && cachedRect.width > 0
+    && cachedRect.height > 0
+  ) {
+    return cachedRect;
+  }
+  const rect = refreshHeroVideoReferenceRect();
+  if (!rect || !Number.isFinite(rect.width) || !Number.isFinite(rect.height)) {
+    return null;
+  }
+  if (rect.width <= 0 || rect.height <= 0) {
+    return null;
+  }
+  return rect;
+}
+
+function getCurrentHeroVideoFrame(gateConfig = resolveHeroPlaybackGateConfig()) {
+  const frameRate = gateConfig && Number.isFinite(Number(gateConfig.frameRate))
+    ? Math.max(1, Number(gateConfig.frameRate))
+    : 30;
+  return Number.isFinite(video.currentTime)
+    ? Math.max(0, video.currentTime * frameRate)
+    : 0;
+}
+
+function getHeroPlaybackOpenButtonEnableFrame(gateConfig = resolveHeroPlaybackGateConfig()) {
+  if (!gateConfig || !gateConfig.openButton) {
+    return 0;
+  }
+  const introPauseFrame = Number.isFinite(Number(gateConfig.introPauseFrame))
+    ? Math.max(0, Number(gateConfig.introPauseFrame))
+    : 0;
+  const preBufferFrames = Number.isFinite(Number(gateConfig.openButton.enableBeforeIntroPauseFrames))
+    ? Math.max(0, Number(gateConfig.openButton.enableBeforeIntroPauseFrames))
+    : 0;
+  return Math.max(0, introPauseFrame - preBufferFrames);
+}
+
+function isHeroPlaybackOpenButtonEnabledAtFrame(
+  currentFrame = getCurrentHeroVideoFrame(resolveHeroPlaybackGateConfig()),
+  gateConfig = resolveHeroPlaybackGateConfig(),
+) {
+  if (!gateConfig || gateConfig.enabled !== true) {
+    return false;
+  }
+  if (!Number.isFinite(currentFrame)) {
+    return false;
+  }
+  return currentFrame >= getHeroPlaybackOpenButtonEnableFrame(gateConfig);
+}
+
+function getHeroPlaybackWiggleButtonEnableFrame(gateConfig = resolveHeroPlaybackGateConfig()) {
+  if (!gateConfig || !gateConfig.wiggleButton) {
+    return 0;
+  }
+  const introPauseFrame = Number.isFinite(Number(gateConfig.introPauseFrame))
+    ? Math.max(0, Number(gateConfig.introPauseFrame))
+    : 0;
+  const preBufferFrames = Number.isFinite(Number(gateConfig.wiggleButton.enableBeforeIntroPauseFrames))
+    ? Math.max(0, Number(gateConfig.wiggleButton.enableBeforeIntroPauseFrames))
+    : 0;
+  return Math.max(0, introPauseFrame - preBufferFrames);
+}
+
+function isHeroPlaybackWiggleButtonEnabledAtFrame(
+  currentFrame = getCurrentHeroVideoFrame(resolveHeroPlaybackGateConfig()),
+  gateConfig = resolveHeroPlaybackGateConfig(),
+) {
+  if (!gateConfig || gateConfig.enabled !== true || !gateConfig.wiggleButton) {
+    return false;
+  }
+  if (gateConfig.wiggleButton.enabled !== true) {
+    return false;
+  }
+  const gateState = STATE.heroPlaybackGate;
+  if (gateState && Number.isFinite(gateState.openButtonClickedAtMs)) {
+    return false;
+  }
+  if (!Number.isFinite(currentFrame)) {
+    return false;
+  }
+  return currentFrame >= getHeroPlaybackWiggleButtonEnableFrame(gateConfig);
+}
+
+function getHeroGatePauseTargetFrame(stage, gateConfig = resolveHeroPlaybackGateConfig()) {
+  if (!gateConfig) {
+    return null;
+  }
+  if (stage === 'introPlaying') {
+    return gateConfig.introPauseFrame;
+  }
+  if (stage === 'postOpenButtonPlaying') {
+    return gateConfig.postButtonPauseFrame;
+  }
+  return null;
+}
+
+function lockHeroVideoToFrame(targetFrame, gateConfig = resolveHeroPlaybackGateConfig()) {
+  if (!Number.isFinite(targetFrame) || targetFrame < 0 || !gateConfig) {
+    return;
+  }
+  const frameRate = Number.isFinite(Number(gateConfig.frameRate))
+    ? Math.max(1, Number(gateConfig.frameRate))
+    : 30;
+  const frameEpsilonSec = 0.5 / frameRate;
+  let targetSec = Math.max(0, targetFrame / frameRate);
+  if (Number.isFinite(video.duration) && video.duration > 0) {
+    targetSec = clamp(targetSec, 0, video.duration);
+  }
+  const currentSec = Number(video.currentTime);
+  if (Number.isFinite(currentSec) && Math.abs(currentSec - targetSec) <= frameEpsilonSec) {
+    return;
+  }
+  try {
+    video.currentTime = targetSec;
+  } catch (_error) {
+    // Ignore seek exceptions in constrained autoplay/mobile states.
+  }
+}
+
+function requestOpenButtonArrowImageLoad(options = {}) {
+  const safeOptions = isPlainObjectLiteral(options) ? options : {};
+  const force = safeOptions.force === true;
+  const gateConfig = resolveHeroPlaybackGateConfig();
+  const arrowConfig = gateConfig && gateConfig.openButtonArrow ? gateConfig.openButtonArrow : null;
+  const spritePath = (
+    arrowConfig
+    && arrowConfig.enabled === true
+    && typeof arrowConfig.spritePath === 'string'
+    && arrowConfig.spritePath.trim().length > 0
+  )
+    ? arrowConfig.spritePath.trim()
+    : '';
+
+  if (spritePath.length === 0) {
+    STATE.openButtonArrowImage = null;
+    STATE.openButtonArrowImagePath = '';
+    STATE.openButtonArrowImagePendingPath = '';
+    STATE.openButtonArrowImageLoadPromise = null;
+    return Promise.resolve(null);
+  }
+
+  if (
+    !force
+    && STATE.openButtonArrowImage
+    && STATE.openButtonArrowImagePath === spritePath
+  ) {
+    return Promise.resolve(STATE.openButtonArrowImage);
+  }
+  if (
+    !force
+    && STATE.openButtonArrowImageLoadPromise
+    && STATE.openButtonArrowImagePendingPath === spritePath
+  ) {
+    return STATE.openButtonArrowImageLoadPromise;
+  }
+
+  STATE.openButtonArrowImagePendingPath = spritePath;
+  const loadPromise = loadImage(spritePath)
+    .then((image) => {
+      if (STATE.openButtonArrowImagePendingPath !== spritePath) {
+        return image;
+      }
+      STATE.openButtonArrowImage = image;
+      STATE.openButtonArrowImagePath = spritePath;
+      STATE.openButtonArrowImagePendingPath = '';
+      STATE.openButtonArrowImageLoadPromise = null;
+      renderScene({ skipAutoStart: true });
+      return image;
+    })
+    .catch((error) => {
+      if (STATE.openButtonArrowImagePendingPath === spritePath) {
+        STATE.openButtonArrowImagePendingPath = '';
+      }
+      STATE.openButtonArrowImageLoadPromise = null;
+      console.warn(error.message + ' | Open button arrow image disabled until path is fixed.');
+      return null;
+    });
+  STATE.openButtonArrowImageLoadPromise = loadPromise;
+  return loadPromise;
+}
+
+function resolveCenterOverlayImageConfig(configCandidate = CONFIG.centerOverlayImage) {
+  const safeConfig = isPlainObjectLiteral(configCandidate) ? configCandidate : {};
+  const swipeState = STATE && STATE.swipeSections ? STATE.swipeSections : null;
+  const spritePathOverride = (
+    swipeState
+    && typeof swipeState.centerOverlayImagePathOverride === 'string'
+    && swipeState.centerOverlayImagePathOverride.trim().length > 0
+  )
+    ? swipeState.centerOverlayImagePathOverride.trim()
+    : '';
+  const scaleMode = (
+    safeConfig.scaleMode === 'videoSizeRatio'
+    || safeConfig.scaleMode === 'multiplier'
+  )
+    ? safeConfig.scaleMode
+    : 'multiplier';
+  const offsetYMode = (
+    safeConfig.offsetYMode === 'videoSizeRatio'
+    || safeConfig.offsetYMode === 'px'
+  )
+    ? safeConfig.offsetYMode
+    : 'px';
+  return {
+    enabled: safeConfig.enabled !== false,
+    spritePath: spritePathOverride || (
+      (
+        typeof safeConfig.spritePath === 'string'
+        && safeConfig.spritePath.trim().length > 0
+      )
+        ? safeConfig.spritePath.trim()
+        : './test_page.png'
+    ),
+    scale: Number.isFinite(Number(safeConfig.scale))
+      ? Math.max(0, Number(safeConfig.scale))
+      : 1,
+    scaleMode,
+    offsetXPx: Number.isFinite(Number(safeConfig.offsetXPx))
+      ? Number(safeConfig.offsetXPx)
+      : 0,
+    offsetYPx: Number.isFinite(Number(safeConfig.offsetYPx))
+      ? Number(safeConfig.offsetYPx)
+      : 0,
+    offsetYMode,
+    displayAfterFrame: Number.isFinite(Number(safeConfig.displayAfterFrame))
+      ? Math.max(0, Math.floor(Number(safeConfig.displayAfterFrame)))
+      : 0,
+    maxOpacity: clamp(
+      Number.isFinite(Number(safeConfig.maxOpacity))
+        ? Number(safeConfig.maxOpacity)
+        : 1,
+      0,
+      1,
+    ),
+    fadeInEnabled: safeConfig.fadeInEnabled !== false,
+    fadeInDurationSec: Number.isFinite(Number(safeConfig.fadeInDurationSec))
+      ? Math.max(0, Number(safeConfig.fadeInDurationSec))
+      : 0.45,
+  };
+}
+
+function getSwipeSectionsOverlayOpacityMultiplier() {
+  const swipeState = STATE && STATE.swipeSections ? STATE.swipeSections : null;
+  if (!swipeState) {
+    return 1;
+  }
+  const opacityMultiplier = Number(swipeState.overlayOpacityMultiplier);
+  if (!Number.isFinite(opacityMultiplier)) {
+    return 1;
+  }
+  return clamp(opacityMultiplier, 0, 1);
+}
+
+function normalizeCenterOverlayImagePath(path) {
+  if (typeof path !== 'string') {
+    return '';
+  }
+  const trimmed = path.trim();
+  return trimmed.length > 0 ? trimmed : '';
+}
+
+function ensureCenterOverlayImagePreloadEntriesMap() {
+  if (!(STATE.centerOverlayImagePreloadEntries instanceof Map)) {
+    STATE.centerOverlayImagePreloadEntries = new Map();
+  }
+  return STATE.centerOverlayImagePreloadEntries;
+}
+
+function getCenterOverlayImagePreloadEntry(path) {
+  const normalizedPath = normalizeCenterOverlayImagePath(path);
+  if (normalizedPath.length <= 0) {
+    return null;
+  }
+  const preloadMap = ensureCenterOverlayImagePreloadEntriesMap();
+  return preloadMap.get(normalizedPath) || null;
+}
+
+function isCenterOverlayImagePathReady(path) {
+  const entry = getCenterOverlayImagePreloadEntry(path);
+  return Boolean(entry && entry.status === 'loaded' && entry.image);
+}
+
+function ensureCenterOverlayImagePreload(path, options = {}) {
+  const normalizedPath = normalizeCenterOverlayImagePath(path);
+  if (normalizedPath.length <= 0) {
+    return Promise.resolve(null);
+  }
+  const safeOptions = isPlainObjectLiteral(options) ? options : {};
+  const retry = safeOptions.retry === true;
+  const preloadMap = ensureCenterOverlayImagePreloadEntriesMap();
+  const existingEntry = preloadMap.get(normalizedPath);
+  if (existingEntry) {
+    if (existingEntry.status === 'loaded' && existingEntry.image) {
+      return Promise.resolve(existingEntry.image);
+    }
+    if (existingEntry.status === 'loading' && existingEntry.promise) {
+      return existingEntry.promise;
+    }
+    if (existingEntry.status === 'failed' && !retry) {
+      return Promise.resolve(null);
+    }
+  }
+  const nextEntry = {
+    status: 'loading',
+    image: null,
+    promise: null,
+    errorMessage: '',
+  };
+  preloadMap.set(normalizedPath, nextEntry);
+  const loadPromise = loadImage(normalizedPath)
+    .then((image) => {
+      nextEntry.status = 'loaded';
+      nextEntry.image = image;
+      nextEntry.promise = null;
+      nextEntry.errorMessage = '';
+      renderScene({ skipAutoStart: true });
+      return image;
+    })
+    .catch((error) => {
+      nextEntry.status = 'failed';
+      nextEntry.image = null;
+      nextEntry.promise = null;
+      nextEntry.errorMessage = error && error.message ? String(error.message) : 'Unknown image load error';
+      return null;
+    });
+  nextEntry.promise = loadPromise;
+  return loadPromise;
+}
+
+function preloadSwipeSectionsOverlayImages(swipeConfig = resolveSwipeSectionsConfig()) {
+  const sections = swipeConfig && Array.isArray(swipeConfig.sections) ? swipeConfig.sections : [];
+  const pages = swipeConfig && Array.isArray(swipeConfig.pages) ? swipeConfig.pages : [];
+  if (sections.length <= 0 && pages.length <= 0) {
+    return;
+  }
+  const uniquePaths = new Set();
+  for (let i = 0; i < pages.length; i += 1) {
+    const pagePath = normalizeCenterOverlayImagePath(pages[i]);
+    if (pagePath.length > 0) {
+      uniquePaths.add(pagePath);
+    }
+  }
+  for (let i = 0; i < sections.length; i += 1) {
+    const section = sections[i];
+    const path = normalizeCenterOverlayImagePath(section && section.centerOverlayImagePath);
+    if (path.length > 0) {
+      uniquePaths.add(path);
+    }
+  }
+  uniquePaths.forEach((path) => {
+    const entry = getCenterOverlayImagePreloadEntry(path);
+    if (entry && (entry.status === 'loaded' || entry.status === 'loading' || entry.status === 'failed')) {
+      return;
+    }
+    ensureCenterOverlayImagePreload(path).catch(() => {});
+  });
+}
+
+function resolveSwipeSectionCenterOverlayOffsetYVideoHeightRatio(
+  swipeConfig = resolveSwipeSectionsConfig(),
+) {
+  const swipeState = STATE && STATE.swipeSections ? STATE.swipeSections : null;
+  if (!swipeState || !Array.isArray(swipeConfig.sections) || swipeConfig.sections.length <= 0) {
+    return null;
+  }
+  let sectionIndex = (
+    Number.isFinite(swipeState.activeSectionIndex)
+    ? Math.floor(swipeState.activeSectionIndex)
+    : -1
+  );
+  if (
+    swipeState.isTransitioning === true
+    && Number.isFinite(swipeState.transitionToSectionIndex)
+    && swipeState.transitionToSectionIndex >= 0
+    && swipeState.transitionToSectionIndex < swipeConfig.sections.length
+  ) {
+    sectionIndex = Math.floor(swipeState.transitionToSectionIndex);
+  }
+  if (!(sectionIndex >= 0 && sectionIndex < swipeConfig.sections.length)) {
+    return null;
+  }
+  const section = swipeConfig.sections[sectionIndex];
+  const ratio = Number(section && section.centerOverlayOffsetYVideoHeightRatio);
+  return Number.isFinite(ratio) ? ratio : null;
+}
+
+function requestCenterOverlayImageLoad(options = {}) {
+  const safeOptions = isPlainObjectLiteral(options) ? options : {};
+  const force = safeOptions.force === true;
+  const overlayConfig = resolveCenterOverlayImageConfig();
+  const spritePath = overlayConfig.enabled
+    ? normalizeCenterOverlayImagePath(overlayConfig.spritePath)
+    : '';
+  STATE.centerOverlayImageTargetPath = spritePath;
+
+  if (spritePath.length === 0) {
+    centerOverlayImageLayer.removeAttribute('src');
+    STATE.centerOverlayImagePath = '';
+    STATE.centerOverlayImageTargetPath = '';
+    STATE.centerOverlayImagePendingPath = '';
+    STATE.centerOverlayImageLoadPromise = null;
+    STATE.centerOverlayImageIsLoaded = false;
+    STATE.centerOverlayImageFailedPath = '';
+    return Promise.resolve(null);
+  }
+
+  if (!force && STATE.centerOverlayImagePath === spritePath && STATE.centerOverlayImageIsLoaded === true) {
+    return Promise.resolve(centerOverlayImageLayer);
+  }
+
+  const applyLoadedOverlayPath = (image) => {
+    if (!image || STATE.centerOverlayImageTargetPath !== spritePath) {
+      return image;
+    }
+    centerOverlayImageLayer.src = image.src;
+    STATE.centerOverlayImagePath = spritePath;
+    STATE.centerOverlayImagePendingPath = '';
+    STATE.centerOverlayImageLoadPromise = null;
+    STATE.centerOverlayImageIsLoaded = true;
+    STATE.centerOverlayImageFailedPath = '';
+    renderScene({ skipAutoStart: true });
+    return image;
+  };
+
+  if (isCenterOverlayImagePathReady(spritePath)) {
+    const readyEntry = getCenterOverlayImagePreloadEntry(spritePath);
+    if (readyEntry && readyEntry.image) {
+      applyLoadedOverlayPath(readyEntry.image);
+      return Promise.resolve(readyEntry.image);
+    }
+  }
+
+  const existingEntry = getCenterOverlayImagePreloadEntry(spritePath);
+  if (!force && existingEntry && existingEntry.status === 'failed') {
+    STATE.centerOverlayImagePendingPath = '';
+    STATE.centerOverlayImageLoadPromise = null;
+    STATE.centerOverlayImageIsLoaded = false;
+    STATE.centerOverlayImageFailedPath = spritePath;
+    return Promise.resolve(null);
+  }
+
+  STATE.centerOverlayImagePendingPath = spritePath;
+  STATE.centerOverlayImageIsLoaded = false;
+  const loadPromise = ensureCenterOverlayImagePreload(spritePath, { retry: force })
+    .then((image) => {
+      if (STATE.centerOverlayImageTargetPath !== spritePath) {
+        if (STATE.centerOverlayImagePendingPath === spritePath) {
+          STATE.centerOverlayImagePendingPath = '';
+        }
+        if (STATE.centerOverlayImageLoadPromise === loadPromise) {
+          STATE.centerOverlayImageLoadPromise = null;
+        }
+        return image;
+      }
+      if (!image) {
+        if (STATE.centerOverlayImagePendingPath === spritePath) {
+          STATE.centerOverlayImagePendingPath = '';
+        }
+        if (STATE.centerOverlayImageLoadPromise === loadPromise) {
+          STATE.centerOverlayImageLoadPromise = null;
+        }
+        STATE.centerOverlayImageIsLoaded = false;
+        if (STATE.centerOverlayImageFailedPath !== spritePath) {
+          const failedEntry = getCenterOverlayImagePreloadEntry(spritePath);
+          const failureMessage = (
+            failedEntry
+            && typeof failedEntry.errorMessage === 'string'
+            && failedEntry.errorMessage.length > 0
+          )
+            ? failedEntry.errorMessage
+            : `Failed to load image: ${spritePath}`;
+          console.warn(`${failureMessage} | Center overlay image disabled until path is fixed.`);
+        }
+        STATE.centerOverlayImageFailedPath = spritePath;
+        return null;
+      }
+      return applyLoadedOverlayPath(image);
+    });
+
+  STATE.centerOverlayImageLoadPromise = loadPromise;
+  return loadPromise;
+}
+
+function syncCenterOverlayImageLayer(nowMs = performance.now(), currentFrame = null) {
+  const overlayConfig = resolveCenterOverlayImageConfig();
+  const swipeConfig = resolveSwipeSectionsConfig();
+  const swipeState = STATE && STATE.swipeSections ? STATE.swipeSections : null;
+  const sections = swipeConfig && Array.isArray(swipeConfig.sections) ? swipeConfig.sections : [];
+  const pages = swipeConfig && Array.isArray(swipeConfig.pages) ? swipeConfig.pages : [];
+  const videoRect = getHeroVideoRenderedRect();
+  const videoSizePx = (
+    videoRect
+    && Number.isFinite(videoRect.width)
+    && Number.isFinite(videoRect.height)
+    && videoRect.width > 0
+    && videoRect.height > 0
+  )
+    ? Math.min(videoRect.width, videoRect.height)
+    : (
+      Number.isFinite(STATE.viewportHeight) && STATE.viewportHeight > 0
+        ? STATE.viewportHeight
+        : (Number.isFinite(window.innerHeight) ? Math.max(0, window.innerHeight) : 0)
+    );
+  const frameToUse = Number.isFinite(currentFrame)
+    ? currentFrame
+    : getCurrentHeroVideoFrame(resolveHeroPlaybackGateConfig());
+  const shouldBeVisibleByFrame = frameToUse >= overlayConfig.displayAfterFrame;
+
+  if (!Array.isArray(STATE.centerOverlayImageLayerVisibleSinceMs) || STATE.centerOverlayImageLayerVisibleSinceMs.length < 2) {
+    STATE.centerOverlayImageLayerVisibleSinceMs = [0, 0];
+  }
+  if (!Array.isArray(STATE.centerOverlayImageLayerLastShouldBeVisible) || STATE.centerOverlayImageLayerLastShouldBeVisible.length < 2) {
+    STATE.centerOverlayImageLayerLastShouldBeVisible = [false, false];
+  }
+
+  const hideLayerAtIndex = (layerIndex, options = {}) => {
+    const layer = centerOverlayImageLayers[layerIndex];
+    if (!layer) {
+      return;
+    }
+    layer.style.display = 'none';
+    layer.style.opacity = '0';
+    layer.style.visibility = 'hidden';
+    if (options.preserveVisibleSince !== true) {
+      STATE.centerOverlayImageLayerVisibleSinceMs[layerIndex] = 0;
+    }
+    STATE.centerOverlayImageLayerLastShouldBeVisible[layerIndex] = false;
+  };
+
+  const resolveLayerPathFromSection = (section) => {
+    if (!section || typeof section !== 'object') {
+      return normalizeCenterOverlayImagePath(overlayConfig.spritePath);
+    }
+    const pageIndex = Number(section.centerOverlayPageIndex);
+    if (Number.isFinite(pageIndex) && pageIndex >= 1 && pageIndex <= pages.length) {
+      const pagePath = normalizeCenterOverlayImagePath(pages[Math.floor(pageIndex) - 1]);
+      if (pagePath.length > 0) {
+        return pagePath;
+      }
+    }
+    const sectionPath = normalizeCenterOverlayImagePath(section.centerOverlayImagePath);
+    if (sectionPath.length > 0) {
+      return sectionPath;
+    }
+    return normalizeCenterOverlayImagePath(overlayConfig.spritePath);
+  };
+
+  const resolveLayerOffsetYPx = (section) => {
+    const sectionOffsetRatio = Number(section && section.centerOverlayOffsetYVideoHeightRatio);
+    if (Number.isFinite(sectionOffsetRatio)) {
+      return sectionOffsetRatio * videoSizePx;
+    }
+    return overlayConfig.offsetYMode === 'videoSizeRatio'
+      ? (overlayConfig.offsetYPx * videoSizePx)
+      : overlayConfig.offsetYPx;
+  };
+
+  const applyLayerAtIndex = (layerIndex, section, opacityMultiplier) => {
+    const layer = centerOverlayImageLayers[layerIndex];
+    if (!layer || !section) {
+      hideLayerAtIndex(layerIndex);
+      return false;
+    }
+    const safeOpacityMultiplier = clamp(Number.isFinite(opacityMultiplier) ? opacityMultiplier : 0, 0, 1);
+    if (safeOpacityMultiplier <= 1e-6) {
+      hideLayerAtIndex(layerIndex);
+      return false;
+    }
+    const spritePath = resolveLayerPathFromSection(section);
+    if (spritePath.length <= 0) {
+      hideLayerAtIndex(layerIndex);
+      return false;
+    }
+    const preloadEntry = getCenterOverlayImagePreloadEntry(spritePath);
+    if (!preloadEntry || preloadEntry.status !== 'loaded' || !preloadEntry.image) {
+      ensureCenterOverlayImagePreload(spritePath).catch(() => {});
+      hideLayerAtIndex(layerIndex, { preserveVisibleSince: true });
+      return false;
+    }
+    if (layer.dataset.centerOverlayPath !== spritePath || layer.src !== preloadEntry.image.src) {
+      layer.src = preloadEntry.image.src;
+      layer.dataset.centerOverlayPath = spritePath;
+    }
+
+    const resolvedOffsetYPx = resolveLayerOffsetYPx(section);
+    layer.style.left = `calc(50% + ${overlayConfig.offsetXPx}px)`;
+    layer.style.top = `calc(50% + ${resolvedOffsetYPx}px)`;
+    if (overlayConfig.scaleMode === 'videoSizeRatio') {
+      const resolvedWidthPx = Math.max(0, overlayConfig.scale * videoSizePx);
+      layer.style.width = resolvedWidthPx > 0 ? `${resolvedWidthPx}px` : '0px';
+      layer.style.height = 'auto';
+      layer.style.transform = 'translate(-50%, -50%)';
+    } else {
+      layer.style.width = '';
+      layer.style.height = '';
+      layer.style.transform = `translate(-50%, -50%) scale(${overlayConfig.scale})`;
+    }
+
+    layer.style.display = 'block';
+    if (
+      STATE.centerOverlayImageLayerLastShouldBeVisible[layerIndex] !== true
+      || STATE.centerOverlayImageLayerVisibleSinceMs[layerIndex] <= 0
+    ) {
+      STATE.centerOverlayImageLayerVisibleSinceMs[layerIndex] = Number.isFinite(nowMs) ? nowMs : performance.now();
+    }
+    STATE.centerOverlayImageLayerLastShouldBeVisible[layerIndex] = true;
+
+    let opacity = overlayConfig.maxOpacity;
+    if (overlayConfig.fadeInEnabled && overlayConfig.fadeInDurationSec > 1e-6) {
+      const fadeElapsedSec = Math.max(
+        0,
+        (nowMs - STATE.centerOverlayImageLayerVisibleSinceMs[layerIndex]) / 1000,
+      );
+      opacity = overlayConfig.maxOpacity * clamp(fadeElapsedSec / overlayConfig.fadeInDurationSec, 0, 1);
+    }
+    opacity *= safeOpacityMultiplier;
+    layer.style.opacity = String(opacity);
+    layer.style.visibility = opacity > 1e-6 ? 'visible' : 'hidden';
+    return true;
+  };
+
+  if (overlayConfig.enabled !== true || !shouldBeVisibleByFrame) {
+    hideLayerAtIndex(0);
+    hideLayerAtIndex(1);
+    STATE.centerOverlayImageIsLoaded = false;
+    STATE.centerOverlayImageVisibleSinceMs = 0;
+    STATE.centerOverlayImageLastShouldBeVisible = false;
+    return;
+  }
+
+  let activeSectionIndex = (
+    swipeState
+    && Number.isFinite(swipeState.activeSectionIndex)
+    && swipeState.activeSectionIndex >= 0
+    && swipeState.activeSectionIndex < sections.length
+  )
+    ? swipeState.activeSectionIndex
+    : -1;
+  if (activeSectionIndex < 0 && sections.length > 0) {
+    activeSectionIndex = findClosestSwipeSectionIndexToFrame(frameToUse, swipeConfig);
+  }
+
+  const defaultSection = {
+    centerOverlayPageIndex: 1,
+    centerOverlayImagePath: normalizeCenterOverlayImagePath(overlayConfig.spritePath),
+    centerOverlayOffsetYVideoHeightRatio: null,
+  };
+  const activeSection = (
+    activeSectionIndex >= 0
+    && activeSectionIndex < sections.length
+  )
+    ? sections[activeSectionIndex]
+    : defaultSection;
+
+  let hasPrimaryLayerVisible = false;
+  let hasAnyLayerVisible = false;
+  if (
+    swipeState
+    && swipeState.isTransitioning === true
+    && Number.isFinite(swipeState.transitionFromSectionIndex)
+    && Number.isFinite(swipeState.transitionToSectionIndex)
+    && swipeState.transitionFromSectionIndex >= 0
+    && swipeState.transitionFromSectionIndex < sections.length
+    && swipeState.transitionToSectionIndex >= 0
+    && swipeState.transitionToSectionIndex < sections.length
+  ) {
+    const outgoingSection = sections[swipeState.transitionFromSectionIndex];
+    const incomingSection = sections[swipeState.transitionToSectionIndex];
+    const outgoingOpacity = clamp(
+      Number(swipeState.overlayOutgoingOpacityMultiplier),
+      0,
+      1,
+    );
+    const incomingOpacity = clamp(
+      Number(swipeState.overlayOpacityMultiplier),
+      0,
+      1,
+    );
+    hasPrimaryLayerVisible = applyLayerAtIndex(0, outgoingSection, outgoingOpacity);
+    const hasIncomingLayerVisible = applyLayerAtIndex(1, incomingSection, incomingOpacity);
+    hasAnyLayerVisible = hasPrimaryLayerVisible || hasIncomingLayerVisible;
+  } else {
+    hasPrimaryLayerVisible = applyLayerAtIndex(0, activeSection, 1);
+    hideLayerAtIndex(1);
+    hasAnyLayerVisible = hasPrimaryLayerVisible;
+  }
+
+  STATE.centerOverlayImageIsLoaded = hasAnyLayerVisible;
+  STATE.centerOverlayImageVisibleSinceMs = hasPrimaryLayerVisible
+    ? STATE.centerOverlayImageLayerVisibleSinceMs[0]
+    : 0;
+  STATE.centerOverlayImageLastShouldBeVisible = hasPrimaryLayerVisible;
+}
+
+function getSwipeSectionsRsvpRuntimeState() {
+  const swipeState = STATE && STATE.swipeSections ? STATE.swipeSections : null;
+  if (!swipeState || typeof swipeState !== 'object') {
+    return null;
+  }
+  if (!swipeState.rsvp || typeof swipeState.rsvp !== 'object') {
+    swipeState.rsvp = {};
+  }
+  if (!(swipeState.rsvp.fontLoadEntries instanceof Map)) {
+    swipeState.rsvp.fontLoadEntries = new Map();
+  }
+  if (!swipeState.rsvp.spriteFrameSources || typeof swipeState.rsvp.spriteFrameSources !== 'object') {
+    swipeState.rsvp.spriteFrameSources = {
+      yesDefault: '',
+      yesSelected: '',
+      noDefault: '',
+      noSelected: '',
+    };
+  }
+  if (
+    swipeState.rsvp.spriteLoadStatus !== 'idle'
+    && swipeState.rsvp.spriteLoadStatus !== 'loading'
+    && swipeState.rsvp.spriteLoadStatus !== 'loaded'
+    && swipeState.rsvp.spriteLoadStatus !== 'failed'
+  ) {
+    swipeState.rsvp.spriteLoadStatus = 'idle';
+  }
+  if (!Number.isFinite(Number(swipeState.rsvp.updatedAtMs))) {
+    swipeState.rsvp.updatedAtMs = 0;
+  }
+  if (typeof swipeState.rsvp.name !== 'string') {
+    swipeState.rsvp.name = '';
+  }
+  swipeState.rsvp.response = sanitizeRsvpResponseValue(swipeState.rsvp.response, null);
+  if (swipeState.rsvp.confirmPressed !== true) {
+    swipeState.rsvp.confirmPressed = false;
+  }
+  swipeState.rsvp.sectionId = (
+    typeof swipeState.rsvp.sectionId === 'string'
+    && swipeState.rsvp.sectionId.trim().length > 0
+  )
+    ? swipeState.rsvp.sectionId.trim()
+    : 'section-3';
+  if (typeof swipeState.rsvp.hoverResponse !== 'string') {
+    swipeState.rsvp.hoverResponse = '';
+  }
+  return swipeState.rsvp;
+}
+
+function getRsvpStateSnapshot(runtimeState = getSwipeSectionsRsvpRuntimeState()) {
+  const runtime = runtimeState || getSwipeSectionsRsvpRuntimeState();
+  return {
+    name: runtime && typeof runtime.name === 'string' ? runtime.name : '',
+    response: runtime ? sanitizeRsvpResponseValue(runtime.response, null) : null,
+    confirmPressed: runtime ? runtime.confirmPressed === true : false,
+    sectionId: runtime && typeof runtime.sectionId === 'string' ? runtime.sectionId : '',
+    updatedAtMs: runtime && Number.isFinite(Number(runtime.updatedAtMs))
+      ? Number(runtime.updatedAtMs)
+      : 0,
+  };
+}
+
+function dispatchRsvpStateChangeEvent(snapshot) {
+  if (!window || typeof window.dispatchEvent !== 'function' || typeof CustomEvent !== 'function') {
+    return;
+  }
+  const detail = snapshot && typeof snapshot === 'object'
+    ? snapshot
+    : getRsvpStateSnapshot();
+  window.dispatchEvent(new CustomEvent(SWIPE_SECTIONS_EVENT_RSVP_CHANGE, { detail }));
+}
+
+function normalizeRsvpNameValue(value, maxLength = 120) {
+  const asString = typeof value === 'string' ? value : String(value || '');
+  const limit = Number.isFinite(Number(maxLength))
+    ? Math.max(1, Math.floor(Number(maxLength)))
+    : 120;
+  return asString.slice(0, limit);
+}
+
+function toRsvpNameTitleCase(value) {
+  if (typeof value !== 'string' || value.length <= 0) {
+    return '';
+  }
+  return value.replace(/\S+/g, (word) => {
+    const firstChar = word.charAt(0).toUpperCase();
+    const remainingChars = word.slice(1).toLowerCase();
+    return `${firstChar}${remainingChars}`;
+  });
+}
+
+function buildRsvpNameFontCss(fontSizePx, nameFieldConfig = {}) {
+  const style = (
+    typeof nameFieldConfig.fontStyle === 'string' && nameFieldConfig.fontStyle.trim().length > 0
+  )
+    ? nameFieldConfig.fontStyle.trim()
+    : 'normal';
+  const weight = (
+    typeof nameFieldConfig.fontWeight === 'string'
+    || Number.isFinite(Number(nameFieldConfig.fontWeight))
+  )
+    ? String(nameFieldConfig.fontWeight)
+    : 'normal';
+  const family = (
+    typeof nameFieldConfig.fontFamily === 'string' && nameFieldConfig.fontFamily.trim().length > 0
+  )
+    ? nameFieldConfig.fontFamily.trim()
+    : 'sans-serif';
+  const sizePx = Number.isFinite(Number(fontSizePx)) ? Math.max(0.1, Number(fontSizePx)) : 0.1;
+  return `${style} normal ${weight} ${sizePx}px ${family}`;
+}
+
+function measureRsvpNameTextWidthPx(text, fontSizePx, nameFieldConfig = {}) {
+  const safeText = typeof text === 'string' ? text : '';
+  if (safeText.length <= 0 || !rsvpNameFitMeasureCtx) {
+    return 0;
+  }
+  rsvpNameFitMeasureCtx.font = buildRsvpNameFontCss(fontSizePx, nameFieldConfig);
+  return Math.max(0, Number(rsvpNameFitMeasureCtx.measureText(safeText).width) || 0);
+}
+
+function resolveRsvpNameFittedFontSizePx(name, baseFontSizePx, inputWidthPx, nameFieldConfig = {}) {
+  const baseSize = Number.isFinite(Number(baseFontSizePx)) ? Math.max(0, Number(baseFontSizePx)) : 0;
+  if (!(baseSize > 0)) {
+    return 0;
+  }
+  if (nameFieldConfig.autoFitEnabled === false) {
+    return baseSize;
+  }
+  const availableWidth = Math.max(
+    0,
+    Number.isFinite(Number(inputWidthPx))
+      ? Number(inputWidthPx) - (2 * Math.max(0, Number(nameFieldConfig.autoFitHorizontalPaddingPx) || 0))
+      : 0,
+  );
+  if (!(availableWidth > 0)) {
+    return baseSize;
+  }
+  const safeName = typeof name === 'string' ? name : '';
+  if (safeName.length <= 0) {
+    return baseSize;
+  }
+  const minRatio = clamp(
+    Number.isFinite(Number(nameFieldConfig.autoFitMinFontSizeRatio))
+      ? Number(nameFieldConfig.autoFitMinFontSizeRatio)
+      : 0.62,
+    0.05,
+    1,
+  );
+  const minFontSizePx = Math.max(0.1, baseSize * minRatio);
+  const stepPx = Number.isFinite(Number(nameFieldConfig.autoFitStepPx))
+    ? Math.max(0.1, Number(nameFieldConfig.autoFitStepPx))
+    : 0.5;
+
+  let fontSizePx = baseSize;
+  let measuredWidthPx = measureRsvpNameTextWidthPx(safeName, fontSizePx, nameFieldConfig);
+  if (measuredWidthPx <= availableWidth) {
+    return fontSizePx;
+  }
+  while (fontSizePx > minFontSizePx + 1e-6) {
+    fontSizePx = Math.max(minFontSizePx, fontSizePx - stepPx);
+    measuredWidthPx = measureRsvpNameTextWidthPx(safeName, fontSizePx, nameFieldConfig);
+    if (measuredWidthPx <= availableWidth + 1e-6) {
+      return fontSizePx;
+    }
+  }
+  return minFontSizePx;
+}
+
+function setRsvpStatePatch(patch = {}, options = {}) {
+  const runtime = getSwipeSectionsRsvpRuntimeState();
+  if (!runtime) {
+    return getRsvpStateSnapshot();
+  }
+  const safePatch = isPlainObjectLiteral(patch) ? patch : {};
+  const safeOptions = isPlainObjectLiteral(options) ? options : {};
+  const swipeConfig = resolveSwipeSectionsConfig();
+  const rsvpConfig = swipeConfig && swipeConfig.rsvp ? swipeConfig.rsvp : resolveSwipeSectionsRsvpConfig({}, swipeConfig.sections || []);
+  const maxLength = rsvpConfig && rsvpConfig.nameField ? rsvpConfig.nameField.maxLength : 120;
+  let changed = false;
+
+  if (Object.prototype.hasOwnProperty.call(safePatch, 'name')) {
+    const normalizedName = normalizeRsvpNameValue(safePatch.name, maxLength);
+    const nextName = toRsvpNameTitleCase(normalizedName);
+    if (nextName !== runtime.name) {
+      runtime.name = nextName;
+      changed = true;
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(safePatch, 'response')) {
+    const nextResponse = sanitizeRsvpResponseValue(safePatch.response, null);
+    if (nextResponse !== runtime.response) {
+      runtime.response = nextResponse;
+      runtime.confirmPressed = false;
+      changed = true;
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(safePatch, 'confirmPressed')) {
+    const nextConfirmPressed = safePatch.confirmPressed === true;
+    if (nextConfirmPressed !== (runtime.confirmPressed === true)) {
+      runtime.confirmPressed = nextConfirmPressed;
+      changed = true;
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(safePatch, 'sectionId')) {
+    const nextSectionId = (
+      typeof safePatch.sectionId === 'string' && safePatch.sectionId.trim().length > 0
+    )
+      ? safePatch.sectionId.trim()
+      : runtime.sectionId;
+    if (nextSectionId !== runtime.sectionId) {
+      runtime.sectionId = nextSectionId;
+      changed = true;
+    }
+  }
+
+  if (!changed && safeOptions.forceEvent !== true) {
+    return getRsvpStateSnapshot(runtime);
+  }
+
+  runtime.updatedAtMs = Number.isFinite(Number(safeOptions.updatedAtMs))
+    ? Number(safeOptions.updatedAtMs)
+    : Date.now();
+  if (typeof rsvpNameInput.value === 'string' && rsvpNameInput.value !== runtime.name) {
+    rsvpNameInput.value = runtime.name;
+  }
+  const snapshot = getRsvpStateSnapshot(runtime);
+  syncRsvpButtonVisualState(rsvpConfig, runtime);
+  if (safeOptions.emitEvent !== false) {
+    dispatchRsvpStateChangeEvent(snapshot);
+  }
+  return snapshot;
+}
+
+function clearRsvpState(options = {}) {
+  return setRsvpStatePatch({ name: '', response: null, confirmPressed: false }, options);
+}
+
+function resolveRsvpActiveSectionId(swipeConfig = resolveSwipeSectionsConfig()) {
+  const swipeState = STATE && STATE.swipeSections ? STATE.swipeSections : null;
+  const sections = swipeConfig && Array.isArray(swipeConfig.sections) ? swipeConfig.sections : [];
+  if (!swipeState || sections.length <= 0) {
+    return '';
+  }
+  if (swipeState.isTransitioning === true) {
+    return '';
+  }
+  let activeIndex = (
+    Number.isFinite(swipeState.activeSectionIndex)
+    ? Math.floor(swipeState.activeSectionIndex)
+    : -1
+  );
+  if (!(activeIndex >= 0 && activeIndex < sections.length)) {
+    const currentFrame = getCurrentHeroVideoFrame(resolveHeroPlaybackGateConfig());
+    activeIndex = findClosestSwipeSectionIndexToFrame(currentFrame, swipeConfig);
+  }
+  if (!(activeIndex >= 0 && activeIndex < sections.length)) {
+    return '';
+  }
+  const section = sections[activeIndex];
+  return section && typeof section.id === 'string' ? section.id : '';
+}
+
+function extractRsvpSpriteFrameDataUrl(spriteImage, sourceRect) {
+  if (!spriteImage || !sourceRect) {
+    return '';
+  }
+  const sx = Math.max(0, Math.floor(sourceRect.sx));
+  const sy = Math.max(0, Math.floor(sourceRect.sy));
+  const sw = Math.max(1, Math.floor(sourceRect.sw));
+  const sh = Math.max(1, Math.floor(sourceRect.sh));
+  if (sx >= spriteImage.width || sy >= spriteImage.height) {
+    return '';
+  }
+  const actualWidth = Math.min(sw, Math.max(1, spriteImage.width - sx));
+  const actualHeight = Math.min(sh, Math.max(1, spriteImage.height - sy));
+  const extractionCanvas = document.createElement('canvas');
+  extractionCanvas.width = actualWidth;
+  extractionCanvas.height = actualHeight;
+  const extractionCtx = extractionCanvas.getContext('2d');
+  if (!extractionCtx) {
+    return '';
+  }
+  extractionCtx.clearRect(0, 0, actualWidth, actualHeight);
+  extractionCtx.drawImage(
+    spriteImage,
+    sx,
+    sy,
+    actualWidth,
+    actualHeight,
+    0,
+    0,
+    actualWidth,
+    actualHeight,
+  );
+  return extractionCanvas.toDataURL();
+}
+
+function buildRsvpSpriteFrameSources(spriteImage, rsvpButtonsConfig) {
+  const fallback = {
+    yesDefault: '',
+    yesSelected: '',
+    noDefault: '',
+    noSelected: '',
+    confirmDefault: '',
+    confirmSelected: '',
+  };
+  if (!spriteImage || !rsvpButtonsConfig) {
+    return fallback;
+  }
+  const cellWidth = Math.max(
+    1,
+    Math.floor(Number(rsvpButtonsConfig.spriteCellWidth) * Number(rsvpButtonsConfig.spriteScale)),
+  );
+  const cellHeight = Math.max(
+    1,
+    Math.floor(Number(rsvpButtonsConfig.spriteCellHeight) * Number(rsvpButtonsConfig.spriteScale)),
+  );
+  const cols = Math.max(1, Math.floor(Number(rsvpButtonsConfig.spriteCols)));
+  const rows = Math.max(1, Math.floor(Number(rsvpButtonsConfig.spriteRows)));
+  const frameMap = rsvpButtonsConfig.frameMap || {};
+  const yesRow = clamp(Math.floor(Number(frameMap.yesRow) || 0), 0, rows - 1);
+  const noRow = clamp(Math.floor(Number(frameMap.noRow) || 0), 0, rows - 1);
+  const unselectedCol = clamp(Math.floor(Number(frameMap.unselectedCol) || 0), 0, cols - 1);
+  const selectedCol = clamp(Math.floor(Number(frameMap.selectedCol) || 1), 0, cols - 1);
+
+  const resolveFrameRect = (rowIndex, colIndex) => ({
+    sx: colIndex * cellWidth,
+    sy: rowIndex * cellHeight,
+    sw: cellWidth,
+    sh: cellHeight,
+  });
+
+  return {
+    yesDefault: extractRsvpSpriteFrameDataUrl(spriteImage, resolveFrameRect(yesRow, unselectedCol)),
+    yesSelected: extractRsvpSpriteFrameDataUrl(spriteImage, resolveFrameRect(yesRow, selectedCol)),
+    noDefault: extractRsvpSpriteFrameDataUrl(spriteImage, resolveFrameRect(noRow, unselectedCol)),
+    noSelected: extractRsvpSpriteFrameDataUrl(spriteImage, resolveFrameRect(noRow, selectedCol)),
+    confirmDefault: '',
+    confirmSelected: '',
+  };
+}
+
+function getRsvpSpriteSheetSignature(buttonsConfig) {
+  if (!buttonsConfig) {
+    return '';
+  }
+  const frameMap = buttonsConfig.frameMap || {};
+  const spritePath = normalizeCenterOverlayImagePath(buttonsConfig.spritePath);
+  return [
+    spritePath,
+    Number(buttonsConfig.spriteCellWidth) || 0,
+    Number(buttonsConfig.spriteCellHeight) || 0,
+    Number(buttonsConfig.spriteScale) || 0,
+    Number(buttonsConfig.spriteCols) || 0,
+    Number(buttonsConfig.spriteRows) || 0,
+    Number(frameMap.yesRow) || 0,
+    Number(frameMap.noRow) || 0,
+    Number(frameMap.unselectedCol) || 0,
+    Number(frameMap.selectedCol) || 0,
+  ].join('|');
+}
+
+function ensureRsvpButtonSpriteFramesLoaded(rsvpConfig) {
+  const runtime = getSwipeSectionsRsvpRuntimeState();
+  if (!runtime) {
+    return Promise.resolve(null);
+  }
+  const safeConfig = rsvpConfig || resolveSwipeSectionsConfig().rsvp;
+  const buttonsConfig = safeConfig && safeConfig.buttons ? safeConfig.buttons : null;
+  if (!safeConfig || safeConfig.enabled !== true || !buttonsConfig) {
+    runtime.spriteSheetKey = '';
+    runtime.spriteFrameSources = {
+      yesDefault: '',
+      yesSelected: '',
+      noDefault: '',
+      noSelected: '',
+      confirmDefault: '',
+      confirmSelected: '',
+    };
+    runtime.spriteLoadPromise = null;
+    runtime.spriteLoadStatus = 'idle';
+    return Promise.resolve(null);
+  }
+
+  const spritePath = normalizeCenterOverlayImagePath(buttonsConfig.spritePath);
+  const confirmConfig = buttonsConfig.confirm || {};
+  const confirmSpritePath = normalizeCenterOverlayImagePath(confirmConfig.spritePath);
+  const hasSeparateConfirmSprite = confirmSpritePath.length > 0 && confirmSpritePath !== spritePath;
+
+  if (spritePath.length <= 0 && !hasSeparateConfirmSprite) {
+    runtime.spriteSheetKey = '';
+    runtime.spriteFrameSources = {
+      yesDefault: '',
+      yesSelected: '',
+      noDefault: '',
+      noSelected: '',
+      confirmDefault: '',
+      confirmSelected: '',
+    };
+    runtime.spriteLoadPromise = null;
+    runtime.spriteLoadStatus = 'idle';
+    return Promise.resolve(null);
+  }
+
+  const signature = getRsvpSpriteSheetSignature(buttonsConfig);
+  const confirmSpriteSourcePath = hasSeparateConfirmSprite ? confirmSpritePath : spritePath;
+  const confirmSignature = `confirm:${confirmSpriteSourcePath}|${confirmConfig.spriteCellWidth || ''}|${confirmConfig.spriteCellHeight || ''}|${confirmConfig.spriteScale || ''}|${confirmConfig.spriteCols || ''}|${confirmConfig.spriteRows || ''}|${(confirmConfig.frameMap && confirmConfig.frameMap.unselectedRow) || ''}|${(confirmConfig.frameMap && confirmConfig.frameMap.selectedRow) || ''}|${(confirmConfig.frameMap && confirmConfig.frameMap.col) || ''}`;
+  const fullSignature = `${signature}|${confirmSignature}`;
+
+  if (
+    runtime.spriteSheetKey === fullSignature
+    && runtime.spriteFrameSources
+    && runtime.spriteFrameSources.yesDefault
+    && runtime.spriteFrameSources.yesSelected
+    && runtime.spriteFrameSources.noDefault
+    && runtime.spriteFrameSources.noSelected
+  ) {
+    return Promise.resolve(runtime.spriteFrameSources);
+  }
+  if (runtime.spriteSheetKey === fullSignature && runtime.spriteLoadStatus === 'failed') {
+    return Promise.resolve(null);
+  }
+  if (runtime.spriteSheetKey === fullSignature && runtime.spriteLoadPromise) {
+    return runtime.spriteLoadPromise;
+  }
+
+  runtime.spriteSheetKey = fullSignature;
+  runtime.spriteLoadStatus = 'loading';
+
+  const mainLoadPromise = spritePath.length > 0
+    ? loadImage(spritePath)
+    : Promise.resolve(null);
+  const confirmLoadPromise = hasSeparateConfirmSprite
+    ? loadImage(confirmSpritePath)
+    : Promise.resolve(null);
+
+  const loadPromise = Promise.all([mainLoadPromise, confirmLoadPromise])
+    .then(([spriteImage, confirmSpriteImage]) => {
+      if (runtime.spriteSheetKey !== fullSignature) {
+        return null;
+      }
+      const mainFrames = spriteImage ? buildRsvpSpriteFrameSources(spriteImage, buttonsConfig) : {
+        yesDefault: '',
+        yesSelected: '',
+        noDefault: '',
+        noSelected: '',
+        confirmDefault: '',
+        confirmSelected: '',
+      };
+      const cCellWidth = Math.max(1, Math.floor(Number(confirmConfig.spriteCellWidth) * Number(confirmConfig.spriteScale || 1)));
+      const cCellHeight = Math.max(1, Math.floor(Number(confirmConfig.spriteCellHeight) * Number(confirmConfig.spriteScale || 1)));
+      const cCols = Math.max(1, Math.floor(Number(confirmConfig.spriteCols) || 1));
+      const cRows = Math.max(1, Math.floor(Number(confirmConfig.spriteRows) || 2));
+      const cFrameMap = confirmConfig.frameMap || {};
+      const cUnselectedRow = clamp(Math.floor(Number(cFrameMap.unselectedRow) || 0), 0, cRows - 1);
+      const cSelectedRow = clamp(Math.floor(Number(cFrameMap.selectedRow) || 1), 0, cRows - 1);
+      const cCol = clamp(Math.floor(Number(cFrameMap.col) || 0), 0, cCols - 1);
+      const resolveCFrameRect = (rowIndex, colIndex) => ({
+        sx: colIndex * cCellWidth,
+        sy: rowIndex * cCellHeight,
+        sw: cCellWidth,
+        sh: cCellHeight,
+      });
+      const confirmSourceImage = hasSeparateConfirmSprite
+        ? confirmSpriteImage
+        : spriteImage;
+      let confirmFrames = { confirmDefault: '', confirmSelected: '' };
+      if (confirmSourceImage) {
+        confirmFrames = {
+          confirmDefault: extractRsvpSpriteFrameDataUrl(confirmSourceImage, resolveCFrameRect(cUnselectedRow, cCol)),
+          confirmSelected: extractRsvpSpriteFrameDataUrl(confirmSourceImage, resolveCFrameRect(cSelectedRow, cCol)),
+        };
+      }
+      runtime.spriteFrameSources = {
+        ...mainFrames,
+        ...confirmFrames,
+      };
+      runtime.spriteLoadPromise = null;
+      runtime.spriteLoadStatus = 'loaded';
+      syncRsvpButtonVisualState(safeConfig, runtime);
+      renderScene({ skipAutoStart: true });
+      return runtime.spriteFrameSources;
+    })
+    .catch((error) => {
+      if (runtime.spriteSheetKey !== fullSignature) {
+        return null;
+      }
+      runtime.spriteFrameSources = {
+        yesDefault: '',
+        yesSelected: '',
+        noDefault: '',
+        noSelected: '',
+        confirmDefault: '',
+        confirmSelected: '',
+      };
+      runtime.spriteLoadPromise = null;
+      runtime.spriteLoadStatus = 'failed';
+      console.warn(error && error.message ? error.message : 'Failed to load RSVP sprite sheet.');
+      return null;
+    });
+  runtime.spriteLoadPromise = loadPromise;
+  return loadPromise;
+}
+
+function getRsvpButtonImageSourceForResponse(
+  response,
+  isSelected,
+  spriteFrameSources,
+) {
+  const safeFrames = spriteFrameSources || {};
+  if (response === 'yes') {
+    return isSelected
+      ? (safeFrames.yesSelected || safeFrames.yesDefault || '')
+      : (safeFrames.yesDefault || safeFrames.yesSelected || '');
+  }
+  if (response === 'confirm') {
+    return isSelected
+      ? (safeFrames.confirmSelected || safeFrames.confirmDefault || '')
+      : (safeFrames.confirmDefault || safeFrames.confirmSelected || '');
+  }
+  return isSelected
+    ? (safeFrames.noSelected || safeFrames.noDefault || '')
+    : (safeFrames.noDefault || safeFrames.noSelected || '');
+}
+
+function syncRsvpButtonVisualState(
+  rsvpConfig = resolveSwipeSectionsConfig().rsvp,
+  runtimeState = getSwipeSectionsRsvpRuntimeState(),
+) {
+  const runtime = runtimeState || getSwipeSectionsRsvpRuntimeState();
+  if (!runtime) {
+    return;
+  }
+  const buttonsConfig = rsvpConfig && rsvpConfig.buttons ? rsvpConfig.buttons : null;
+  const animationConfig = buttonsConfig && buttonsConfig.animation ? buttonsConfig.animation : {};
+  const transitionDurationMs = Math.max(0, Number(animationConfig.transitionDurationMs) || 0);
+  const transitionEasing = (
+    typeof animationConfig.transitionEasing === 'string'
+    && animationConfig.transitionEasing.trim().length > 0
+  )
+    ? animationConfig.transitionEasing.trim()
+    : 'ease-out';
+  const hoverScale = Math.max(0.01, Number(animationConfig.hoverScale) || 1);
+  const selectedScale = Math.max(0.01, Number(animationConfig.selectedScale) || 1);
+  const isYesSelected = runtime.response === 'yes';
+  const isNoSelected = runtime.response === 'no';
+  const isConfirmSelected = runtime.confirmPressed === true;
+  const isYesHovered = runtime.hoverResponse === 'yes';
+  const isNoHovered = runtime.hoverResponse === 'no';
+  const isConfirmHovered = runtime.hoverResponse === 'confirm';
+  const yesScale = (isYesSelected ? selectedScale : 1) * (isYesHovered ? hoverScale : 1);
+  const noScale = (isNoSelected ? selectedScale : 1) * (isNoHovered ? hoverScale : 1);
+  const confirmScale = (isConfirmSelected ? selectedScale : 1) * (isConfirmHovered ? hoverScale : 1);
+  const frames = runtime.spriteFrameSources || {};
+  const yesSrc = getRsvpButtonImageSourceForResponse('yes', isYesSelected, frames);
+  const noSrc = getRsvpButtonImageSourceForResponse('no', isNoSelected, frames);
+  const confirmSrc = getRsvpButtonImageSourceForResponse('confirm', isConfirmSelected, frames);
+
+  if (yesSrc && rsvpYesButtonImage.src !== yesSrc) {
+    rsvpYesButtonImage.src = yesSrc;
+  } else if (!yesSrc && rsvpYesButtonImage.hasAttribute('src')) {
+    rsvpYesButtonImage.removeAttribute('src');
+  }
+  if (noSrc && rsvpNoButtonImage.src !== noSrc) {
+    rsvpNoButtonImage.src = noSrc;
+  } else if (!noSrc && rsvpNoButtonImage.hasAttribute('src')) {
+    rsvpNoButtonImage.removeAttribute('src');
+  }
+  if (confirmSrc && rsvpConfirmButtonImage.src !== confirmSrc) {
+    rsvpConfirmButtonImage.src = confirmSrc;
+  } else if (!confirmSrc && rsvpConfirmButtonImage.hasAttribute('src')) {
+    rsvpConfirmButtonImage.removeAttribute('src');
+  }
+  rsvpYesButton.style.transform = `translate(-50%, -50%) scale(${yesScale})`;
+  rsvpNoButton.style.transform = `translate(-50%, -50%) scale(${noScale})`;
+  rsvpConfirmButton.style.transform = `translate(-50%, -50%) scale(${confirmScale})`;
+  rsvpYesButton.style.transition = `transform ${transitionDurationMs}ms ${transitionEasing}`;
+  rsvpNoButton.style.transition = `transform ${transitionDurationMs}ms ${transitionEasing}`;
+  rsvpConfirmButton.style.transition = `transform ${transitionDurationMs}ms ${transitionEasing}`;
+  rsvpYesButton.setAttribute('aria-pressed', isYesSelected ? 'true' : 'false');
+  rsvpNoButton.setAttribute('aria-pressed', isNoSelected ? 'true' : 'false');
+  rsvpConfirmButton.setAttribute('aria-pressed', isConfirmSelected ? 'true' : 'false');
+  rsvpYesButton.dataset.selected = isYesSelected ? '1' : '0';
+  rsvpNoButton.dataset.selected = isNoSelected ? '1' : '0';
+  rsvpConfirmButton.dataset.selected = isConfirmSelected ? '1' : '0';
+}
+
+function ensureRsvpFontLoaded(rsvpConfig) {
+  const runtime = getSwipeSectionsRsvpRuntimeState();
+  if (!runtime) {
+    return Promise.resolve(false);
+  }
+  const nameFieldConfig = rsvpConfig && rsvpConfig.nameField ? rsvpConfig.nameField : {};
+  const fontSourcePath = normalizeHostedAssetPath(
+    typeof nameFieldConfig.fontSourcePath === 'string' ? nameFieldConfig.fontSourcePath.trim() : '',
+  );
+  const fontFamily = (
+    typeof nameFieldConfig.fontFamily === 'string' && nameFieldConfig.fontFamily.trim().length > 0
+  )
+    ? nameFieldConfig.fontFamily.trim()
+    : '';
+  if (fontSourcePath.length <= 0 || fontFamily.length <= 0 || typeof FontFace !== 'function' || !document.fonts) {
+    runtime.activeFontKey = '';
+    runtime.fontLoadPromise = null;
+    return Promise.resolve(false);
+  }
+  const fontWeight = (
+    typeof nameFieldConfig.fontWeight === 'string'
+    || Number.isFinite(Number(nameFieldConfig.fontWeight))
+  )
+    ? String(nameFieldConfig.fontWeight)
+    : 'normal';
+  const fontStyle = (
+    typeof nameFieldConfig.fontStyle === 'string' && nameFieldConfig.fontStyle.trim().length > 0
+  )
+    ? nameFieldConfig.fontStyle.trim()
+    : 'normal';
+  const fontKey = `${fontFamily}|${fontSourcePath}|${fontWeight}|${fontStyle}`;
+  runtime.activeFontKey = fontKey;
+  const fontEntries = runtime.fontLoadEntries instanceof Map
+    ? runtime.fontLoadEntries
+    : new Map();
+  runtime.fontLoadEntries = fontEntries;
+  const existing = fontEntries.get(fontKey);
+  if (existing && existing.status === 'loaded') {
+    return Promise.resolve(true);
+  }
+  if (existing && existing.status === 'failed') {
+    return Promise.resolve(false);
+  }
+  if (existing && existing.status === 'loading' && existing.promise) {
+    runtime.fontLoadPromise = existing.promise;
+    return existing.promise;
+  }
+  const entry = {
+    status: 'loading',
+    promise: null,
+  };
+  fontEntries.set(fontKey, entry);
+  const loadPromise = new FontFace(fontFamily, `url("${fontSourcePath}")`, {
+    weight: fontWeight,
+    style: fontStyle,
+  })
+    .load()
+    .then((loadedFontFace) => {
+      if (runtime.activeFontKey !== fontKey) {
+        return false;
+      }
+      document.fonts.add(loadedFontFace);
+      entry.status = 'loaded';
+      entry.promise = null;
+      runtime.fontLoadPromise = null;
+      renderScene({ skipAutoStart: true });
+      return true;
+    })
+    .catch(() => {
+      if (runtime.activeFontKey !== fontKey) {
+        return false;
+      }
+      entry.status = 'failed';
+      entry.promise = null;
+      runtime.fontLoadPromise = null;
+      return false;
+    });
+  entry.promise = loadPromise;
+  runtime.fontLoadPromise = loadPromise;
+  return loadPromise;
+}
+
+function initializeRsvpStateIfNeeded(swipeConfig = resolveSwipeSectionsConfig()) {
+  const runtime = getSwipeSectionsRsvpRuntimeState();
+  if (!runtime) {
+    return;
+  }
+  const rsvpConfig = swipeConfig && swipeConfig.rsvp ? swipeConfig.rsvp : null;
+  if (!rsvpConfig) {
+    return;
+  }
+  if (runtime.initialized === true) {
+    return;
+  }
+  runtime.initialized = true;
+  runtime.sectionId = rsvpConfig.sectionId;
+  setRsvpStatePatch(
+    {
+      name: rsvpConfig.initialState ? rsvpConfig.initialState.name : '',
+      response: rsvpConfig.initialState ? rsvpConfig.initialState.response : null,
+      confirmPressed: false,
+      sectionId: rsvpConfig.sectionId,
+    },
+    {
+      emitEvent: false,
+      forceEvent: true,
+    },
+  );
+}
+
+function hideRsvpDebugRects() {
+  const debugRects = [rsvpNameDebugRect, rsvpYesDebugRect, rsvpNoDebugRect, rsvpConfirmDebugRect];
+  for (let i = 0; i < debugRects.length; i += 1) {
+    const rectEl = debugRects[i];
+    if (!rectEl) {
+      continue;
+    }
+    rectEl.style.display = 'none';
+    rectEl.style.visibility = 'hidden';
+  }
+}
+
+function syncRsvpDebugRect(
+  rectEl,
+  centerX,
+  centerY,
+  widthPx,
+  heightPx,
+  shouldShow,
+  strokeColor,
+  lineWidthPx,
+) {
+  if (!rectEl) {
+    return;
+  }
+  if (!shouldShow || !(widthPx > 0) || !(heightPx > 0)) {
+    rectEl.style.display = 'none';
+    rectEl.style.visibility = 'hidden';
+    return;
+  }
+  rectEl.style.left = `${centerX}px`;
+  rectEl.style.top = `${centerY}px`;
+  rectEl.style.width = `${widthPx}px`;
+  rectEl.style.height = `${heightPx}px`;
+  rectEl.style.borderColor = strokeColor;
+  rectEl.style.borderWidth = `${lineWidthPx}px`;
+  rectEl.style.display = 'block';
+  rectEl.style.visibility = 'visible';
+}
+
+function hideRsvpLayer() {
+  const runtime = getSwipeSectionsRsvpRuntimeState();
+  if (runtime) {
+    runtime.visible = false;
+    runtime.hoverResponse = '';
+  }
+  hideRsvpDebugRects();
+  rsvpLayer.style.display = 'none';
+  rsvpLayer.style.visibility = 'hidden';
+  rsvpLayer.style.pointerEvents = 'none';
+  rsvpLayer.setAttribute('aria-hidden', 'true');
+}
+
+function syncRsvpLayer(nowMs = performance.now()) {
+  const swipeConfig = resolveSwipeSectionsConfig();
+  const rsvpConfig = swipeConfig && swipeConfig.rsvp ? swipeConfig.rsvp : null;
+  const runtime = getSwipeSectionsRsvpRuntimeState();
+  if (!runtime || !rsvpConfig || rsvpConfig.enabled !== true || swipeConfig.enabled !== true) {
+    hideRsvpLayer();
+    return;
+  }
+  if (!isSwipeSectionsNavigationActive(swipeConfig)) {
+    hideRsvpLayer();
+    return;
+  }
+  runtime.sectionId = rsvpConfig.sectionId;
+  ensureRsvpButtonSpriteFramesLoaded(rsvpConfig).catch(() => {});
+  ensureRsvpFontLoaded(rsvpConfig).catch(() => {});
+
+  const activeSectionId = resolveRsvpActiveSectionId(swipeConfig);
+  const shouldShow = activeSectionId.length > 0 && activeSectionId === rsvpConfig.sectionId;
+  if (!shouldShow) {
+    hideRsvpLayer();
+    return;
+  }
+
+  const videoRect = getHeroVideoRenderedRect();
+  const videoHeight = (
+    videoRect
+    && Number.isFinite(videoRect.height)
+    && videoRect.height > 0
+  )
+    ? videoRect.height
+    : resolveHeroVideoRenderedHeightPx();
+  if (!(videoHeight > 0)) {
+    hideRsvpLayer();
+    return;
+  }
+  const centerX = (
+    videoRect
+    && Number.isFinite(videoRect.left)
+    && Number.isFinite(videoRect.width)
+  )
+    ? (videoRect.left + (videoRect.width * 0.5))
+    : (
+      Number.isFinite(STATE.viewportWidth) && STATE.viewportWidth > 0
+        ? STATE.viewportWidth * 0.5
+        : (Number.isFinite(window.innerWidth) ? window.innerWidth * 0.5 : 0)
+    );
+  const centerY = (
+    videoRect
+    && Number.isFinite(videoRect.top)
+    && Number.isFinite(videoRect.height)
+  )
+    ? (videoRect.top + (videoRect.height * 0.5))
+    : (
+      Number.isFinite(STATE.viewportHeight) && STATE.viewportHeight > 0
+        ? STATE.viewportHeight * 0.5
+        : (Number.isFinite(window.innerHeight) ? window.innerHeight * 0.5 : 0)
+    );
+
+  const nameFieldConfig = rsvpConfig.nameField || {};
+  const buttonsConfig = rsvpConfig.buttons || {};
+  const debugConfig = rsvpConfig.debug || {};
+  const nameCenterX = centerX + (Number(nameFieldConfig.offsetXVideoHeightRatio) || 0) * videoHeight;
+  const nameCenterY = centerY + (Number(nameFieldConfig.offsetYVideoHeightRatio) || 0) * videoHeight;
+  const nameWidth = Math.max(0, (Number(nameFieldConfig.widthVideoHeightRatio) || 0) * videoHeight);
+  const nameHeight = Math.max(0, (Number(nameFieldConfig.heightVideoHeightRatio) || 0) * videoHeight);
+  const nameFontSize = Math.max(0, (Number(nameFieldConfig.fontSizeVideoHeightRatio) || 0) * videoHeight);
+
+  rsvpLayer.style.display = 'block';
+  rsvpLayer.style.visibility = 'visible';
+  rsvpLayer.style.pointerEvents = 'none';
+  rsvpLayer.setAttribute('aria-hidden', 'false');
+  runtime.visible = true;
+  runtime.sectionId = rsvpConfig.sectionId;
+
+  rsvpNameInput.style.left = `${nameCenterX}px`;
+  rsvpNameInput.style.top = `${nameCenterY}px`;
+  rsvpNameInput.style.width = `${nameWidth}px`;
+  rsvpNameInput.style.height = `${nameHeight}px`;
+  rsvpNameInput.style.fontFamily = nameFieldConfig.fontFamily || '';
+  rsvpNameInput.style.fontWeight = String(nameFieldConfig.fontWeight || 'normal');
+  rsvpNameInput.style.fontStyle = nameFieldConfig.fontStyle || 'normal';
+  rsvpNameInput.style.color = nameFieldConfig.textColor || '#101010';
+  rsvpNameInput.style.textAlign = sanitizeRsvpTextAlign(nameFieldConfig.textAlign, 'center');
+  rsvpNameInput.style.lineHeight = nameHeight > 0 ? `${nameHeight}px` : '';
+  rsvpNameInput.maxLength = Number.isFinite(Number(nameFieldConfig.maxLength))
+    ? Math.max(1, Math.floor(Number(nameFieldConfig.maxLength)))
+    : 120;
+  if (rsvpNameInput.value !== runtime.name) {
+    rsvpNameInput.value = runtime.name;
+  }
+  const fittedNameFontSize = resolveRsvpNameFittedFontSizePx(
+    runtime.name,
+    nameFontSize,
+    nameWidth,
+    nameFieldConfig,
+  );
+  rsvpNameInput.style.fontSize = `${fittedNameFontSize}px`;
+
+  const yesConfig = buttonsConfig.yes || {};
+  const noConfig = buttonsConfig.no || {};
+  const confirmConfig = buttonsConfig.confirm || {};
+  const confirmEnabled = confirmConfig.enabled !== false;
+  const yesCenterX = centerX + (Number(yesConfig.offsetXVideoHeightRatio) || 0) * videoHeight;
+  const yesCenterY = centerY + (Number(yesConfig.offsetYVideoHeightRatio) || 0) * videoHeight;
+  const yesWidth = Math.max(0, (Number(yesConfig.widthVideoHeightRatio) || 0) * videoHeight);
+  const yesHeight = Math.max(0, (Number(yesConfig.heightVideoHeightRatio) || 0) * videoHeight);
+  const noCenterX = centerX + (Number(noConfig.offsetXVideoHeightRatio) || 0) * videoHeight;
+  const noCenterY = centerY + (Number(noConfig.offsetYVideoHeightRatio) || 0) * videoHeight;
+  const noWidth = Math.max(0, (Number(noConfig.widthVideoHeightRatio) || 0) * videoHeight);
+  const noHeight = Math.max(0, (Number(noConfig.heightVideoHeightRatio) || 0) * videoHeight);
+  const confirmCenterX = centerX + (Number(confirmConfig.offsetXVideoHeightRatio) || 0) * videoHeight;
+  const confirmCenterY = centerY + (Number(confirmConfig.offsetYVideoHeightRatio) || 0) * videoHeight;
+  const confirmWidth = Math.max(0, (Number(confirmConfig.widthVideoHeightRatio) || 0) * videoHeight);
+  const confirmHeight = Math.max(0, (Number(confirmConfig.heightVideoHeightRatio) || 0) * videoHeight);
+  const debugEnabled = debugConfig.enabled === true;
+  const debugStrokeColor = (
+    typeof debugConfig.strokeColor === 'string' && debugConfig.strokeColor.trim().length > 0
+  )
+    ? debugConfig.strokeColor.trim()
+    : 'rgba(255, 120, 120, 0.95)';
+  const debugLineWidthPx = Number.isFinite(Number(debugConfig.lineWidthPx))
+    ? Math.max(1, Number(debugConfig.lineWidthPx))
+    : 2;
+  const showConfirmButtonRect = debugConfig.showConfirmButtonRect !== false;
+  syncRsvpDebugRect(
+    rsvpNameDebugRect,
+    nameCenterX,
+    nameCenterY,
+    nameWidth,
+    nameHeight,
+    debugEnabled && debugConfig.showNameFieldRect !== false,
+    debugStrokeColor,
+    debugLineWidthPx,
+  );
+  syncRsvpDebugRect(
+    rsvpYesDebugRect,
+    yesCenterX,
+    yesCenterY,
+    yesWidth,
+    yesHeight,
+    debugEnabled && debugConfig.showButtonRects !== false,
+    debugStrokeColor,
+    debugLineWidthPx,
+  );
+  syncRsvpDebugRect(
+    rsvpNoDebugRect,
+    noCenterX,
+    noCenterY,
+    noWidth,
+    noHeight,
+    debugEnabled && debugConfig.showButtonRects !== false,
+    debugStrokeColor,
+    debugLineWidthPx,
+  );
+  syncRsvpDebugRect(
+    rsvpConfirmDebugRect,
+    confirmCenterX,
+    confirmCenterY,
+    confirmWidth,
+    confirmHeight,
+    debugEnabled && debugConfig.showButtonRects !== false && showConfirmButtonRect && confirmEnabled,
+    debugStrokeColor,
+    debugLineWidthPx,
+  );
+
+  rsvpYesButton.style.left = `${yesCenterX}px`;
+  rsvpYesButton.style.top = `${yesCenterY}px`;
+  rsvpYesButton.style.width = `${yesWidth}px`;
+  rsvpYesButton.style.height = `${yesHeight}px`;
+  rsvpNoButton.style.left = `${noCenterX}px`;
+  rsvpNoButton.style.top = `${noCenterY}px`;
+  rsvpNoButton.style.width = `${noWidth}px`;
+  rsvpNoButton.style.height = `${noHeight}px`;
+  rsvpConfirmButton.style.left = `${confirmCenterX}px`;
+  rsvpConfirmButton.style.top = `${confirmCenterY}px`;
+  rsvpConfirmButton.style.width = `${confirmWidth}px`;
+  rsvpConfirmButton.style.height = `${confirmHeight}px`;
+  rsvpYesButton.style.pointerEvents = 'auto';
+  rsvpNoButton.style.pointerEvents = 'auto';
+  rsvpConfirmButton.style.pointerEvents = confirmEnabled ? 'auto' : 'none';
+  rsvpConfirmButton.style.display = confirmEnabled ? 'block' : 'none';
+  rsvpNameInput.style.pointerEvents = 'auto';
+  rsvpNameInput.style.caretColor = nameFieldConfig.textColor || '#101010';
+  rsvpLayer.dataset.activeSectionId = activeSectionId;
+  rsvpLayer.dataset.rsvpTimestamp = Number.isFinite(nowMs) ? String(nowMs) : String(performance.now());
+  syncRsvpButtonVisualState(rsvpConfig, runtime);
+}
+
+function hideSection2ButtonLayer() {
+  section2ButtonLayer.style.display = 'none';
+  section2ButtonLayer.style.visibility = 'hidden';
+  section2ButtonLayer.style.pointerEvents = 'none';
+  section2ButtonLayer.setAttribute('aria-hidden', 'true');
+}
+
+function syncSection2ButtonLayer(nowMs = performance.now()) {
+  const swipeConfig = resolveSwipeSectionsConfig();
+  const sections = swipeConfig && Array.isArray(swipeConfig.sections) ? swipeConfig.sections : [];
+  const activeSectionId = resolveRsvpActiveSectionId(swipeConfig);
+  
+  if (!swipeConfig || !swipeConfig.enabled || sections.length === 0) {
+    hideSection2ButtonLayer();
+    return;
+  }
+  
+  if (!isSwipeSectionsNavigationActive(swipeConfig)) {
+    hideSection2ButtonLayer();
+    return;
+  }
+  
+  const section2 = sections.find(s => s.id === 'section-2');
+  if (!section2 || !section2.button || section2.button.enabled !== true) {
+    hideSection2ButtonLayer();
+    return;
+  }
+  
+  const shouldShow = activeSectionId.length > 0 && activeSectionId === 'section-2';
+  if (!shouldShow) {
+    hideSection2ButtonLayer();
+    return;
+  }
+  
+  const videoRect = getHeroVideoRenderedRect();
+  const videoHeight = (
+    videoRect
+    && Number.isFinite(videoRect.height)
+    && videoRect.height > 0
+  )
+    ? videoRect.height
+    : resolveHeroVideoRenderedHeightPx();
+  
+  if (!(videoHeight > 0)) {
+    hideSection2ButtonLayer();
+    return;
+  }
+  
+  const videoLeft = videoRect ? Number.isFinite(videoRect.left) ? videoRect.left : 0 : 0;
+  const videoTop = videoRect ? Number.isFinite(videoRect.top) ? videoRect.top : 0 : 0;
+  const centerX = videoLeft + videoRect.width * 0.5;
+  const centerY = videoTop + videoRect.height * 0.5;
+  
+  const buttonConfig = section2.button || {};
+  if (!buttonConfig.enabled) {
+    hideSection2ButtonLayer();
+    return;
+  }
+  const buttonCenterX = centerX + (Number(buttonConfig.offsetXVideoHeightRatio) || 0) * videoHeight;
+  const buttonCenterY = centerY + (Number(buttonConfig.offsetYVideoHeightRatio) || 0) * videoHeight;
+  const buttonWidth = Math.max(0, (Number(buttonConfig.widthVideoHeightRatio) || 0) * videoHeight);
+  const buttonHeight = Math.max(0, (Number(buttonConfig.heightVideoHeightRatio) || 0) * videoHeight);
+  
+  if (buttonWidth <= 0 || buttonHeight <= 0) {
+    hideSection2ButtonLayer();
+    return;
+  }
+  
+  const hasPng = typeof buttonConfig.pngSrc === 'string' && buttonConfig.pngSrc.trim().length > 0;
+  const buttonLabel = buttonConfig.text || 'View Location';
+  
+  section2ButtonLayer.style.display = 'block';
+  section2ButtonLayer.style.visibility = 'visible';
+  section2ButtonLayer.style.pointerEvents = 'none';
+  section2ButtonLayer.setAttribute('aria-hidden', 'false');
+  
+  section2Button.textContent = hasPng ? '' : buttonLabel;
+  section2Button.setAttribute('aria-label', buttonLabel);
+  section2Button.style.left = `${buttonCenterX}px`;
+  section2Button.style.top = `${buttonCenterY}px`;
+  section2Button.style.width = `${buttonWidth}px`;
+  section2Button.style.height = `${buttonHeight}px`;
+  section2Button.style.transform = 'translate(-50%, -50%)';
+  section2Button.style.backgroundColor = buttonConfig.backgroundColor || 'rgba(255, 255, 255, 0.9)';
+  section2Button.style.color = buttonConfig.textColor || '#1f1b17';
+  section2Button.style.fontSize = buttonConfig.fontSize || 'inherit';
+  section2Button.style.fontFamily = buttonConfig.fontFamily || 'inherit';
+  section2Button.style.fontWeight = String(buttonConfig.fontWeight || '500');
+  section2Button.style.border = 'none';
+  section2Button.style.borderRadius = '0';
+  section2Button.style.cursor = 'pointer';
+  section2Button.style.pointerEvents = 'auto';
+  section2Button.style.zIndex = '1000';
+  section2Button.style.padding = hasPng ? (buttonConfig.pngPadding || '0') : (buttonConfig.padding || '8px 16px');
+  section2Button.style.backgroundImage = hasPng ? `url("${buttonConfig.pngSrc}")` : 'none';
+  section2Button.style.backgroundRepeat = hasPng ? 'no-repeat' : '';
+  section2Button.style.backgroundPosition = hasPng ? 'center' : '';
+  section2Button.style.backgroundSize = hasPng ? (buttonConfig.pngFit || 'contain') : '';
+  
+  const debug = buttonConfig.debug || {};
+  if (debug.enabled) {
+    section2Button.style.outline = debug.outlineStyle || '2px dashed rgba(255, 20, 20, 0.9)';
+    section2Button.style.outlineOffset = debug.outlineOffset || '3px';
+  } else {
+    section2Button.style.outline = 'none';
+    section2Button.style.outlineOffset = '';
+  }
+  
+  const animation = buttonConfig.animation || {};
+  const transitionDurationMs = Number(animation.transitionDurationMs) || 150;
+  const transitionEasing = animation.transitionEasing || 'cubic-bezier(0.16, 1, 0.3, 1)';
+  section2Button.style.transition = `transform ${transitionDurationMs}ms ${transitionEasing}, background-color ${transitionDurationMs}ms ${transitionEasing}`;
+  
+  section2ButtonLayer.dataset.activeSectionId = activeSectionId;
+  section2ButtonLayer.dataset.buttonTimestamp = Number.isFinite(nowMs) ? String(nowMs) : String(performance.now());
+}
+
+const section1LabelFontState = {
+  activeFontKey: '',
+  entries: new Map(),
+};
+
+function ensureSection1LabelFontLoaded(labelConfig) {
+  const fontSourcePath = normalizeHostedAssetPath(
+    typeof labelConfig.fontSourcePath === 'string' ? labelConfig.fontSourcePath.trim() : '',
+  );
+  const fontFamily = (
+    typeof labelConfig.fontFamily === 'string' && labelConfig.fontFamily.trim().length > 0
+  )
+    ? labelConfig.fontFamily.trim()
+    : '';
+  if (fontSourcePath.length <= 0 || fontFamily.length <= 0 || typeof FontFace !== 'function' || !document.fonts) {
+    return;
+  }
+  const fontWeight = String(labelConfig.fontWeight || 'normal');
+  const fontStyle = (
+    typeof labelConfig.fontStyle === 'string' && labelConfig.fontStyle.trim().length > 0
+  )
+    ? labelConfig.fontStyle.trim()
+    : 'normal';
+  const fontKey = `${fontFamily}|${fontSourcePath}|${fontWeight}|${fontStyle}`;
+  section1LabelFontState.activeFontKey = fontKey;
+  const existing = section1LabelFontState.entries.get(fontKey);
+  if (existing && (existing.status === 'loaded' || existing.status === 'loading' || existing.status === 'failed')) {
+    return;
+  }
+  const entry = { status: 'loading' };
+  section1LabelFontState.entries.set(fontKey, entry);
+  new FontFace(fontFamily, `url("${fontSourcePath}")`, { weight: fontWeight, style: fontStyle })
+    .load()
+    .then((loadedFontFace) => {
+      document.fonts.add(loadedFontFace);
+      entry.status = 'loaded';
+      renderScene({ skipAutoStart: true });
+    })
+    .catch(() => {
+      entry.status = 'failed';
+    });
+}
+
+function resolveSection1DaysLeft() {
+  const target = new Date('2026-06-26T00:00:00');
+  const now = new Date();
+  const msLeft = target.getTime() - now.getTime();
+  return Math.max(0, Math.ceil(msLeft / (1000 * 60 * 60 * 24)));
+}
+
+function hideSection1LabelLayer() {
+  section1LabelLayer.style.display = 'none';
+  section1LabelLayer.style.visibility = 'hidden';
+  section1LabelLayer.style.pointerEvents = 'none';
+  section1LabelLayer.setAttribute('aria-hidden', 'true');
+}
+
+function syncSection1LabelLayer(nowMs = performance.now()) {
+  const swipeConfig = resolveSwipeSectionsConfig();
+  const sections = swipeConfig && Array.isArray(swipeConfig.sections) ? swipeConfig.sections : [];
+  const activeSectionId = resolveRsvpActiveSectionId(swipeConfig);
+
+  if (!swipeConfig || !swipeConfig.enabled || sections.length === 0) {
+    hideSection1LabelLayer();
+    return;
+  }
+  if (!isSwipeSectionsNavigationActive(swipeConfig)) {
+    hideSection1LabelLayer();
+    return;
+  }
+
+  const labelConfig = swipeConfig.section1Label || {};
+  if (labelConfig.enabled === false) {
+    hideSection1LabelLayer();
+    return;
+  }
+
+  const targetSectionId = (typeof labelConfig.sectionId === 'string' && labelConfig.sectionId.trim().length > 0)
+    ? labelConfig.sectionId.trim()
+    : 'section-1';
+  if (activeSectionId !== targetSectionId) {
+    hideSection1LabelLayer();
+    return;
+  }
+
+  const videoRect = getHeroVideoRenderedRect();
+  const videoHeight = (
+    videoRect
+    && Number.isFinite(videoRect.height)
+    && videoRect.height > 0
+  )
+    ? videoRect.height
+    : resolveHeroVideoRenderedHeightPx();
+
+  if (!(videoHeight > 0)) {
+    hideSection1LabelLayer();
+    return;
+  }
+
+  const videoLeft = videoRect ? (Number.isFinite(videoRect.left) ? videoRect.left : 0) : 0;
+  const videoTop = videoRect ? (Number.isFinite(videoRect.top) ? videoRect.top : 0) : 0;
+  const centerX = videoLeft + videoRect.width * 0.5;
+  const centerY = videoTop + videoRect.height * 0.5;
+  const labelCenterX = centerX + (Number(labelConfig.offsetXVideoHeightRatio) || 0) * videoHeight;
+  const labelCenterY = centerY + (Number(labelConfig.offsetYVideoHeightRatio) || 0) * videoHeight;
+  const labelWidth = Math.max(0, (Number(labelConfig.widthVideoHeightRatio) || 0) * videoHeight);
+  const fontSize = Math.max(0, (Number(labelConfig.fontSizeVideoHeightRatio) || 0) * videoHeight);
+  const daysLeft = resolveSection1DaysLeft();
+  const labelText = `Save the date,\nonly ${daysLeft} days left!`;
+
+  ensureSection1LabelFontLoaded(labelConfig);
+
+  section1LabelLayer.style.display = 'block';
+  section1LabelLayer.style.visibility = 'visible';
+  section1LabelLayer.style.pointerEvents = 'none';
+  section1LabelLayer.setAttribute('aria-hidden', 'true');
+
+  section1LabelEl.textContent = labelText;
+  section1LabelEl.style.left = `${labelCenterX}px`;
+  section1LabelEl.style.top = `${labelCenterY}px`;
+  section1LabelEl.style.width = `${labelWidth}px`;
+  section1LabelEl.style.transform = 'translate(-50%, -50%)';
+  section1LabelEl.style.fontFamily = labelConfig.fontFamily || 'inherit';
+  section1LabelEl.style.fontWeight = String(labelConfig.fontWeight || 'normal');
+  section1LabelEl.style.fontStyle = labelConfig.fontStyle || 'normal';
+  section1LabelEl.style.fontSize = `${fontSize}px`;
+  section1LabelEl.style.color = labelConfig.textColor || '#1f1b17';
+  section1LabelEl.style.textAlign = labelConfig.textAlign || 'center';
+  section1LabelEl.style.lineHeight = String(labelConfig.lineHeight || 1.45);
+  section1LabelEl.style.whiteSpace = 'pre-line';
+  section1LabelEl.style.pointerEvents = 'none';
+  section1LabelEl.style.userSelect = 'none';
+}
+
+function onSection2ButtonHoverEnter() {
+  const section2 = getSection2Config();
+  if (!section2 || !section2.button || !section2.button.animation) {
+    return;
+  }
+  const hoverScale = Number(section2.button.animation.hoverScale) || 1.08;
+  section2Button.style.transform = `translate(-50%, -50%) scale(${hoverScale})`;
+}
+
+function onSection2ButtonHoverLeave() {
+  section2Button.style.transform = 'translate(-50%, -50%) scale(1)';
+}
+
+function onSection2ButtonClick(event) {
+  event.preventDefault();
+  event.stopPropagation();
+  
+  // Add click animation for mobile devices
+  section2Button.classList.add('clicked');
+  setTimeout(() => {
+    section2Button.classList.remove('clicked');
+  }, 2000);
+  
+  const section2 = getSection2Config();
+  if (section2 && section2.button && section2.button.link) {
+    window.open(section2.button.link, '_blank', 'noopener,noreferrer');
+  }
+}
+
+function getSection2Config() {
+  const swipeConfig = resolveSwipeSectionsConfig();
+  const sections = swipeConfig && Array.isArray(swipeConfig.sections) ? swipeConfig.sections : [];
+  return sections.find(s => s.id === 'section-2') || null;
+}
+
+function onRsvpNameInputEvent() {
+  const swipeConfig = resolveSwipeSectionsConfig();
+  const rsvpConfig = swipeConfig && swipeConfig.rsvp ? swipeConfig.rsvp : null;
+  const maxLength = rsvpConfig && rsvpConfig.nameField ? rsvpConfig.nameField.maxLength : 120;
+  const nextName = toRsvpNameTitleCase(normalizeRsvpNameValue(rsvpNameInput.value || '', maxLength));
+  if (nextName !== rsvpNameInput.value) {
+    rsvpNameInput.value = nextName;
+  }
+  setRsvpStatePatch({ name: nextName });
+}
+
+function onRsvpNameInputFocus() {
+  // No action needed on focus; iOS Safari handles zoom automatically
+}
+
+function onRsvpNameInputBlur() {
+  // iOS Safari leaves the page scrolled when the keyboard dismisses,
+  // leaving a white bar at the bottom. Force scroll reset after keyboard animation.
+  if (window && typeof window.setTimeout === 'function') {
+    window.setTimeout(() => {
+      if (window && typeof window.scrollTo === 'function') {
+        window.scrollTo(0, 0);
+      }
+      runCoalescedViewportResync('rsvp-input-blur');
+    }, 150);
+  }
+}
+
+function onRsvpButtonHoverEvent(event, isEntering) {
+  const target = event && event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+  if (!target) {
+    return;
+  }
+  const response = sanitizeRsvpResponseValue(target.dataset.rsvpResponse, null);
+  const runtime = getSwipeSectionsRsvpRuntimeState();
+  if (!runtime) {
+    return;
+  }
+  runtime.hoverResponse = isEntering ? (response || '') : '';
+  syncRsvpButtonVisualState(resolveSwipeSectionsConfig().rsvp, runtime);
+}
+
+function onRsvpButtonClick(event) {
+  if (event && event.cancelable === true) {
+    event.preventDefault();
+  }
+  const target = event && event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+  if (!target) {
+    return;
+  }
+  const response = sanitizeRsvpResponseValue(target.dataset.rsvpResponse, null);
+  if (!response) {
+    return;
+  }
+  setRsvpStatePatch({ response });
+}
+
+function onRsvpConfirmButtonClick(event) {
+  if (event && event.cancelable === true) {
+    event.preventDefault();
+  }
+  const swipeConfig = resolveSwipeSectionsConfig();
+  const rsvpConfig = swipeConfig && swipeConfig.rsvp ? swipeConfig.rsvp : null;
+  const confirmConfig = rsvpConfig && rsvpConfig.buttons ? rsvpConfig.buttons.confirm : null;
+  const runtime = getSwipeSectionsRsvpRuntimeState();
+
+  if (!confirmConfig || confirmConfig.enabled === false) {
+    return;
+  }
+
+  const submittedName = runtime ? runtime.name : '';
+
+  if (!submittedName || submittedName.trim() === '') {
+    return;
+  }
+
+  setRsvpStatePatch({ confirmPressed: true });
+  const submittedRsvp = runtime ? sanitizeRsvpResponseValue(runtime.response, null) : null;
+
+  const onSubmit = typeof confirmConfig.onSubmit === 'function' ? confirmConfig.onSubmit : null;
+  if (onSubmit) {
+    onSubmit({
+      name: submittedName,
+      rsvp: submittedRsvp,
+      response: submittedRsvp,
+    });
+  }
+
+  const appsScriptConfig = confirmConfig.appsScript;
+  if (
+    appsScriptConfig
+    && appsScriptConfig.enabled !== false
+    && typeof appsScriptConfig.webAppUrl === 'string'
+    && appsScriptConfig.webAppUrl.length > 0
+  ) {
+    const appsScriptPayload = {
+      name: submittedName,
+      rsvp: submittedRsvp,
+      ...(appsScriptConfig.payload || {}),
+    };
+    fetch(appsScriptConfig.webAppUrl, {
+      method: appsScriptConfig.method || 'POST',
+      mode: appsScriptConfig.mode || 'no-cors',
+      headers: appsScriptConfig.headers || { 'Content-Type': 'application/json' },
+      body: JSON.stringify(appsScriptPayload),
+    }).catch(() => {});
+  }
+
+  if (confirmConfig.submitUrl) {
+    const method = confirmConfig.submitMethod || 'POST';
+    const headers = confirmConfig.submitHeaders || { 'Content-Type': 'application/json' };
+    const payload = {
+      name: submittedName,
+      rsvp: submittedRsvp,
+      response: submittedRsvp,
+      ...(confirmConfig.submitPayload || {}),
+    };
+
+    fetch(confirmConfig.submitUrl, {
+      method,
+      headers,
+      body: JSON.stringify(payload),
+    }).catch(() => {});
+  }
+}
+
+function setupRsvpLayerEventHandlers() {
+  rsvpNameInput.addEventListener('input', onRsvpNameInputEvent);
+  rsvpNameInput.addEventListener('change', onRsvpNameInputEvent);
+  rsvpNameInput.addEventListener('focus', onRsvpNameInputFocus);
+  rsvpNameInput.addEventListener('blur', onRsvpNameInputBlur);
+  rsvpYesButton.addEventListener('mouseenter', (event) => onRsvpButtonHoverEvent(event, true));
+  rsvpYesButton.addEventListener('mouseleave', (event) => onRsvpButtonHoverEvent(event, false));
+  rsvpNoButton.addEventListener('mouseenter', (event) => onRsvpButtonHoverEvent(event, true));
+  rsvpNoButton.addEventListener('mouseleave', (event) => onRsvpButtonHoverEvent(event, false));
+  rsvpConfirmButton.addEventListener('mouseenter', (event) => onRsvpButtonHoverEvent(event, true));
+  rsvpConfirmButton.addEventListener('mouseleave', (event) => onRsvpButtonHoverEvent(event, false));
+  rsvpYesButton.addEventListener('focus', (event) => onRsvpButtonHoverEvent(event, true));
+  rsvpYesButton.addEventListener('blur', (event) => onRsvpButtonHoverEvent(event, false));
+  rsvpNoButton.addEventListener('focus', (event) => onRsvpButtonHoverEvent(event, true));
+  rsvpNoButton.addEventListener('blur', (event) => onRsvpButtonHoverEvent(event, false));
+  rsvpConfirmButton.addEventListener('focus', (event) => onRsvpButtonHoverEvent(event, true));
+  rsvpConfirmButton.addEventListener('blur', (event) => onRsvpButtonHoverEvent(event, false));
+  rsvpYesButton.addEventListener('click', onRsvpButtonClick);
+  rsvpNoButton.addEventListener('click', onRsvpButtonClick);
+  rsvpConfirmButton.addEventListener('click', onRsvpConfirmButtonClick);
+}
+
+function shouldRenderOpenButtonArrowLive(gateConfig = resolveHeroPlaybackGateConfig()) {
+  if (!gateConfig || gateConfig.enabled !== true) {
+    return false;
+  }
+  const arrowConfig = gateConfig.openButtonArrow;
+  if (!arrowConfig || arrowConfig.enabled !== true) {
+    return false;
+  }
+  const stage = STATE.heroPlaybackGate ? STATE.heroPlaybackGate.stage : 'idle';
+  return (
+    stage === 'introPlaying'
+    || stage === 'waitingForOpenButton'
+    || stage === 'postOpenButtonPlaying'
+  );
+}
+
+function shouldArrowBeVisibleAtFrame(currentFrame, gateConfig = resolveHeroPlaybackGateConfig()) {
+  if (!shouldRenderOpenButtonArrowLive(gateConfig)) {
+    return false;
+  }
+  const arrowConfig = gateConfig && gateConfig.openButtonArrow ? gateConfig.openButtonArrow : null;
+  if (!arrowConfig || arrowConfig.enabled !== true) {
+    return false;
+  }
+  if (!Number.isFinite(currentFrame)) {
+    return false;
+  }
+  return currentFrame >= arrowConfig.appearAfterFrame;
+}
+
+function shouldArrowBeDrawnAtTime(
+  currentFrame,
+  nowMs = performance.now(),
+  gateConfig = resolveHeroPlaybackGateConfig(),
+) {
+  if (!shouldArrowBeVisibleAtFrame(currentFrame, gateConfig)) {
+    return false;
+  }
+  const gateState = STATE.heroPlaybackGate;
+  const arrowConfig = gateConfig && gateConfig.openButtonArrow ? gateConfig.openButtonArrow : null;
+  if (!gateState || !arrowConfig) {
+    return false;
+  }
+  if (
+    arrowConfig.fadeOutAfterOpenButtonClick === true
+    && Number.isFinite(gateState.openButtonClickedAtMs)
+  ) {
+    const fadeDurationSec = Number.isFinite(Number(arrowConfig.fadeOutDurationSec))
+      ? Math.max(0, Number(arrowConfig.fadeOutDurationSec))
+      : 0.45;
+    if (fadeDurationSec <= 1e-6) {
+      return false;
+    }
+    const elapsedSec = Math.max(0, (nowMs - gateState.openButtonClickedAtMs) / 1000);
+    if (elapsedSec >= fadeDurationSec) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function maybeRenderHeroPlaybackGateVisuals(
+  currentFrame,
+  gateConfig = resolveHeroPlaybackGateConfig(),
+  nowMs = performance.now(),
+) {
+  const gateState = STATE.heroPlaybackGate;
+  if (!gateState || !gateConfig || gateConfig.enabled !== true) {
+    return;
+  }
+  if (STATE.branchGrowth.running) {
+    // Branch-growth loop already drives frequent renders; avoid duplicate render requests.
+    return;
+  }
+  const stage = gateState.stage;
+  const stageIsVideoPlaying = (
+    stage === 'introPlaying'
+    || stage === 'postOpenButtonPlaying'
+  );
+  if (stageIsVideoPlaying) {
+    renderScene({ skipAutoStart: true, timestampMs: nowMs });
+    gateState.openButtonArrowRenderedPresence = shouldArrowBeDrawnAtTime(currentFrame, nowMs, gateConfig);
+    gateState.openButtonArrowLastRenderMs = nowMs;
+    return;
+  }
+  const drawnNow = shouldArrowBeDrawnAtTime(currentFrame, nowMs, gateConfig);
+  const wasDrawn = gateState.openButtonArrowRenderedPresence === true;
+  if (!drawnNow && !wasDrawn) {
+    return;
+  }
+  renderScene({ skipAutoStart: true, timestampMs: nowMs });
+  gateState.openButtonArrowRenderedPresence = drawnNow;
+  gateState.openButtonArrowLastRenderMs = nowMs;
+}
+
+function resolveHeroPlaybackOpenButtonHitCircle(gateConfig = resolveHeroPlaybackGateConfig()) {
+  const rect = getHeroVideoRenderedRect();
+  if (!rect || !gateConfig || !gateConfig.openButton) {
+    return null;
+  }
+  const buttonConfig = gateConfig.openButton;
+  const videoSizePx = Math.min(rect.width, rect.height);
+  if (!Number.isFinite(videoSizePx) || videoSizePx <= 0) {
+    return null;
+  }
+  const baseDiameterPx = videoSizePx * buttonConfig.diameterRatio;
+  const expandedDiameterPx = baseDiameterPx * (1 + buttonConfig.hitMarginPercentOfButtonSize / 100);
+  const baseRadiusPx = Math.max(0, baseDiameterPx * 0.5);
+  const radiusPx = Math.max(0, expandedDiameterPx * 0.5);
+  const centerX = rect.left + (rect.width * buttonConfig.centerXRatio);
+  const centerY = rect.top + (rect.height * buttonConfig.centerYRatio);
+  return {
+    centerX,
+    centerY,
+    baseRadiusPx,
+    radiusPx,
+    videoSizePx,
+  };
+}
+
+function isPointInsideHeroPlaybackOpenButton(clientX, clientY, gateConfig = resolveHeroPlaybackGateConfig()) {
+  if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) {
+    return false;
+  }
+  const hitCircle = resolveHeroPlaybackOpenButtonHitCircle(gateConfig);
+  if (!hitCircle || hitCircle.radiusPx <= 0) {
+    return false;
+  }
+  const dx = clientX - hitCircle.centerX;
+  const dy = clientY - hitCircle.centerY;
+  return (dx * dx + dy * dy) <= (hitCircle.radiusPx * hitCircle.radiusPx);
+}
+
+function resolveHeroPlaybackWiggleButtonHitRect(gateConfig = resolveHeroPlaybackGateConfig()) {
+  const rect = getHeroVideoRenderedRect();
+  if (!rect || !gateConfig || !gateConfig.wiggleButton || gateConfig.wiggleButton.enabled !== true) {
+    return null;
+  }
+  const buttonConfig = gateConfig.wiggleButton;
+  const videoSizePx = Math.min(rect.width, rect.height);
+  if (!Number.isFinite(videoSizePx) || videoSizePx <= 0) {
+    return null;
+  }
+  const widthPx = Math.max(0, videoSizePx * buttonConfig.sizeXRatio);
+  const heightPx = Math.max(0, videoSizePx * buttonConfig.sizeYRatio);
+  if (widthPx <= 1e-6 || heightPx <= 1e-6) {
+    return null;
+  }
+  const centerX = rect.left + (rect.width * buttonConfig.centerXRatio);
+  const centerY = rect.top + (rect.height * buttonConfig.centerYRatio);
+  const left = centerX - widthPx * 0.5;
+  const top = centerY - heightPx * 0.5;
+  return {
+    centerX,
+    centerY,
+    widthPx,
+    heightPx,
+    left,
+    top,
+    right: left + widthPx,
+    bottom: top + heightPx,
+  };
+}
+
+function isPointInsideHeroPlaybackWiggleButton(clientX, clientY, gateConfig = resolveHeroPlaybackGateConfig()) {
+  if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) {
+    return false;
+  }
+  const hitRect = resolveHeroPlaybackWiggleButtonHitRect(gateConfig);
+  if (!hitRect) {
+    return false;
+  }
+  return (
+    clientX >= hitRect.left
+    && clientX <= hitRect.right
+    && clientY >= hitRect.top
+    && clientY <= hitRect.bottom
+  );
+}
+
+function setHeroVideoWiggleRotationDeg(angleDeg = 0) {
+  if (!video || !video.style) {
+    return;
+  }
+  const safeAngle = Number.isFinite(angleDeg) ? angleDeg : 0;
+  video.style.setProperty('--hero-video-rotate', `${safeAngle}deg`);
+}
+
+function resolveHeroVideoWiggleAnchorRatios(gateConfig = resolveHeroPlaybackGateConfig()) {
+  const openButton = gateConfig && gateConfig.openButton ? gateConfig.openButton : null;
+  const wiggleConfig = gateConfig && gateConfig.videoWiggle ? gateConfig.videoWiggle : null;
+  const baseX = openButton && Number.isFinite(Number(openButton.centerXRatio))
+    ? Number(openButton.centerXRatio)
+    : 0.5;
+  const baseY = openButton && Number.isFinite(Number(openButton.centerYRatio))
+    ? Number(openButton.centerYRatio)
+    : 0.5;
+  const offsetX = wiggleConfig && Number.isFinite(Number(wiggleConfig.anchorOffsetXRatio))
+    ? Number(wiggleConfig.anchorOffsetXRatio)
+    : 0;
+  const offsetY = wiggleConfig && Number.isFinite(Number(wiggleConfig.anchorOffsetYRatio))
+    ? Number(wiggleConfig.anchorOffsetYRatio)
+    : 0;
+  return {
+    xRatio: baseX + offsetX,
+    yRatio: baseY + offsetY,
+  };
+}
+
+function applyHeroVideoWiggleAnchor(gateConfig = resolveHeroPlaybackGateConfig()) {
+  if (!video || !video.style) {
+    return;
+  }
+  const anchor = resolveHeroVideoWiggleAnchorRatios(gateConfig);
+  video.style.transformOrigin = `${anchor.xRatio * 100}% ${anchor.yRatio * 100}%`;
+}
+
+function stopHeroVideoWiggle(options = null) {
+  const safeOptions = isPlainObjectLiteral(options) ? options : {};
+  const resetRotation = safeOptions.resetRotation !== false;
+  const gateState = STATE.heroPlaybackGate;
+  if (!gateState) {
+    return;
+  }
+  if (Number.isFinite(gateState.videoWiggleRafId) && gateState.videoWiggleRafId !== null) {
+    cancelAnimationFrame(gateState.videoWiggleRafId);
+    gateState.videoWiggleRafId = null;
+  }
+  if (Number.isFinite(gateState.videoWiggleDelayTimerId) && gateState.videoWiggleDelayTimerId !== null) {
+    clearTimeout(gateState.videoWiggleDelayTimerId);
+    gateState.videoWiggleDelayTimerId = null;
+  }
+  gateState.videoWiggleActive = false;
+  if (resetRotation) {
+    setHeroVideoWiggleRotationDeg(0);
+  }
+}
+
+function runHeroVideoWiggleFromConfig(
+  gateConfig = resolveHeroPlaybackGateConfig(),
+  options = null,
+) {
+  const gateState = STATE.heroPlaybackGate;
+  if (!gateState || !gateConfig || gateConfig.enabled !== true) {
+    return;
+  }
+  const safeOptions = isPlainObjectLiteral(options) ? options : {};
+  const wiggleConfig = gateConfig.videoWiggle;
+  if (!wiggleConfig || wiggleConfig.enabled !== true) {
+    return;
+  }
+  const requireWaitingStage = safeOptions.requireWaitingStage === true;
+  const useConfiguredDelay = safeOptions.useConfiguredDelay === true;
+  stopHeroVideoWiggle({ resetRotation: true });
+  applyHeroVideoWiggleAnchor(gateConfig);
+  const maxAngleDeg = Number.isFinite(Number(wiggleConfig.maxAngleDeg))
+    ? Math.max(0, Number(wiggleConfig.maxAngleDeg))
+    : 0;
+  const durationMs = Number.isFinite(Number(wiggleConfig.durationMs))
+    ? Math.max(0, Number(wiggleConfig.durationMs))
+    : 0;
+  const speedHz = Number.isFinite(Number(wiggleConfig.speedHz))
+    ? Math.max(0, Number(wiggleConfig.speedHz))
+    : 0;
+  const dampingStrength = Number.isFinite(Number(wiggleConfig.dampingStrength))
+    ? Math.max(0, Number(wiggleConfig.dampingStrength))
+    : 0;
+  const delayMsRaw = useConfiguredDelay
+    ? (
+      Number.isFinite(Number(wiggleConfig.delayAfterIntroPauseMs))
+        ? Number(wiggleConfig.delayAfterIntroPauseMs)
+        : 0
+    )
+    : 0;
+  const delayMs = Math.max(0, delayMsRaw);
+  const initialElapsedMs = delayMsRaw < 0 ? Math.abs(delayMsRaw) : 0;
+  if (maxAngleDeg <= 1e-6 || durationMs <= 1e-6 || speedHz <= 1e-6) {
+    return;
+  }
+
+  const durationSec = Math.max(1e-6, durationMs / 1000);
+  const beginWiggle = () => {
+    gateState.videoWiggleDelayTimerId = null;
+    if (requireWaitingStage && gateState.stage !== 'waitingForOpenButton') {
+      // User may have clicked the open button before delayed wiggle start.
+      stopHeroVideoWiggle({ resetRotation: true });
+      return;
+    }
+    gateState.videoWiggleActive = true;
+    let startedAtMs = null;
+
+    const step = (nowMs) => {
+      gateState.videoWiggleRafId = null;
+      if (!gateState.videoWiggleActive) {
+        return;
+      }
+      if (requireWaitingStage && gateState.stage !== 'waitingForOpenButton') {
+        stopHeroVideoWiggle({ resetRotation: true });
+        return;
+      }
+      if (!Number.isFinite(startedAtMs)) {
+        startedAtMs = nowMs - initialElapsedMs;
+      }
+      const elapsedMs = Math.max(0, nowMs - startedAtMs);
+      const elapsedSec = elapsedMs / 1000;
+      const progress = clamp(elapsedSec / durationSec, 0, 1);
+      const envelope = Math.exp(-dampingStrength * elapsedSec) * (1 - progress);
+      const phase = elapsedSec * speedHz * Math.PI * 2;
+      const angleDeg = maxAngleDeg * envelope * Math.sin(phase);
+      setHeroVideoWiggleRotationDeg(angleDeg);
+
+      if (progress >= 1) {
+        stopHeroVideoWiggle({ resetRotation: true });
+        return;
+      }
+      gateState.videoWiggleRafId = requestAnimationFrame(step);
+    };
+
+    gateState.videoWiggleRafId = requestAnimationFrame(step);
+  };
+
+  if (delayMs <= 1e-6) {
+    beginWiggle();
+    return;
+  }
+  gateState.videoWiggleDelayTimerId = window.setTimeout(beginWiggle, delayMs);
+}
+
+function startHeroVideoWiggleAfterIntroPause(gateConfig = resolveHeroPlaybackGateConfig()) {
+  runHeroVideoWiggleFromConfig(gateConfig, {
+    requireWaitingStage: true,
+    useConfiguredDelay: true,
+  });
+}
+
+function triggerHeroVideoWiggleFromButton(gateConfig = resolveHeroPlaybackGateConfig()) {
+  runHeroVideoWiggleFromConfig(gateConfig, {
+    requireWaitingStage: false,
+    useConfiguredDelay: false,
+  });
+}
+
+// Backward-compat wrappers for any existing internal/external references.
+function resolveHeroPlaybackButtonHitCircle(gateConfig = resolveHeroPlaybackGateConfig()) {
+  return resolveHeroPlaybackOpenButtonHitCircle(gateConfig);
+}
+
+function isPointInsideHeroPlaybackButton(clientX, clientY, gateConfig = resolveHeroPlaybackGateConfig()) {
+  return isPointInsideHeroPlaybackOpenButton(clientX, clientY, gateConfig);
+}
+
+function resolveHeroPlaybackWiggleButtonHitBounds(gateConfig = resolveHeroPlaybackGateConfig()) {
+  return resolveHeroPlaybackWiggleButtonHitRect(gateConfig);
+}
+
+function cancelHeroPlaybackGateStartDelay() {
+  const gateState = STATE.heroPlaybackGate;
+  if (!gateState) {
+    return;
+  }
+  if (gateState.startAfterSplashDelayTimerId !== null) {
+    clearTimeout(gateState.startAfterSplashDelayTimerId);
+    gateState.startAfterSplashDelayTimerId = null;
+  }
+  gateState.pendingStartAfterSplashDelay = false;
+}
+
+function cancelHeroPlaybackGateMonitor() {
+  const gateState = STATE.heroPlaybackGate;
+  if (!gateState) {
+    return;
+  }
+  if (Number.isFinite(gateState.monitorRafId) && gateState.monitorRafId !== null) {
+    cancelAnimationFrame(gateState.monitorRafId);
+    gateState.monitorRafId = null;
+  }
+  if (
+    Number.isFinite(gateState.monitorVideoFrameCallbackId)
+    && gateState.monitorVideoFrameCallbackId !== null
+    && video
+    && typeof video.cancelVideoFrameCallback === 'function'
+  ) {
+    try {
+      video.cancelVideoFrameCallback(gateState.monitorVideoFrameCallbackId);
+    } catch (_error) {
+      // Ignore callback-cancel exceptions on browser-specific implementations.
+    }
+    gateState.monitorVideoFrameCallbackId = null;
+  }
+}
+
+function maybeStartGrowthAnimationFromHeroVideoFrame(currentFrame, gateConfig = resolveHeroPlaybackGateConfig()) {
+  const gateState = STATE.heroPlaybackGate;
+  if (!gateConfig || gateConfig.enabled !== true || !gateState || gateState.growthStarted === true) {
+    return;
+  }
+  if (gateState.growthAnimationEnabledByConfig !== true) {
+    return;
+  }
+  if (Number.isFinite(currentFrame) && currentFrame >= gateConfig.growthStartFrame) {
+    gateState.growthFrameReached = true;
+  }
+  if (gateState.growthFrameReached !== true) {
+    return;
+  }
+  if (!isFoliageReadyForGrowth()) {
+    return;
+  }
+  gateState.growthStarted = true;
+  if (CONFIG.branchGrowth.enabled !== true) {
+    return;
+  }
+  startBranchAnimation({ restart: true });
+}
+
+function enforceHeroPlaybackGatePauseFrames(
+  currentFrame = getCurrentHeroVideoFrame(resolveHeroPlaybackGateConfig()),
+  gateConfig = resolveHeroPlaybackGateConfig(),
+  options = null,
+) {
+  const safeOptions = isPlainObjectLiteral(options) ? options : {};
+  const rerenderOnPause = safeOptions.rerenderOnPause !== false;
+  const gateState = STATE.heroPlaybackGate;
+  if (!gateState || !gateConfig || gateConfig.enabled !== true) {
+    return false;
+  }
+  if (!Number.isFinite(currentFrame)) {
+    return false;
+  }
+
+  const pauseGuardFrames = Number.isFinite(Number(gateConfig.pauseGuardFrames))
+    ? Math.max(0, Number(gateConfig.pauseGuardFrames))
+    : 0;
+  const pauseTargetFrame = getHeroGatePauseTargetFrame(gateState.stage, gateConfig);
+  if (!Number.isFinite(pauseTargetFrame)) {
+    return false;
+  }
+  const pauseThresholdFrame = pauseTargetFrame - pauseGuardFrames;
+  if (currentFrame < pauseThresholdFrame) {
+    return false;
+  }
+
+  if (gateState.stage === 'introPlaying') {
+    video.pause();
+    lockHeroVideoToFrame(pauseTargetFrame, gateConfig);
+    gateState.stage = 'waitingForOpenButton';
+    startHeroVideoWiggleAfterIntroPause(gateConfig);
+    if (rerenderOnPause) {
+      renderScene({ skipAutoStart: true });
+    }
+    return true;
+  }
+
+  if (gateState.stage === 'postOpenButtonPlaying') {
+    video.pause();
+    lockHeroVideoToFrame(pauseTargetFrame, gateConfig);
+    gateState.stage = 'postOpenButtonPaused';
+    stopHeroVideoWiggle({ resetRotation: true });
+    if (rerenderOnPause) {
+      renderScene({ skipAutoStart: true });
+    }
+    return true;
+  }
+
+  return false;
+}
+
+function shouldUseVideoFrameCallbackForHeroGate(gateConfig = resolveHeroPlaybackGateConfig()) {
+  return Boolean(
+    gateConfig
+    && gateConfig.monitorUseVideoFrameCallback === true
+    && video
+    && typeof video.requestVideoFrameCallback === 'function'
+    && typeof video.cancelVideoFrameCallback === 'function',
+  );
+}
+
+function runHeroPlaybackGateMonitorStep(
+  currentFrame = getCurrentHeroVideoFrame(resolveHeroPlaybackGateConfig()),
+  nowMs = performance.now(),
+) {
+  const gateState = STATE.heroPlaybackGate;
+  if (!gateState) {
+    return;
+  }
+
+  const gateConfig = resolveHeroPlaybackGateConfig();
+  if (gateConfig.enabled !== true) {
+    return;
+  }
+
+  maybeStartGrowthAnimationFromHeroVideoFrame(currentFrame, gateConfig);
+  if (enforceHeroPlaybackGatePauseFrames(currentFrame, gateConfig)) {
+    return;
+  }
+
+  checkAndTriggerMasterSounds(currentFrame);
+
+  maybeRenderHeroPlaybackGateVisuals(currentFrame, gateConfig, nowMs);
+
+  if (video && video.paused !== true) {
+    ensureHeroPlaybackGateMonitorRunning();
+  }
+}
+
+function stepHeroPlaybackGateMonitorRaf() {
+  const gateState = STATE.heroPlaybackGate;
+  if (!gateState) {
+    return;
+  }
+  gateState.monitorRafId = null;
+  const gateConfig = resolveHeroPlaybackGateConfig();
+  const currentFrame = getCurrentHeroVideoFrame(gateConfig);
+  runHeroPlaybackGateMonitorStep(currentFrame, performance.now());
+}
+
+function stepHeroPlaybackGateMonitorVideoFrame(_nowMs, metadata) {
+  const gateState = STATE.heroPlaybackGate;
+  if (!gateState) {
+    return;
+  }
+  gateState.monitorVideoFrameCallbackId = null;
+  const gateConfig = resolveHeroPlaybackGateConfig();
+  const frameRate = Number.isFinite(Number(gateConfig.frameRate))
+    ? Math.max(1, Number(gateConfig.frameRate))
+    : 30;
+  const metadataTimeSec = metadata && Number.isFinite(Number(metadata.mediaTime))
+    ? Math.max(0, Number(metadata.mediaTime))
+    : null;
+  const currentFrame = metadataTimeSec !== null
+    ? metadataTimeSec * frameRate
+    : getCurrentHeroVideoFrame(gateConfig);
+  runHeroPlaybackGateMonitorStep(currentFrame, performance.now());
+}
+
+function onHeroVideoTimeUpdate() {
+  const gateConfig = resolveHeroPlaybackGateConfig();
+  if (!gateConfig || gateConfig.enabled !== true) {
+    return;
+  }
+  const currentFrame = getCurrentHeroVideoFrame(gateConfig);
+  maybeStartGrowthAnimationFromHeroVideoFrame(currentFrame, gateConfig);
+  enforceHeroPlaybackGatePauseFrames(currentFrame, gateConfig);
+  maybeRenderHeroPlaybackGateVisuals(currentFrame, gateConfig, performance.now());
+  if (video && video.paused !== true) {
+    ensureHeroPlaybackGateMonitorRunning();
+  }
+}
+
+function ensureHeroPlaybackGateMonitorRunning() {
+  const gateState = STATE.heroPlaybackGate;
+  if (!gateState || !video || video.paused === true) {
+    return;
+  }
+  if (
+    gateState.monitorRafId !== null
+    || gateState.monitorVideoFrameCallbackId !== null
+  ) {
+    return;
+  }
+  const gateConfig = resolveHeroPlaybackGateConfig();
+  if (shouldUseVideoFrameCallbackForHeroGate(gateConfig)) {
+    gateState.monitorVideoFrameCallbackId = video.requestVideoFrameCallback(stepHeroPlaybackGateMonitorVideoFrame);
+    return;
+  }
+  gateState.monitorRafId = requestAnimationFrame(stepHeroPlaybackGateMonitorRaf);
+}
+
+function tryResumeHeroVideoPlaybackFromUserGesture(event) {
+  const gateConfig = resolveHeroPlaybackGateConfig();
+  const gateState = STATE.heroPlaybackGate;
+  if (!gateConfig || gateConfig.enabled !== true || !gateState) {
+    return false;
+  }
+  if (gateState.awaitingUserPlaybackStart !== true) {
+    return false;
+  }
+  gateState.awaitingUserPlaybackStart = false;
+  gateState.stage = 'introPlaying';
+  video.defaultMuted = false;
+  video.muted = false;
+  video.removeAttribute('muted');
+  const playbackPromise = video.play();
+  if (playbackPromise && typeof playbackPromise.catch === 'function') {
+    playbackPromise.catch(() => {
+      gateState.awaitingUserPlaybackStart = true;
+      renderScene({ skipAutoStart: true });
+    });
+  }
+  ensureHeroPlaybackGateMonitorRunning();
+  renderScene({ skipAutoStart: true });
+  if (event && typeof event.preventDefault === 'function') {
+    event.preventDefault();
+  }
+  return true;
+}
+
+function tryHandleHeroPlaybackOpenButtonClick(event) {
+  const gateConfig = resolveHeroPlaybackGateConfig();
+  if (gateConfig.enabled !== true) {
+    return false;
+  }
+  const gateState = STATE.heroPlaybackGate;
+  if (gateState && gateState.awaitingUserPlaybackStart === true) {
+    return false;
+  }
+  const stageAllowsOpen = gateState && (
+    gateState.stage === 'waitingForOpenButton'
+    || gateState.stage === 'introPlaying'
+  );
+  if (!stageAllowsOpen) {
+    return false;
+  }
+  const currentFrame = getCurrentHeroVideoFrame(gateConfig);
+  if (!isHeroPlaybackOpenButtonEnabledAtFrame(currentFrame, gateConfig)) {
+    return false;
+  }
+  const clientPoint = extractPrimaryClientPoint(event);
+  if (!clientPoint) {
+    return false;
+  }
+  if (!isPointInsideHeroPlaybackOpenButton(clientPoint.x, clientPoint.y, gateConfig)) {
+    return false;
+  }
+
+  gateState.stage = 'postOpenButtonPlaying';
+  gateState.openButtonClickedAtMs = performance.now();
+  // Cancel pending or active wiggle immediately when user opens.
+  stopHeroVideoWiggle({ resetRotation: true });
+  const playbackPromise = video.play();
+  if (playbackPromise && typeof playbackPromise.catch === 'function') {
+    playbackPromise.catch(() => {});
+  }
+  ensureHeroPlaybackGateMonitorRunning();
+  renderScene({ skipAutoStart: true });
+  preloadSwipeSectionsOverlayImages();
+  if (event && typeof event.preventDefault === 'function') {
+    event.preventDefault();
+  }
+
+  // Play sound effect if configured
+  const buttonConfig = gateConfig.openButton;
+  if (buttonConfig && buttonConfig.sound && buttonConfig.sound.enabled === true) {
+    const soundConfig = buttonConfig.sound;
+    if (soundConfig.filePath && soundConfig.filePath.length > 0) {
+      const playSound = () => {
+        try {
+          const audio = new Audio(soundConfig.filePath);
+          audio.volume = Math.max(0, Math.min(1, soundConfig.volume || 1.0));
+          audio.play().catch((err) => {
+            console.warn('Failed to play open button sound:', err.message);
+          });
+        } catch (err) {
+          console.warn('Failed to create audio for open button sound:', err.message);
+        }
+      };
+      if (soundConfig.delayMs > 0) {
+        setTimeout(playSound, soundConfig.delayMs);
+      } else {
+        playSound();
+      }
+    }
+  }
+
+  return true;
+}
+
+function tryHandleHeroPlaybackWiggleButtonClick(event) {
+  const gateConfig = resolveHeroPlaybackGateConfig();
+  if (gateConfig.enabled !== true || !gateConfig.wiggleButton || gateConfig.wiggleButton.enabled !== true) {
+    return false;
+  }
+  const gateState = STATE.heroPlaybackGate;
+  if (gateState && gateState.awaitingUserPlaybackStart === true) {
+    return false;
+  }
+  if (gateState && Number.isFinite(gateState.openButtonClickedAtMs)) {
+    return false;
+  }
+  const stageAllowsWiggle = gateState && (
+    gateState.stage === 'waitingForOpenButton'
+    || gateState.stage === 'introPlaying'
+  );
+  if (!stageAllowsWiggle) {
+    return false;
+  }
+  const currentFrame = getCurrentHeroVideoFrame(gateConfig);
+  if (!isHeroPlaybackWiggleButtonEnabledAtFrame(currentFrame, gateConfig)) {
+    return false;
+  }
+  const clientPoint = extractPrimaryClientPoint(event);
+  if (!clientPoint) {
+    return false;
+  }
+  if (!isPointInsideHeroPlaybackWiggleButton(clientPoint.x, clientPoint.y, gateConfig)) {
+    return false;
+  }
+
+  triggerHeroVideoWiggleFromButton(gateConfig);
+  renderScene({ skipAutoStart: true });
+  if (event && typeof event.preventDefault === 'function') {
+    event.preventDefault();
+  }
+  return true;
+}
+
+// Backward-compatible alias.
+function tryHandleHeroPlaybackGateClick(event) {
+  return tryHandleHeroPlaybackOpenButtonClick(event);
+}
+
+function startHeroPlaybackGateFlow(options = null) {
+  const safeOptions = isPlainObjectLiteral(options) ? options : {};
+  const skipStartDelay = safeOptions.skipStartDelay === true;
+  const gateConfig = resolveHeroPlaybackGateConfig();
+  const gateState = STATE.heroPlaybackGate;
+  if (!gateState) {
+    return;
+  }
+  cancelHeroPlaybackGateStartDelay();
+  cancelSwipeSectionTransition();
+  clearSwipeSectionsTouchTracking();
+  // Set this immediately so pre-splash renders cannot auto-start branch growth.
+  gateState.growthAnimationEnabledByConfig = CONFIG.branchGrowth.enabled === true;
+  if (!isLoadingScreenGone()) {
+    try {
+      video.pause();
+    } catch (_error) {
+      // Ignore pause errors while waiting for splash dismissal.
+    }
+    if (gateState.pendingStartAfterSplashDismiss !== true) {
+      gateState.pendingStartAfterSplashDismiss = true;
+      runWhenLoadingScreenGone(() => {
+        if (!STATE.hasBootstrapped) {
+          return;
+        }
+        if (!STATE.heroPlaybackGate) {
+          return;
+        }
+        STATE.heroPlaybackGate.pendingStartAfterSplashDismiss = false;
+        startHeroPlaybackGateFlow();
+      });
+    }
+    gateState.stage = 'idle';
+    gateState.growthStarted = false;
+    return;
+  }
+  gateState.pendingStartAfterSplashDismiss = false;
+  cancelHeroPlaybackGateMonitor();
+  stopHeroVideoWiggle({ resetRotation: true });
+  refreshHeroVideoReferenceRect();
+  gateState.growthFrameReached = false;
+  gateState.growthStarted = false;
+  gateState.growthAnimationEnabledByConfig = CONFIG.branchGrowth.enabled === true;
+  gateState.awaitingUserPlaybackStart = false;
+  gateState.openButtonClickedAtMs = null;
+  gateState.openButtonArrowRenderedPresence = false;
+  gateState.openButtonArrowLastRenderMs = 0;
+  applyHeroVideoWiggleAnchor(gateConfig);
+  requestOpenButtonArrowImageLoad().catch(() => {});
+
+  if (gateConfig.enabled !== true) {
+    gateState.stage = 'idle';
+    gateState.awaitingUserPlaybackStart = false;
+    return;
+  }
+
+  if (!skipStartDelay && gateConfig.startDelayAfterSplashDismissMs > 0) {
+    try {
+      video.pause();
+    } catch (_error) {
+      // Ignore pause errors while waiting for delayed start.
+    }
+    gateState.stage = 'idle';
+    gateState.pendingStartAfterSplashDelay = true;
+    gateState.startAfterSplashDelayTimerId = window.setTimeout(() => {
+      if (!STATE.hasBootstrapped || !STATE.heroPlaybackGate) {
+        return;
+      }
+      STATE.heroPlaybackGate.startAfterSplashDelayTimerId = null;
+      STATE.heroPlaybackGate.pendingStartAfterSplashDelay = false;
+      startHeroPlaybackGateFlow({ skipStartDelay: true });
+    }, gateConfig.startDelayAfterSplashDismissMs);
+    return;
+  }
+
+  if (
+    gateState.growthAnimationEnabledByConfig === true
+    && (STATE.branchGrowth.running || STATE.branchGrowth.rafId !== null || STATE.branchGrowth.elapsedSec > 0)
+  ) {
+    stopBranchAnimation({ keepElapsed: false });
+  }
+
+  gateState.stage = 'introPlaying';
+  try {
+    video.pause();
+  } catch (_error) {
+    // Ignore pause errors before controlled intro playback begins.
+  }
+  lockHeroVideoToFrame(0, gateConfig);
+  try {
+    video.currentTime = 0;
+  } catch (_error) {
+    // Ignore seek errors here; monitor and play controls remain safe.
+  }
+  renderScene({ skipAutoStart: true });
+  const playbackPromise = video.play();
+  if (playbackPromise && typeof playbackPromise.catch === 'function') {
+    playbackPromise.catch((error) => {
+      const errorName = error && typeof error.name === 'string' ? error.name : '';
+      if (errorName === 'NotAllowedError') {
+        gateState.awaitingUserPlaybackStart = true;
+        gateState.stage = 'introPlaying';
+        renderScene({ skipAutoStart: true });
+        return;
+      }
+      // AbortError can happen during source/load churn; retry automatically.
+      gateState.awaitingUserPlaybackStart = false;
+      gateState.stage = 'introPlaying';
+      window.setTimeout(() => {
+        if (!STATE.heroPlaybackGate || !STATE.hasBootstrapped) {
+          return;
+        }
+        if (STATE.heroPlaybackGate.awaitingUserPlaybackStart === true) {
+          return;
+        }
+        const retryPromise = video.play();
+        if (retryPromise && typeof retryPromise.catch === 'function') {
+          retryPromise.catch((retryError) => {
+            const retryErrorName = retryError && typeof retryError.name === 'string'
+              ? retryError.name
+              : '';
+            if (retryErrorName === 'NotAllowedError') {
+              STATE.heroPlaybackGate.awaitingUserPlaybackStart = true;
+              renderScene({ skipAutoStart: true });
+            }
+          });
+        }
+      }, 180);
+    });
+  }
+  if (playbackPromise && typeof playbackPromise.then === 'function') {
+    playbackPromise.then(() => {
+      startBackgroundMusic();
+    }).catch(() => {
+      // If play fails, don't start background music
+    });
+  }
+  ensureHeroPlaybackGateMonitorRunning();
+}
+
+function resolveOverlayWrapConfig() {
+  const safeConfig = isPlainObjectLiteral(CONFIG.overlayWrap) ? CONFIG.overlayWrap : {};
+  const centerHalfWidthPxFallback = Number.isFinite(Number(safeConfig.centerHalfWidthPx))
+    ? Math.max(0, Number(safeConfig.centerHalfWidthPx))
+    : 50;
+  const centerHalfWidthPxFromVideoEnabled = safeConfig.centerHalfWidthPxFromVideoEnabled !== false;
+  const centerHalfWidthPxVideoHeightRatio = Number.isFinite(Number(safeConfig.centerHalfWidthPxVideoHeightRatio))
+    ? Math.max(0, Number(safeConfig.centerHalfWidthPxVideoHeightRatio))
+    : 0.162760416667;
+  const centerHalfWidthPxVideoHeightRatioBottom = Number.isFinite(Number(safeConfig.centerHalfWidthPxVideoHeightRatioBottom))
+    ? Math.max(0, Number(safeConfig.centerHalfWidthPxVideoHeightRatioBottom))
+    : centerHalfWidthPxVideoHeightRatio;
+  const centerHalfWidthSwitchYVideoHeightRatioRaw = Number(safeConfig.centerHalfWidthSwitchYVideoHeightRatio);
+  const centerHalfWidthSwitchYVideoHeightRatioNormalized = Number.isFinite(centerHalfWidthSwitchYVideoHeightRatioRaw)
+    ? (
+      centerHalfWidthSwitchYVideoHeightRatioRaw > 1
+        ? (centerHalfWidthSwitchYVideoHeightRatioRaw / 100)
+        : centerHalfWidthSwitchYVideoHeightRatioRaw
+    )
+    : 1;
+  const centerHalfWidthSwitchYVideoHeightRatio = Number.isFinite(Number(safeConfig.centerHalfWidthSwitchYVideoHeightRatio))
+    ? clamp(centerHalfWidthSwitchYVideoHeightRatioNormalized, 0, 1)
+    : 1;
+  const heroVideoRect = getHeroVideoRenderedRect();
+  const heroVideoHeightPx = (
+    heroVideoRect
+    && Number.isFinite(heroVideoRect.height)
+    && heroVideoRect.height > 0
+  )
+    ? heroVideoRect.height
+    : resolveHeroVideoRenderedHeightPx();
+  const heroVideoTopPx = (
+    heroVideoRect
+    && Number.isFinite(heroVideoRect.top)
+  )
+    ? heroVideoRect.top
+    : 0;
+  const centerHalfWidthTopPx = (
+    centerHalfWidthPxFromVideoEnabled
+    && Number.isFinite(heroVideoHeightPx)
+    && heroVideoHeightPx > 0
+  )
+    ? heroVideoHeightPx * centerHalfWidthPxVideoHeightRatio
+    : centerHalfWidthPxFallback;
+  const centerHalfWidthBottomPx = (
+    centerHalfWidthPxFromVideoEnabled
+    && Number.isFinite(heroVideoHeightPx)
+    && heroVideoHeightPx > 0
+  )
+    ? heroVideoHeightPx * centerHalfWidthPxVideoHeightRatioBottom
+    : centerHalfWidthPxFallback;
+  const centerHalfWidthSwitchYPx = (
+    Number.isFinite(heroVideoHeightPx)
+    && heroVideoHeightPx > 0
+  )
+    ? (heroVideoTopPx + heroVideoHeightPx * centerHalfWidthSwitchYVideoHeightRatio)
+    : (STATE.viewportHeight * centerHalfWidthSwitchYVideoHeightRatio);
+  const centerBandOverlayLineWidth = Number.isFinite(Number(safeConfig.centerBandOverlayLineWidth))
+    ? Math.max(0.1, Number(safeConfig.centerBandOverlayLineWidth))
+    : 1.5;
+  const spriteHiddenCullInnerPaddingPx = Number.isFinite(Number(safeConfig.spriteHiddenCullInnerPaddingPx))
+    ? Math.max(0, Number(safeConfig.spriteHiddenCullInnerPaddingPx))
+    : 0;
+  const spriteHiddenCullRadiusScale = Number.isFinite(Number(safeConfig.spriteHiddenCullRadiusScale))
+    ? clamp(Number(safeConfig.spriteHiddenCullRadiusScale), 0.05, 1)
+    : 0.6;
+  const debugHiddenSpriteCullCirclesMode = safeConfig.debugHiddenSpriteCullCirclesMode === 'all'
+    ? 'all'
+    : 'culled';
+  const debugHiddenSpriteCullCirclesMaxPerFrame = Number.isFinite(Number(safeConfig.debugHiddenSpriteCullCirclesMaxPerFrame))
+    ? clamp(Math.floor(Number(safeConfig.debugHiddenSpriteCullCirclesMaxPerFrame)), 1, 10000)
+    : 400;
+  const debugHiddenSpriteCullCircleLineWidth = Number.isFinite(Number(safeConfig.debugHiddenSpriteCullCircleLineWidth))
+    ? clamp(Number(safeConfig.debugHiddenSpriteCullCircleLineWidth), 0.25, 8)
+    : 1;
+  return {
+    enabled: safeConfig.enabled !== false,
+    animationOnly: safeConfig.animationOnly !== false,
+    centerHalfWidthPx: centerHalfWidthTopPx,
+    centerHalfWidthTopPx,
+    centerHalfWidthBottomPx,
+    centerHalfWidthSwitchYPx,
+    centerHalfWidthPxFromVideoEnabled,
+    centerHalfWidthPxVideoHeightRatio,
+    centerHalfWidthPxVideoHeightRatioBottom,
+    centerHalfWidthSwitchYVideoHeightRatio,
+    skipHiddenBackDrawEnabled: safeConfig.skipHiddenBackDrawEnabled !== false,
+    spriteHiddenCullInnerPaddingPx,
+    spriteHiddenCullRadiusScale,
+    debugHiddenSpriteCullCirclesEnabled: safeConfig.debugHiddenSpriteCullCirclesEnabled === true,
+    debugHiddenSpriteCullCirclesMode,
+    debugHiddenSpriteCullCirclesMaxPerFrame,
+    debugHiddenSpriteCullCircleStrokeVisible: (
+      typeof safeConfig.debugHiddenSpriteCullCircleStrokeVisible === 'string'
+      && safeConfig.debugHiddenSpriteCullCircleStrokeVisible.trim().length > 0
+    )
+      ? safeConfig.debugHiddenSpriteCullCircleStrokeVisible.trim()
+      : 'rgba(90, 220, 120, 0.55)',
+    debugHiddenSpriteCullCircleStrokeCulled: (
+      typeof safeConfig.debugHiddenSpriteCullCircleStrokeCulled === 'string'
+      && safeConfig.debugHiddenSpriteCullCircleStrokeCulled.trim().length > 0
+    )
+      ? safeConfig.debugHiddenSpriteCullCircleStrokeCulled.trim()
+      : 'rgba(255, 80, 80, 0.65)',
+    debugHiddenSpriteCullCircleLineWidth,
+    showCenterBandOverlay: safeConfig.showCenterBandOverlay === true,
+    centerBandOverlayFill: (typeof safeConfig.centerBandOverlayFill === 'string' && safeConfig.centerBandOverlayFill.length > 0)
+      ? safeConfig.centerBandOverlayFill
+      : 'rgba(255, 95, 95, 0.16)',
+    centerBandOverlayStroke: (typeof safeConfig.centerBandOverlayStroke === 'string' && safeConfig.centerBandOverlayStroke.length > 0)
+      ? safeConfig.centerBandOverlayStroke
+      : 'rgba(255, 95, 95, 0.85)',
+    centerBandOverlayLineWidth,
+  };
+}
+
+function isOverlayWrapActive(overlayWrapConfig, useAnimation) {
+  if (!overlayWrapConfig || overlayWrapConfig.enabled !== true) {
+    return false;
+  }
+  if (overlayWrapConfig.animationOnly !== true) {
+    return true;
+  }
+  return useAnimation === true;
+}
+
+function resolveOverlayHiddenBandBoundsAtY(hiddenBand, y) {
+  if (!hiddenBand || !Number.isFinite(hiddenBand.centerX)) {
+    return null;
+  }
+  const topHalfWidthPx = Number.isFinite(hiddenBand.topHalfWidthPx)
+    ? Math.max(0, hiddenBand.topHalfWidthPx)
+    : 50;
+  const bottomHalfWidthPx = Number.isFinite(hiddenBand.bottomHalfWidthPx)
+    ? Math.max(0, hiddenBand.bottomHalfWidthPx)
+    : topHalfWidthPx;
+  const switchY = Number.isFinite(hiddenBand.switchY)
+    ? clamp(hiddenBand.switchY, 0, STATE.viewportHeight)
+    : STATE.viewportHeight;
+  const ySample = Number.isFinite(y) ? y : 0;
+  const useBottom = ySample >= switchY;
+  const halfWidthPx = useBottom ? bottomHalfWidthPx : topHalfWidthPx;
+  return {
+    centerX: hiddenBand.centerX,
+    leftX: hiddenBand.centerX - halfWidthPx,
+    rightX: hiddenBand.centerX + halfWidthPx,
+    halfWidthPx,
+  };
+}
+
+function getOverlayHiddenBand(overlayWrapConfig) {
+  const topHalfWidthPx = overlayWrapConfig && Number.isFinite(overlayWrapConfig.centerHalfWidthTopPx)
+    ? Math.max(0, overlayWrapConfig.centerHalfWidthTopPx)
+    : (
+      overlayWrapConfig && Number.isFinite(overlayWrapConfig.centerHalfWidthPx)
+        ? Math.max(0, overlayWrapConfig.centerHalfWidthPx)
+        : 50
+    );
+  const bottomHalfWidthPx = overlayWrapConfig && Number.isFinite(overlayWrapConfig.centerHalfWidthBottomPx)
+    ? Math.max(0, overlayWrapConfig.centerHalfWidthBottomPx)
+    : topHalfWidthPx;
+  const switchY = overlayWrapConfig && Number.isFinite(overlayWrapConfig.centerHalfWidthSwitchYPx)
+    ? clamp(overlayWrapConfig.centerHalfWidthSwitchYPx, 0, STATE.viewportHeight)
+    : STATE.viewportHeight;
+  const centerX = STATE.viewportWidth * 0.5;
+  const topBounds = resolveOverlayHiddenBandBoundsAtY({
+    centerX,
+    topHalfWidthPx,
+    bottomHalfWidthPx,
+    switchY,
+  }, Math.max(0, switchY - 1));
+  return {
+    centerX,
+    leftX: topBounds ? topBounds.leftX : (centerX - topHalfWidthPx),
+    rightX: topBounds ? topBounds.rightX : (centerX + topHalfWidthPx),
+    halfWidthPx: topHalfWidthPx,
+    topHalfWidthPx,
+    bottomHalfWidthPx,
+    switchY,
+  };
+}
+
+function resolveHiddenBandEffectiveHalfWidthForYRange(hiddenBand, minY, maxY) {
+  if (!hiddenBand) {
+    return null;
+  }
+  const topHalfWidthPx = Number.isFinite(hiddenBand.topHalfWidthPx)
+    ? Math.max(0, hiddenBand.topHalfWidthPx)
+    : 50;
+  const bottomHalfWidthPx = Number.isFinite(hiddenBand.bottomHalfWidthPx)
+    ? Math.max(0, hiddenBand.bottomHalfWidthPx)
+    : topHalfWidthPx;
+  const switchY = Number.isFinite(hiddenBand.switchY)
+    ? clamp(hiddenBand.switchY, 0, STATE.viewportHeight)
+    : STATE.viewportHeight;
+
+  const safeMinY = Number.isFinite(minY) ? minY : 0;
+  const safeMaxY = Number.isFinite(maxY) ? maxY : safeMinY;
+  const y0 = Math.min(safeMinY, safeMaxY);
+  const y1 = Math.max(safeMinY, safeMaxY);
+
+  if (y1 < switchY) {
+    return topHalfWidthPx;
+  }
+  if (y0 >= switchY) {
+    return bottomHalfWidthPx;
+  }
+  return Math.min(topHalfWidthPx, bottomHalfWidthPx);
+}
+
+function isAabbFullyInsideHiddenBand(minX, maxX, hiddenBand, minY = null, maxY = null) {
+  if (!hiddenBand || !Number.isFinite(minX) || !Number.isFinite(maxX) || !Number.isFinite(hiddenBand.centerX)) {
+    return false;
+  }
+  const effectiveHalfWidthPx = resolveHiddenBandEffectiveHalfWidthForYRange(hiddenBand, minY, maxY);
+  if (!Number.isFinite(effectiveHalfWidthPx)) {
+    return false;
+  }
+  const leftX = hiddenBand.centerX - effectiveHalfWidthPx;
+  const rightX = hiddenBand.centerX + effectiveHalfWidthPx;
+  return minX >= leftX && maxX <= rightX;
+}
+
+function isSpriteCircleFullyInsideHiddenBand(centerX, centerY, radius, hiddenBand, innerPaddingPx = 0) {
+  if (
+    !hiddenBand
+    || !Number.isFinite(centerX)
+    || !Number.isFinite(centerY)
+    || !Number.isFinite(radius)
+    || !Number.isFinite(hiddenBand.centerX)
+  ) {
+    return false;
+  }
+  const safeRadius = Math.max(0, radius);
+  const safePadding = Number.isFinite(innerPaddingPx) ? Math.max(0, innerPaddingPx) : 0;
+  const effectiveHalfWidthPx = resolveHiddenBandEffectiveHalfWidthForYRange(
+    hiddenBand,
+    centerY - safeRadius,
+    centerY + safeRadius,
+  );
+  if (!Number.isFinite(effectiveHalfWidthPx)) {
+    return false;
+  }
+  const innerHalfWidthPx = effectiveHalfWidthPx - safePadding;
+  if (!(innerHalfWidthPx > 0)) {
+    return false;
+  }
+  const leftX = hiddenBand.centerX - innerHalfWidthPx;
+  const rightX = hiddenBand.centerX + innerHalfWidthPx;
+  return (
+    (centerX - safeRadius) >= leftX
+    && (centerX + safeRadius) <= rightX
+  );
+}
+
+function isSpriteCircleFullyInsideAnyHiddenBand(centerX, centerY, radius, hiddenBands, innerPaddingPx = 0) {
+  if (!Array.isArray(hiddenBands)) {
+    return false;
+  }
+  for (let i = 0; i < hiddenBands.length; i += 1) {
+    if (isSpriteCircleFullyInsideHiddenBand(centerX, centerY, radius, hiddenBands[i], innerPaddingPx)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function buildViewportSideBands(cssWidth, paddingPx) {
+  const w = Number.isFinite(cssWidth) ? Math.max(0, cssWidth) : 0;
+  const p = Number.isFinite(paddingPx) ? paddingPx : 0;
+  const LARGE = w + 10000;
+  const leftBand = {
+    centerX: -(LARGE + p),
+    topHalfWidthPx: LARGE,
+    bottomHalfWidthPx: LARGE,
+  };
+  const rightBand = {
+    centerX: (w + p) + LARGE,
+    topHalfWidthPx: LARGE,
+    bottomHalfWidthPx: LARGE,
+  };
+  return { leftBand, rightBand };
+}
+
+function drawHiddenSpriteCullDebugCircle(
+  targetCtx,
+  centerX,
+  centerY,
+  radius,
+  isHidden,
+  debugOptions = null,
+  debugBudget = null,
+) {
+  if (!targetCtx || !debugOptions || debugOptions.enabled !== true) {
+    return false;
+  }
+  const mode = debugOptions.mode === 'all' ? 'all' : 'culled';
+  if (mode !== 'all' && isHidden !== true) {
+    return false;
+  }
+  const maxPerFrame = Number.isFinite(Number(debugOptions.maxPerFrame))
+    ? Math.max(1, Math.floor(Number(debugOptions.maxPerFrame)))
+    : 400;
+  const budget = debugBudget && typeof debugBudget === 'object' ? debugBudget : null;
+  if (budget) {
+    const drawnCount = Number.isFinite(budget.drawnCount) ? budget.drawnCount : 0;
+    if (drawnCount >= maxPerFrame) {
+      return false;
+    }
+    budget.drawnCount = drawnCount + 1;
+  }
+  const safeRadius = Number.isFinite(radius) ? Math.max(0.5, radius) : 0.5;
+  const strokeStyle = isHidden
+    ? (debugOptions.strokeCulled || 'rgba(255, 80, 80, 0.65)')
+    : (debugOptions.strokeVisible || 'rgba(90, 220, 120, 0.55)');
+  const lineWidth = Number.isFinite(Number(debugOptions.lineWidth))
+    ? Math.max(0.25, Number(debugOptions.lineWidth))
+    : 1;
+  targetCtx.save();
+  targetCtx.strokeStyle = strokeStyle;
+  targetCtx.lineWidth = lineWidth;
+  targetCtx.beginPath();
+  targetCtx.arc(centerX, centerY, safeRadius, 0, Math.PI * 2);
+  targetCtx.stroke();
+  targetCtx.restore();
+  return true;
+}
+
+function drawOverlayCenterBand(targetCtx, hiddenBand, overlayWrapConfig) {
+  if (!targetCtx || !hiddenBand || !overlayWrapConfig || overlayWrapConfig.showCenterBandOverlay !== true) {
+    return;
+  }
+  const viewportHeight = Math.max(0, STATE.viewportHeight);
+  const switchY = Number.isFinite(hiddenBand.switchY)
+    ? clamp(hiddenBand.switchY, 0, viewportHeight)
+    : viewportHeight;
+  const topBounds = resolveOverlayHiddenBandBoundsAtY(hiddenBand, Math.max(0, switchY - 1));
+  const bottomBounds = resolveOverlayHiddenBandBoundsAtY(hiddenBand, Math.min(viewportHeight, switchY + 1));
+  if (!topBounds || !bottomBounds) {
+    return;
+  }
+  const topWidth = Math.max(0, topBounds.rightX - topBounds.leftX);
+  const bottomWidth = Math.max(0, bottomBounds.rightX - bottomBounds.leftX);
+  if (topWidth <= 1e-6 && bottomWidth <= 1e-6) {
+    return;
+  }
+  targetCtx.save();
+  targetCtx.fillStyle = overlayWrapConfig.centerBandOverlayFill;
+  if (switchY > 1e-6 && topWidth > 1e-6) {
+    targetCtx.fillRect(topBounds.leftX, 0, topWidth, switchY);
+  }
+  const bottomHeight = Math.max(0, viewportHeight - switchY);
+  if (bottomHeight > 1e-6 && bottomWidth > 1e-6) {
+    targetCtx.fillRect(bottomBounds.leftX, switchY, bottomWidth, bottomHeight);
+  }
+  targetCtx.strokeStyle = overlayWrapConfig.centerBandOverlayStroke;
+  targetCtx.lineWidth = overlayWrapConfig.centerBandOverlayLineWidth;
+  targetCtx.beginPath();
+  if (switchY > 1e-6) {
+    targetCtx.moveTo(topBounds.leftX, 0);
+    targetCtx.lineTo(topBounds.leftX, switchY);
+    targetCtx.moveTo(topBounds.rightX, 0);
+    targetCtx.lineTo(topBounds.rightX, switchY);
+  }
+  if (bottomHeight > 1e-6) {
+    targetCtx.moveTo(bottomBounds.leftX, switchY);
+    targetCtx.lineTo(bottomBounds.leftX, viewportHeight);
+    targetCtx.moveTo(bottomBounds.rightX, switchY);
+    targetCtx.lineTo(bottomBounds.rightX, viewportHeight);
+  }
+  if (Math.abs(topBounds.leftX - bottomBounds.leftX) > 1e-6) {
+    targetCtx.moveTo(topBounds.leftX, switchY);
+    targetCtx.lineTo(bottomBounds.leftX, switchY);
+  }
+  if (Math.abs(topBounds.rightX - bottomBounds.rightX) > 1e-6) {
+    targetCtx.moveTo(topBounds.rightX, switchY);
+    targetCtx.lineTo(bottomBounds.rightX, switchY);
+  }
+  targetCtx.stroke();
+  targetCtx.restore();
+}
+
+function resetOverlayWrapPromotionState() {
+  STATE.overlayWrapPromotion.clear();
+}
+
+function sanitizeFlowerPerformanceProfile(value) {
+  if (value === 'desktop' || value === 'mobile' || value === 'auto') {
+    return value;
+  }
+  return 'auto';
+}
+
+function resolveRenderDprConfig() {
+  const safeConfig = isPlainObjectLiteral(CONFIG.renderDpr) ? CONFIG.renderDpr : {};
+  const mobileCapInput = Number(safeConfig.mobileCap);
+  const desktopCapInput = Number(safeConfig.desktopCap);
+  return {
+    enabled: safeConfig.enabled !== false,
+    mobileOnly: safeConfig.mobileOnly !== false,
+    mobileCap: Number.isFinite(mobileCapInput) && mobileCapInput > 0
+      ? mobileCapInput
+      : 2,
+    desktopCap: Number.isFinite(desktopCapInput) && desktopCapInput > 0
+      ? desktopCapInput
+      : null,
+  };
+}
+
+function resolveFlowerAdaptiveProfileDeviceInfo(autoProfileConfig = {}) {
+  const viewportWidth = Number.isFinite(window.innerWidth) ? window.innerWidth : 0;
+  const viewportHeight = Number.isFinite(window.innerHeight) ? window.innerHeight : 0;
+  const shortEdge = Math.max(0, Math.min(viewportWidth || 0, viewportHeight || 0));
+  const dpr = Number.isFinite(window.devicePixelRatio) ? window.devicePixelRatio : 1;
+  const hardwareConcurrencyRaw = Number(navigator.hardwareConcurrency);
+  const hardwareConcurrency = Number.isFinite(hardwareConcurrencyRaw)
+    ? Math.max(1, Math.floor(hardwareConcurrencyRaw))
+    : 8;
+  const userAgentDataMobile = Boolean(navigator.userAgentData && navigator.userAgentData.mobile === true);
+  const uaText = typeof navigator.userAgent === 'string' ? navigator.userAgent.toLowerCase() : '';
+  const uaMobile = /android|iphone|ipad|ipod|mobile/.test(uaText);
+
+  const maxHw = Number.isFinite(Number(autoProfileConfig.mobileMaxHardwareConcurrency))
+    ? Math.max(1, Math.floor(Number(autoProfileConfig.mobileMaxHardwareConcurrency)))
+    : 6;
+  const minDpr = Number.isFinite(Number(autoProfileConfig.mobileMinDevicePixelRatio))
+    ? Math.max(1, Number(autoProfileConfig.mobileMinDevicePixelRatio))
+    : 2;
+  const maxViewportWidth = Number.isFinite(Number(autoProfileConfig.mobileMaxViewportWidth))
+    ? Math.max(320, Number(autoProfileConfig.mobileMaxViewportWidth))
+    : 1024;
+
+  const likelyMobile = (
+    userAgentDataMobile
+    || uaMobile
+    || (shortEdge > 0 && shortEdge <= maxViewportWidth && dpr >= minDpr)
+    || hardwareConcurrency <= maxHw
+  );
+
+  return {
+    likelyMobile,
+    shortEdge,
+    dpr,
+    hardwareConcurrency,
+  };
+}
+
+function resolveEffectiveRenderDpr() {
+  const rawDpr = Number.isFinite(window.devicePixelRatio)
+    ? Math.max(0.1, window.devicePixelRatio)
+    : 1;
+  const renderDprConfig = resolveRenderDprConfig();
+  if (renderDprConfig.enabled !== true) {
+    return rawDpr;
+  }
+
+  const flowersConfig = isPlainObjectLiteral(CONFIG.flowers) ? CONFIG.flowers : {};
+  const autoProfile = isPlainObjectLiteral(flowersConfig.autoProfile) ? flowersConfig.autoProfile : {};
+  const deviceInfo = resolveFlowerAdaptiveProfileDeviceInfo(autoProfile);
+  const likelyMobile = deviceInfo && deviceInfo.likelyMobile === true;
+
+  let cap = null;
+  if (likelyMobile) {
+    cap = renderDprConfig.mobileCap;
+  } else if (renderDprConfig.mobileOnly !== true) {
+    cap = renderDprConfig.desktopCap;
+  }
+
+  if (!Number.isFinite(cap) || cap <= 0) {
+    return rawDpr;
+  }
+  return Math.max(0.1, Math.min(rawDpr, cap));
+}
+
+function sampleRangeByNormalizedWeight(rangeInput, fallbackMin, fallbackMax, weight) {
+  const raw = Array.isArray(rangeInput) ? rangeInput : [fallbackMin, fallbackMax];
+  const a = Number(raw[0]);
+  const b = Number(raw[1]);
+  const min = Number.isFinite(a) ? a : fallbackMin;
+  const max = Number.isFinite(b) ? b : fallbackMax;
+  const low = Math.min(min, max);
+  const high = Math.max(min, max);
+  const t = Math.max(0, Math.min(1, Number.isFinite(weight) ? weight : 0));
+  return low + ((high - low) * t);
+}
+
+function resolveFloralResponsiveScaleFactor() {
+  const safeConfig = isPlainObjectLiteral(CONFIG.floralResponsiveScale) ? CONFIG.floralResponsiveScale : {};
+  if (safeConfig.enabled === false) {
+    STATE.lastFloralResponsiveScaleFactor = 1;
+    return 1;
+  }
+  const rawPoints = Array.isArray(safeConfig.points) ? safeConfig.points : [];
+  if (rawPoints.length === 0) {
+    STATE.lastFloralResponsiveScaleFactor = 1;
+    return 1;
+  }
+
+  const points = [];
+  for (let i = 0; i < rawPoints.length; i += 1) {
+    const point = rawPoints[i];
+    if (!Array.isArray(point) || point.length < 2) {
+      continue;
+    }
+    const width = Number(point[0]);
+    const scale = Number(point[1]);
+    if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(scale) || scale <= 0) {
+      continue;
+    }
+    points.push([width, scale]);
+  }
+  if (points.length === 0) {
+    STATE.lastFloralResponsiveScaleFactor = 1;
+    return 1;
+  }
+  points.sort((a, b) => a[0] - b[0]);
+
+  const viewportWidth = Number.isFinite(STATE.viewportWidth) && STATE.viewportWidth > 0
+    ? STATE.viewportWidth
+    : (Number.isFinite(window.innerWidth) ? window.innerWidth : 0);
+  let scale = points[0][1];
+  if (viewportWidth > points[0][0]) {
+    scale = points[points.length - 1][1];
+    for (let i = 1; i < points.length; i += 1) {
+      const left = points[i - 1];
+      const right = points[i];
+      if (viewportWidth > right[0]) {
+        continue;
+      }
+      const widthSpan = right[0] - left[0];
+      if (widthSpan <= 1e-6) {
+        scale = right[1];
+      } else {
+        const t = clamp((viewportWidth - left[0]) / widthSpan, 0, 1);
+        scale = left[1] + ((right[1] - left[1]) * t);
+      }
+      break;
+    }
+  }
+
+  const viewportHeight = Number.isFinite(STATE.viewportHeight) && STATE.viewportHeight > 0
+    ? STATE.viewportHeight
+    : (Number.isFinite(window.innerHeight) ? window.innerHeight : 0);
+
+  if (safeConfig.pointerModifierEnabled !== false && typeof window.matchMedia === 'function') {
+    let pointerKey = 'unknown';
+    if (window.matchMedia('(pointer: coarse)').matches) {
+      pointerKey = 'coarse';
+    } else if (window.matchMedia('(pointer: fine)').matches) {
+      pointerKey = 'fine';
+    } else if (window.matchMedia('(pointer: none)').matches) {
+      pointerKey = 'none';
+    }
+    const pointerMultiplierRaw = (
+      pointerKey === 'coarse'
+        ? safeConfig.pointerCoarseMultiplier
+        : (pointerKey === 'fine'
+          ? safeConfig.pointerFineMultiplier
+          : (pointerKey === 'none'
+            ? safeConfig.pointerNoneMultiplier
+            : safeConfig.pointerUnknownMultiplier))
+    );
+    const pointerMultiplier = Number.isFinite(Number(pointerMultiplierRaw))
+      ? Math.max(0.01, Number(pointerMultiplierRaw))
+      : 1;
+    scale *= pointerMultiplier;
+  }
+
+  if (
+    safeConfig.landscapeModifierEnabled === true
+    && viewportWidth > 0
+    && viewportHeight > 0
+    && viewportWidth > viewportHeight
+  ) {
+    const landscapeMultiplier = Number.isFinite(Number(safeConfig.landscapeMultiplier))
+      ? Math.max(0.01, Number(safeConfig.landscapeMultiplier))
+      : 1;
+    scale *= landscapeMultiplier;
+  }
+
+  const globalMultiplier = Number.isFinite(Number(safeConfig.globalMultiplier))
+    ? Math.max(0.01, Number(safeConfig.globalMultiplier))
+    : 1;
+  scale *= globalMultiplier;
+
+  if (safeConfig.dprModifierEnabled === true) {
+    const dpr = Number.isFinite(window.devicePixelRatio) ? Math.max(0.1, window.devicePixelRatio) : 1;
+    const dprBaseline = Number.isFinite(Number(safeConfig.dprBaseline))
+      ? Math.max(0.1, Number(safeConfig.dprBaseline))
+      : 2;
+    const dprStrength = Number.isFinite(Number(safeConfig.dprStrength))
+      ? Math.max(0, Number(safeConfig.dprStrength))
+      : 0.14;
+    const dprNormalizedDelta = (dpr - dprBaseline) / dprBaseline;
+    let dprMultiplier = 1 - (dprNormalizedDelta * dprStrength);
+    const dprMultiplierClamp = normalizeRangeInput(safeConfig.dprMultiplierClamp, 0.92, 1.08);
+    dprMultiplier = clamp(dprMultiplier, dprMultiplierClamp[0], dprMultiplierClamp[1]);
+    scale *= Math.max(0.01, dprMultiplier);
+  }
+
+  const finalScaleClamp = normalizeRangeInput(safeConfig.finalScaleClamp, 0.25, 2.5);
+  const resolvedScale = clamp(Math.max(0.01, scale), finalScaleClamp[0], finalScaleClamp[1]);
+  STATE.lastFloralResponsiveScaleFactor = resolvedScale;
+  return resolvedScale;
+}
+
+function getFlowersAdaptiveRuntimePatch(flowersConfig, swayMode) {
+  if (!isPlainObjectLiteral(flowersConfig) || swayMode !== 'influence') {
+    return null;
+  }
+  const profile = sanitizeFlowerPerformanceProfile(flowersConfig.performanceProfile);
+  const autoProfile = isPlainObjectLiteral(flowersConfig.autoProfile) ? flowersConfig.autoProfile : {};
+  const deviceInfo = resolveFlowerAdaptiveProfileDeviceInfo(autoProfile);
+  const useMobileProfile = profile === 'mobile' || (profile === 'auto' && deviceInfo.likelyMobile);
+  if (!useMobileProfile) {
+    return null;
+  }
+
+  const shortEdgeNorm = Math.max(0, Math.min(1, (deviceInfo.shortEdge - 320) / (1024 - 320)));
+  const dprNorm = Math.max(0, Math.min(1, (deviceInfo.dpr - 1) / (3 - 1)));
+  const cpuNorm = Math.max(0, Math.min(1, (deviceInfo.hardwareConcurrency - 2) / (8 - 2)));
+  const budgetWeight = Math.max(
+    0,
+    Math.min(1, (shortEdgeNorm * 0.35) + (cpuNorm * 0.45) - (dprNorm * 0.2)),
+  );
+
+  const influenceDynamicCap = Math.floor(sampleRangeByNormalizedWeight(
+    autoProfile.influenceDynamicCapRange,
+    14,
+    20,
+    budgetWeight,
+  ));
+  const influenceNoPointerFallBoost = sampleRangeByNormalizedWeight(
+    autoProfile.influenceNoPointerFallBoostRange,
+    3.0,
+    4.0,
+    1 - budgetWeight,
+  );
+  const mouseSpeedSwayAffect = sampleRangeByNormalizedWeight(
+    autoProfile.mouseSpeedSwayAffectRange,
+    0.1,
+    0.2,
+    budgetWeight,
+  );
+  const interactionRadiusScale = sampleRangeByNormalizedWeight(
+    autoProfile.interactionRadiusScaleRange,
+    0.82,
+    1.0,
+    budgetWeight,
+  );
+  const minSwayFallSpeed = Number.isFinite(Number(autoProfile.minSwayFallSpeed))
+    ? Math.max(0, Number(autoProfile.minSwayFallSpeed))
+    : 1.5;
+  const baseRadius = Number.isFinite(Number(flowersConfig.swayInteractionRadiusFactor))
+    ? Math.max(0, Number(flowersConfig.swayInteractionRadiusFactor))
+    : 2.1;
+
+  return {
+    influenceDynamicCapEnabled: true,
+    influenceDynamicCap: Math.max(1, influenceDynamicCap),
+    influenceNoPointerFallBoost: Math.max(1, influenceNoPointerFallBoost),
+    mouseSpeedSwayAffect: Math.max(0, mouseSpeedSwayAffect),
+    swayInteractionRadiusFactor: Math.max(0, baseRadius * interactionRadiusScale),
+    swayFallSpeed: Math.max(minSwayFallSpeed, Number(flowersConfig.swayFallSpeed) || 0),
+  };
+}
+
+function getFlowersRuntimeConfig() {
+  const flowersConfig = isPlainObjectLiteral(CONFIG.flowers) ? CONFIG.flowers : {};
+  const swayMode = resolveGlobalSwayMode();
+  const adaptivePatch = getFlowersAdaptiveRuntimePatch(flowersConfig, swayMode);
+  const floralScale = resolveResponsiveFoliageScale();
+  const runtimeConfig = {
+    ...flowersConfig,
+    ...(adaptivePatch || {}),
+    swayMode,
+    viewportCullingEnabled: isFlowerViewportCullingEnabled(),
+    floralResponsiveScaleFactor: floralScale,
+  };
+  if (Math.abs(floralScale - 1) > 1e-6) {
+    const drawSizeRaw = Number(runtimeConfig.drawSize);
+    runtimeConfig.drawSize = Number.isFinite(drawSizeRaw)
+      ? Math.max(1, drawSizeRaw * floralScale)
+      : Math.max(1, 80 * floralScale);
+
+    const typeConfigs = isPlainObjectLiteral(runtimeConfig.types) ? runtimeConfig.types : null;
+    if (typeConfigs && isPlainObjectLiteral(typeConfigs.blue)) {
+      const blueType = typeConfigs.blue;
+      const scaledBlueType = { ...blueType };
+      const baseSizeRaw = Number(blueType.baseSize);
+      if (Number.isFinite(baseSizeRaw)) {
+        scaledBlueType.baseSize = Math.max(0.01, baseSizeRaw * floralScale);
+      }
+      const pointDrawSizeRaw = Number(blueType.pointDrawSize);
+      if (Number.isFinite(pointDrawSizeRaw)) {
+        scaledBlueType.pointDrawSize = Math.max(1, pointDrawSizeRaw * floralScale);
+      }
+      runtimeConfig.types = {
+        ...typeConfigs,
+        blue: scaledBlueType,
+      };
+    }
+  }
+  return runtimeConfig;
+}
+
+function sanitizeOffshootPathGenerationMode(value) {
+  if (value === 'random' || value === 'manualTemplate' || value === 'inherit') {
+    return value;
+  }
+  return 'inherit';
+}
+
+function normalizeTemplateIndexPool(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const out = [];
+  const seen = new Set();
+  for (let i = 0; i < value.length; i += 1) {
+    const numeric = Number(value[i]);
+    if (!Number.isFinite(numeric) || numeric < 0) {
+      continue;
+    }
+    const index = Math.floor(numeric);
+    if (seen.has(index)) {
+      continue;
+    }
+    seen.add(index);
+    out.push(index);
+  }
+  return out;
+}
+
+function getDirectionalBasis(growthDir, direction) {
+  if (!growthDir || !Number.isFinite(growthDir.x) || !Number.isFinite(growthDir.y)) {
+    return null;
+  }
+  const forward = normalize(growthDir);
+  const normal = { x: -forward.y, y: forward.x };
+  const side = direction >= 0 ? 1 : -1;
+  return {
+    forward,
+    lateral: {
+      x: normal.x * side,
+      y: normal.y * side,
+    },
+  };
+}
+
+function getPathGenerationMode() {
+  return CONFIG.pathGeneration && CONFIG.pathGeneration.mode === 'manualTemplate'
+    ? 'manualTemplate'
+    : 'random';
+}
+
+function sanitizeManualTemplatePoints(template) {
+  if (!Array.isArray(template)) {
+    return null;
+  }
+
+  const points = [];
+  for (let i = 0; i < template.length; i += 1) {
+    const point = template[i];
+    if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+      continue;
+    }
+    points.push({ x: point.x, y: point.y });
+  }
+
+  return points.length >= 2 ? points : null;
+}
+
+function countSvgPathAnchorPoints(pathData) {
+  if (typeof pathData !== 'string' || pathData.trim().length === 0) {
+    return 0;
+  }
+  const tokens = pathData.match(/[a-zA-Z]|[-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?/g);
+  if (!tokens || tokens.length === 0) {
+    return 0;
+  }
+
+  function isCommandToken(token) {
+    return typeof token === 'string' && token.length === 1 && /[a-zA-Z]/.test(token);
+  }
+
+  let command = '';
+  let index = 0;
+  let count = 0;
+
+  function consumeSegments(valuesPerSegment) {
+    let consumedAny = false;
+    while (index < tokens.length && !isCommandToken(tokens[index])) {
+      if (index + valuesPerSegment > tokens.length) {
+        break;
+      }
+      let isValidSegment = true;
+      for (let i = 0; i < valuesPerSegment; i += 1) {
+        if (!Number.isFinite(Number(tokens[index + i]))) {
+          isValidSegment = false;
+          break;
+        }
+      }
+      if (!isValidSegment) {
+        break;
+      }
+      index += valuesPerSegment;
+      count += 1;
+      consumedAny = true;
+    }
+    return consumedAny;
+  }
+
+  while (index < tokens.length) {
+    if (isCommandToken(tokens[index])) {
+      command = tokens[index];
+      index += 1;
+      if (command === 'Z' || command === 'z') {
+        continue;
+      }
+    } else if (!command) {
+      break;
+    }
+
+    if (command === 'M' || command === 'm') {
+      // MoveTo counts its first endpoint; additional pairs are implicit LineTo endpoints.
+      consumeSegments(2);
+      continue;
+    }
+    if (command === 'L' || command === 'l' || command === 'T' || command === 't') {
+      consumeSegments(2);
+      continue;
+    }
+    if (command === 'H' || command === 'h' || command === 'V' || command === 'v') {
+      consumeSegments(1);
+      continue;
+    }
+    if (command === 'Q' || command === 'q' || command === 'S' || command === 's') {
+      consumeSegments(4);
+      continue;
+    }
+    if (command === 'C' || command === 'c') {
+      consumeSegments(6);
+      continue;
+    }
+    if (command === 'A' || command === 'a') {
+      consumeSegments(7);
+      continue;
+    }
+
+    // Unknown command; stop parsing conservatively.
+    break;
+  }
+
+  return Math.max(0, count);
+}
+
+function hasSvgCloseCommand(pathData) {
+  if (typeof pathData !== 'string' || pathData.trim().length === 0) {
+    return false;
+  }
+  const commandTokens = pathData.match(/[a-zA-Z]/g);
+  if (!commandTokens) {
+    return false;
+  }
+  for (let i = 0; i < commandTokens.length; i += 1) {
+    const command = commandTokens[i];
+    if (command === 'Z' || command === 'z') {
+      return true;
+    }
+  }
+  return false;
+}
+
+function computeTemplateClosedThreshold(points) {
+  if (!Array.isArray(points) || points.length < 2) {
+    return 0;
+  }
+  let minX = points[0].x;
+  let maxX = points[0].x;
+  let minY = points[0].y;
+  let maxY = points[0].y;
+  for (let i = 1; i < points.length; i += 1) {
+    const point = points[i];
+    if (point.x < minX) minX = point.x;
+    if (point.x > maxX) maxX = point.x;
+    if (point.y < minY) minY = point.y;
+    if (point.y > maxY) maxY = point.y;
+  }
+  const diagonal = Math.hypot(maxX - minX, maxY - minY);
+  return Math.max(1e-3, diagonal * 0.02);
+}
+
+function trimPolylineByArcFraction(points, fraction = 0.5) {
+  if (!Array.isArray(points) || points.length < 2) {
+    return points;
+  }
+  const tFraction = clamp(Number(fraction), 0, 1);
+  if (tFraction <= 0) {
+    return [points[0], points[0]];
+  }
+  if (tFraction >= 1) {
+    return points;
+  }
+
+  const segmentLengths = [];
+  let totalLength = 0;
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const dx = points[i + 1].x - points[i].x;
+    const dy = points[i + 1].y - points[i].y;
+    const segmentLength = Math.hypot(dx, dy);
+    segmentLengths.push(segmentLength);
+    totalLength += segmentLength;
+  }
+  if (totalLength < 1e-8) {
+    return points;
+  }
+
+  const targetLength = totalLength * tFraction;
+  const out = [{ x: points[0].x, y: points[0].y }];
+  let traversed = 0;
+
+  for (let i = 0; i < segmentLengths.length; i += 1) {
+    const segmentLength = segmentLengths[i];
+    if (segmentLength < 1e-8) {
+      continue;
+    }
+    const nextTraversed = traversed + segmentLength;
+    const p0 = points[i];
+    const p1 = points[i + 1];
+
+    if (nextTraversed < targetLength - 1e-8) {
+      out.push({ x: p1.x, y: p1.y });
+      traversed = nextTraversed;
+      continue;
+    }
+
+    const localDistance = clamp(targetLength - traversed, 0, segmentLength);
+    const localT = segmentLength < 1e-8 ? 0 : localDistance / segmentLength;
+    const cutPoint = {
+      x: p0.x + (p1.x - p0.x) * localT,
+      y: p0.y + (p1.y - p0.y) * localT,
+    };
+
+    const previous = out[out.length - 1];
+    if (Math.hypot(previous.x - cutPoint.x, previous.y - cutPoint.y) > 1e-8) {
+      out.push(cutPoint);
+    }
+
+    if (out.length < 2) {
+      out.push({ x: p1.x, y: p1.y });
+    }
+    return out;
+  }
+
+  return out.length >= 2 ? out : points;
+}
+
+function maybeOpenClosedSvgTemplate(points) {
+  if (!Array.isArray(points) || points.length < 3) {
+    return points;
+  }
+
+  const first = points[0];
+  const last = points[points.length - 1];
+  const closeThreshold = computeTemplateClosedThreshold(points);
+  const isClosed = Math.hypot(last.x - first.x, last.y - first.y) <= closeThreshold;
+  if (!isClosed) {
+    return points;
+  }
+
+  // Remove duplicated closing endpoint if present.
+  let openPoints = points;
+  if (points.length > 3) {
+    openPoints = points.slice(0, -1);
+  }
+
+  // Closed contour paths can look doubled when used as branch centerlines.
+  // Keep only the first half by traveled arc-length.
+  const trimmed = trimPolylineByArcFraction(openPoints, 0.5);
+  return Array.isArray(trimmed) && trimmed.length >= 2 ? trimmed : openPoints;
+}
+
+function getTemplateHeadingVector(points) {
+  if (!Array.isArray(points) || points.length < 2) {
+    return { x: 1, y: 0 };
+  }
+
+  const first = points[0];
+  const last = points[points.length - 1];
+  let dx = last.x - first.x;
+  let dy = last.y - first.y;
+  if (Math.hypot(dx, dy) > 1e-6) {
+    return { x: dx, y: dy };
+  }
+
+  let bestIndex = 1;
+  let bestDistanceSq = -1;
+  for (let i = 1; i < points.length; i += 1) {
+    const cx = points[i].x - first.x;
+    const cy = points[i].y - first.y;
+    const distSq = cx * cx + cy * cy;
+    if (distSq > bestDistanceSq) {
+      bestDistanceSq = distSq;
+      bestIndex = i;
+    }
+  }
+  dx = points[bestIndex].x - first.x;
+  dy = points[bestIndex].y - first.y;
+  if (Math.hypot(dx, dy) > 1e-6) {
+    return { x: dx, y: dy };
+  }
+
+  for (let i = 1; i < points.length; i += 1) {
+    dx = points[i].x - points[i - 1].x;
+    dy = points[i].y - points[i - 1].y;
+    if (Math.hypot(dx, dy) > 1e-6) {
+      return { x: dx, y: dy };
+    }
+  }
+
+  return { x: 1, y: 0 };
+}
+
+function normalizeTemplateRotationDeg(value, fallback = 0) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return Number.isFinite(fallback) ? fallback : 0;
+  }
+  return numeric;
+}
+
+function createManualTemplateEntry(points, meta = {}) {
+  const sanitizedPoints = sanitizeManualTemplatePoints(points);
+  if (!sanitizedPoints) {
+    return null;
+  }
+
+  const id = typeof meta.id === 'string' && meta.id.trim().length > 0
+    ? meta.id.trim()
+    : `template-${Number.isFinite(meta.index) ? meta.index : 0}`;
+  const label = typeof meta.label === 'string' && meta.label.trim().length > 0
+    ? meta.label.trim()
+    : id;
+  const sourceType = typeof meta.sourceType === 'string' && meta.sourceType.trim().length > 0
+    ? meta.sourceType.trim()
+    : 'points';
+  const rotationDeg = normalizeTemplateRotationDeg(meta.rotationDeg, 0);
+  const autoOpenClosedPath = meta.autoOpenClosedPath !== false;
+  const processedPoints = (
+    autoOpenClosedPath &&
+    (sourceType === 'svgFile' || sourceType === 'svgPathD')
+  )
+    ? maybeOpenClosedSvgTemplate(sanitizedPoints)
+    : sanitizedPoints;
+  const rawTargetPointCount = Number(meta.targetPointCount);
+  const targetPointCount = Number.isFinite(rawTargetPointCount) && rawTargetPointCount >= 2
+    ? Math.round(rawTargetPointCount)
+    : null;
+  const targetPointCountIsExplicit = meta.targetPointCountIsExplicit === true;
+  const trimRatio = (
+    Array.isArray(sanitizedPoints) &&
+    sanitizedPoints.length >= 2 &&
+    Array.isArray(processedPoints) &&
+    processedPoints.length >= 2
+  )
+    ? processedPoints.length / sanitizedPoints.length
+    : 1;
+  const effectiveTargetPointCount = (
+    targetPointCount &&
+    !targetPointCountIsExplicit &&
+    trimRatio < 0.95
+  )
+    ? Math.max(2, Math.round(targetPointCount * trimRatio))
+    : targetPointCount;
+  const finalPoints = effectiveTargetPointCount
+    ? resampleTemplateToPointCount(processedPoints, effectiveTargetPointCount)
+    : processedPoints;
+
+  return {
+    id,
+    label,
+    sourceType,
+    rotationDeg,
+    points: finalPoints,
+  };
+}
+
+function normalizeManualTemplateConfigEntry(candidate, index = 0) {
+  if (Array.isArray(candidate)) {
+    return createManualTemplateEntry(candidate, {
+      id: `config-template-${index}`,
+      label: `Config Template ${index}`,
+      sourceType: 'points',
+      index,
+    });
+  }
+
+  if (!candidate || typeof candidate !== 'object') {
+    return null;
+  }
+  if (candidate.enabled === false) {
+    return null;
+  }
+
+  return createManualTemplateEntry(candidate.points, {
+    id: candidate.id || `config-template-${index}`,
+    label: candidate.label || `Config Template ${index}`,
+    sourceType: candidate.sourceType || 'points',
+    rotationDeg: candidate.rotationDeg,
+    targetPointCount: candidate.targetPointCount,
+    targetPointCountIsExplicit: candidate.targetPointCount !== undefined,
+    autoOpenClosedPath: candidate.autoOpenClosedPath,
+    index,
+  });
+}
+
+function distancePointToSegment(point, segmentStart, segmentEnd) {
+  const vx = segmentEnd.x - segmentStart.x;
+  const vy = segmentEnd.y - segmentStart.y;
+  const wx = point.x - segmentStart.x;
+  const wy = point.y - segmentStart.y;
+  const c1 = vx * wx + vy * wy;
+  if (c1 <= 0) {
+    return Math.hypot(point.x - segmentStart.x, point.y - segmentStart.y);
+  }
+  const c2 = vx * vx + vy * vy;
+  if (c2 <= 1e-8) {
+    return Math.hypot(point.x - segmentStart.x, point.y - segmentStart.y);
+  }
+  if (c2 <= c1) {
+    return Math.hypot(point.x - segmentEnd.x, point.y - segmentEnd.y);
+  }
+  const b = c1 / c2;
+  const proj = {
+    x: segmentStart.x + b * vx,
+    y: segmentStart.y + b * vy,
+  };
+  return Math.hypot(point.x - proj.x, point.y - proj.y);
+}
+
+function sampleSvgPathElementAdaptive(pathElement, options = {}) {
+  const tolerance = Number.isFinite(options.tolerance) ? Math.max(0.05, options.tolerance) : 1.2;
+  const maxDepth = Number.isFinite(options.maxDepth) ? clamp(Math.floor(options.maxDepth), 1, 20) : 12;
+  const maxPoints = Number.isFinite(options.maxPoints) ? clamp(Math.floor(options.maxPoints), 8, 10000) : 2000;
+  const minSegmentLength = Number.isFinite(options.minSegmentLength)
+    ? Math.max(0.01, options.minSegmentLength)
+    : 0.3;
+
+  let totalLength = 0;
+  try {
+    totalLength = pathElement.getTotalLength();
+  } catch (error) {
+    return null;
+  }
+  if (!Number.isFinite(totalLength) || totalLength < 1e-6) {
+    return null;
+  }
+
+  function pointAtLength(length) {
+    const point = pathElement.getPointAtLength(clamp(length, 0, totalLength));
+    return { x: point.x, y: point.y };
+  }
+
+  const startPoint = pointAtLength(0);
+  const endPoint = pointAtLength(totalLength);
+  const out = [startPoint];
+  let aborted = false;
+
+  function recurse(l0, p0, l1, p1, depth) {
+    if (aborted) {
+      return;
+    }
+    if (out.length >= maxPoints) {
+      out.push(p1);
+      aborted = true;
+      return;
+    }
+
+    const span = l1 - l0;
+    const midLength = l0 + span * 0.5;
+    const midPoint = pointAtLength(midLength);
+    const flatness = distancePointToSegment(midPoint, p0, p1);
+    const shouldSplit = (
+      depth < maxDepth &&
+      span > minSegmentLength &&
+      flatness > tolerance
+    );
+
+    if (shouldSplit) {
+      recurse(l0, p0, midLength, midPoint, depth + 1);
+      recurse(midLength, midPoint, l1, p1, depth + 1);
+      return;
+    }
+
+    out.push(p1);
+  }
+
+  recurse(0, startPoint, totalLength, endPoint, 0);
+
+  const cleaned = [];
+  for (let i = 0; i < out.length; i += 1) {
+    const point = out[i];
+    if (cleaned.length === 0) {
+      cleaned.push(point);
+      continue;
+    }
+    const previous = cleaned[cleaned.length - 1];
+    if (Math.hypot(point.x - previous.x, point.y - previous.y) > 1e-6) {
+      cleaned.push(point);
+    }
+  }
+
+  return cleaned.length >= 2 ? cleaned : null;
+}
+
+function convertSvgPathDToTemplatePoints(pathData, options = {}) {
+  if (typeof pathData !== 'string' || pathData.trim().length === 0) {
+    return null;
+  }
+  if (typeof document === 'undefined' || !document.createElementNS || !document.body) {
+    return null;
+  }
+
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  const path = document.createElementNS(ns, 'path');
+  path.setAttribute('d', pathData);
+  if (typeof options.transform === 'string' && options.transform.trim().length > 0) {
+    path.setAttribute('transform', options.transform);
+  }
+  svg.appendChild(path);
+  svg.setAttribute('width', '0');
+  svg.setAttribute('height', '0');
+  svg.style.position = 'absolute';
+  svg.style.width = '0';
+  svg.style.height = '0';
+  svg.style.opacity = '0';
+  svg.style.pointerEvents = 'none';
+
+  document.body.appendChild(svg);
+  let sampled = null;
+  try {
+    sampled = sampleSvgPathElementAdaptive(path, options);
+  } catch (error) {
+    sampled = null;
+  }
+  svg.remove();
+
+  return sanitizeManualTemplatePoints(sampled);
+}
+
+function extractFirstPathDataFromSvgText(svgText) {
+  if (typeof svgText !== 'string' || svgText.trim().length === 0) {
+    return null;
+  }
+  if (typeof DOMParser !== 'function') {
+    return null;
+  }
+  const parser = new DOMParser();
+  const documentNode = parser.parseFromString(svgText, 'image/svg+xml');
+  if (documentNode.querySelector('parsererror')) {
+    return null;
+  }
+
+  const firstPath = documentNode.querySelector('path[d]');
+  if (!firstPath) {
+    return null;
+  }
+
+  const d = firstPath.getAttribute('d');
+  if (typeof d !== 'string' || d.trim().length === 0) {
+    return null;
+  }
+
+  return {
+    d,
+    transform: firstPath.getAttribute('transform') || '',
+    anchorPointCount: countSvgPathAnchorPoints(d),
+  };
+}
+
+async function resolveManualTemplateSource(source, index = 0) {
+  const sourceType = typeof source.sourceType === 'string' ? source.sourceType : '';
+  if (sourceType === 'points') {
+    return {
+      points: sanitizeManualTemplatePoints(source.points),
+      inferredPointCount: null,
+    };
+  }
+
+  if (sourceType === 'svgPathD') {
+    const d = typeof source.d === 'string' ? source.d : '';
+    return {
+      points: convertSvgPathDToTemplatePoints(d),
+      inferredPointCount: countSvgPathAnchorPoints(d),
+      isClosed: hasSvgCloseCommand(d),
+    };
+  }
+
+  if (sourceType === 'svgFile') {
+    if (typeof fetch !== 'function') {
+      throw new Error('fetch is unavailable for svgFile sources.');
+    }
+    const src = typeof source.src === 'string' ? source.src : '';
+    if (src.trim().length === 0) {
+      throw new Error('svgFile source is missing src.');
+    }
+    const response = await fetch(normalizeHostedAssetPath(src));
+    if (!response.ok) {
+      throw new Error(`failed to fetch "${src}" (${response.status}).`);
+    }
+    const svgText = await response.text();
+    const pathData = extractFirstPathDataFromSvgText(svgText);
+    if (!pathData) {
+      throw new Error(`no valid <path d> found in "${src}".`);
+    }
+    return {
+      points: convertSvgPathDToTemplatePoints(pathData.d, {
+        transform: pathData.transform,
+      }),
+      inferredPointCount: pathData.anchorPointCount,
+      isClosed: hasSvgCloseCommand(pathData.d),
+    };
+  }
+
+  throw new Error(`unsupported sourceType "${sourceType || 'unknown'}" at index ${index}.`);
+}
+
+async function loadManualTemplateSources(options = {}) {
+  const { force = false } = options;
+  if (STATE.manualTemplateRegistryLoaded && !force) {
+    return STATE.manualTemplateRegistryTemplates;
+  }
+
+  const sourceList = Array.isArray(window.STEM_MANUAL_TEMPLATE_SOURCES)
+    ? window.STEM_MANUAL_TEMPLATE_SOURCES
+    : [];
+  const resolvedTemplates = [];
+  const warnings = [];
+
+  for (let i = 0; i < sourceList.length; i += 1) {
+    const source = sourceList[i];
+    if (!source || typeof source !== 'object') {
+      continue;
+    }
+    if (source.enabled === false) {
+      continue;
+    }
+
+    const sourceLabel = typeof source.id === 'string' && source.id.length > 0
+      ? source.id
+      : `template-source-${i}`;
+
+    try {
+      const resolved = await resolveManualTemplateSource(source, i);
+      const templatePoints = resolved && typeof resolved === 'object'
+        ? resolved.points
+        : null;
+      const inferredPointCount = resolved && typeof resolved === 'object'
+        ? resolved.inferredPointCount
+        : null;
+      const hasExplicitTargetPointCount = Number.isFinite(Number(source.targetPointCount));
+      const targetPointCount = hasExplicitTargetPointCount
+        ? Number(source.targetPointCount)
+        : inferredPointCount;
+      const templateEntry = createManualTemplateEntry(templatePoints, {
+        id: source.id || sourceLabel,
+        label: source.label || sourceLabel,
+        sourceType: source.sourceType || 'points',
+        rotationDeg: source.rotationDeg,
+        autoOpenClosedPath: source.autoOpenClosedPath,
+        targetPointCount,
+        targetPointCountIsExplicit: hasExplicitTargetPointCount,
+        index: i,
+      });
+      if (templateEntry) {
+        resolvedTemplates.push(templateEntry);
+      } else {
+        const message = `${sourceLabel}: source resolved to no template points.`;
+        warnings.push(message);
+        console.warn('[ManualTemplate]', message);
+      }
+    } catch (error) {
+      const message = `${sourceLabel}: ${error.message}`;
+      warnings.push(message);
+      console.warn('[ManualTemplate]', message);
+    }
+  }
+
+  STATE.manualTemplateRegistryTemplates = resolvedTemplates;
+  STATE.manualTemplateRegistryWarnings = warnings;
+  STATE.manualTemplateRegistryLoaded = true;
+  return resolvedTemplates;
+}
+
+function getResolvedManualTemplateEntries() {
+  const out = [];
+
+  // Keep generate_manual_points() as fixed template index 0.
+  const generated = createManualTemplateEntry(generate_manual_points(), {
+    id: 'generate-manual-points',
+    label: 'generate_manual_points()',
+    sourceType: 'generated',
+    rotationDeg: 0,
+    index: 0,
+  });
+  if (generated) {
+    out.push(generated);
+  }
+
+  const registryTemplates = Array.isArray(STATE.manualTemplateRegistryTemplates)
+    ? STATE.manualTemplateRegistryTemplates
+    : [];
+  for (let i = 0; i < registryTemplates.length; i += 1) {
+    const template = registryTemplates[i];
+    if (Array.isArray(template)) {
+      const legacy = createManualTemplateEntry(template, {
+        id: `registry-template-${i}`,
+        label: `Registry Template ${i}`,
+        sourceType: 'points',
+        index: i,
+      });
+      if (legacy) {
+        out.push(legacy);
+      }
+      continue;
+    }
+    if (!template || typeof template !== 'object') {
+      continue;
+    }
+    const entry = createManualTemplateEntry(template.points, {
+      id: template.id || `registry-template-${i}`,
+      label: template.label || `Registry Template ${i}`,
+      sourceType: template.sourceType || 'points',
+      rotationDeg: template.rotationDeg,
+      index: i,
+    });
+    if (entry) {
+      out.push(entry);
+    }
+  }
+
+  const config = CONFIG.pathGeneration || {};
+  const inputTemplates = Array.isArray(config.manualTemplates) ? config.manualTemplates : [];
+  for (let i = 0; i < inputTemplates.length; i += 1) {
+    const template = normalizeManualTemplateConfigEntry(inputTemplates[i], i);
+    if (template) {
+      out.push(template);
+    }
+  }
+
+  return out;
+}
+
+function getSanitizedManualTemplates() {
+  const entries = getResolvedManualTemplateEntries();
+  const out = [];
+  for (let i = 0; i < entries.length; i += 1) {
+    out.push(entries[i].points);
+  }
+  return out;
+}
+
+function getManualTemplateDescriptors() {
+  const entries = getResolvedManualTemplateEntries();
+  const out = [];
+  for (let i = 0; i < entries.length; i += 1) {
+    const entry = entries[i];
+    out.push({
+      index: i,
+      id: entry.id,
+      label: entry.label,
+      sourceType: entry.sourceType,
+      rotationDeg: entry.rotationDeg,
+      pointCount: entry.points.length,
+    });
+  }
+  return out;
+}
+
+function resampleTemplateToPointCount(template, targetCount) {
+  if (!Array.isArray(template) || template.length < 2) {
+    return template;
+  }
+
+  const resolvedTarget = Math.max(2, Math.floor(Number(targetCount) || 0));
+  if (resolvedTarget === template.length) {
+    return template;
+  }
+
+  const segments = [];
+  const cumulative = [0];
+  let totalLength = 0;
+
+  for (let i = 0; i < template.length - 1; i += 1) {
+    const start = template[i];
+    const end = template[i + 1];
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const length = Math.hypot(dx, dy);
+    if (length < 1e-8) {
+      continue;
+    }
+    segments.push({ start, dx, dy, length });
+    totalLength += length;
+    cumulative.push(totalLength);
+  }
+
+  if (segments.length === 0 || totalLength < 1e-8) {
+    const fallback = template[0];
+    const out = [];
+    for (let i = 0; i < resolvedTarget; i += 1) {
+      out.push({ x: fallback.x, y: fallback.y });
+    }
+    return out;
+  }
+
+  const out = [];
+  let segmentIndex = 0;
+  for (let i = 0; i < resolvedTarget; i += 1) {
+    const t = resolvedTarget <= 1 ? 0 : i / (resolvedTarget - 1);
+    const distance = t * totalLength;
+
+    while (
+      segmentIndex < segments.length - 1 &&
+      distance > cumulative[segmentIndex + 1]
+    ) {
+      segmentIndex += 1;
+    }
+
+    const segment = segments[segmentIndex];
+    const segmentStartDistance = cumulative[segmentIndex];
+    const localDistance = Math.max(0, distance - segmentStartDistance);
+    const localT = segment.length < 1e-8 ? 0 : clamp(localDistance / segment.length, 0, 1);
+
+    out.push({
+      x: segment.start.x + segment.dx * localT,
+      y: segment.start.y + segment.dy * localT,
+    });
+  }
+
+  return out;
+}
+
+function ensureTemplateMinControlPoints(template, minCount) {
+  if (!Array.isArray(template) || template.length < 2) {
+    return template;
+  }
+
+  const targetCount = Math.max(2, Math.floor(Number(minCount) || 0));
+  if (template.length >= targetCount) {
+    return template;
+  }
+  return resampleTemplateToPointCount(template, targetCount);
+}
+
+function resolveTemplateScaleRange(templateConfig = CONFIG.pathGeneration || {}) {
+  const fallbackScale = Number.isFinite(templateConfig.templateScale)
+    ? Math.max(0, templateConfig.templateScale)
+    : 1;
+
+  let minScale = Number.isFinite(templateConfig.templateScaleRangeMin)
+    ? Math.max(0, templateConfig.templateScaleRangeMin)
+    : fallbackScale;
+  let maxScale = Number.isFinite(templateConfig.templateScaleRangeMax)
+    ? Math.max(0, templateConfig.templateScaleRangeMax)
+    : fallbackScale;
+
+  if (minScale > maxScale) {
+    const tmp = minScale;
+    minScale = maxScale;
+    maxScale = tmp;
+  }
+
+  return { minScale, maxScale };
+}
+
+function resolvePerBranchTemplateScale(stableKey = '', templateConfig = CONFIG.pathGeneration || {}) {
+  const foliageScale = resolveResponsiveFoliageScale();
+  const { minScale, maxScale } = resolveTemplateScaleRange(templateConfig);
+  if (Math.abs(maxScale - minScale) < 1e-8) {
+    return minScale * foliageScale;
+  }
+  const rng = mulberry32(hashSeed(`${stableKey}|template-scale`));
+  return (minScale + (maxScale - minScale) * rng()) * foliageScale;
+}
+
+function resolvePathGenerationBaseRotationRad(templateConfig = CONFIG.pathGeneration || {}) {
+  const numericDeg = Number(templateConfig.baseRotationDeg);
+  if (!Number.isFinite(numericDeg)) {
+    return 0;
+  }
+  const clampedDeg = clamp(numericDeg, -180, 180);
+  return clampedDeg * Math.PI / 180;
+}
+
+function resolveSignedBaseRotationRadForBranch(
+  direction = -1,
+  branchProfile = {},
+  templateConfig = CONFIG.pathGeneration || {},
+) {
+  const baseRotationRad = resolvePathGenerationBaseRotationRad(templateConfig);
+  if (Math.abs(baseRotationRad) <= 1e-10) {
+    return 0;
+  }
+  const sideSignSource = Number.isFinite(branchProfile.rootDirection)
+    ? branchProfile.rootDirection
+    : direction;
+  const sideSign = sideSignSource >= 0 ? 1 : -1;
+  return baseRotationRad * sideSign;
+}
+
+function resolveManualTemplateIndex(templateCount, stableKey = '', preferredIndex = null) {
+  if (!Number.isFinite(templateCount) || templateCount < 1) {
+    return -1;
+  }
+
+  if (Number.isFinite(preferredIndex)) {
+    return clamp(Math.floor(preferredIndex), 0, templateCount - 1);
+  }
+
+  const config = CONFIG.pathGeneration || {};
+  if (config.templatePickMode === 'fixed') {
+    const fixed = Number.isFinite(config.fixedTemplateIndex) ? config.fixedTemplateIndex : 0;
+    return clamp(Math.floor(fixed), 0, templateCount - 1);
+  }
+
+  if (config.templatePickDeterministic) {
+    const rng = mulberry32(hashSeed(`${stableKey}|manual-template`));
+    return clamp(Math.floor(rng() * templateCount), 0, templateCount - 1);
+  }
+
+  return clamp(Math.floor(Math.random() * templateCount), 0, templateCount - 1);
+}
+
+function getTemplateNoiseOffset(
+  time,
+  direction = -1,
+  noiseConfig = CONFIG.noise,
+  noisePhase = { x1: 0, y1: 0, x2: 0, y2: 0 },
+  noiseScaleMultiplier = 1,
+  directionalBasis = null,
+  noiseAmount = 0,
+  layerSeed = 0,
+  directionalBias = 0,
+  axisAbsFlags = null,
+) {
+  const layerOffsetA = layerSeed * 27183.331;
+  const layerOffsetB = layerSeed * 93841.719;
+  const x1 = time / noiseConfig.stepSize + noisePhase.x1 + layerOffsetA;
+  const y1 = time / noiseConfig.stepSize + noisePhase.y1 + layerOffsetB;
+  const x2 = x1 + 94827 + noisePhase.x2 + layerOffsetB * 0.37;
+  const y2 = y1 + 53977 + noisePhase.y2 + layerOffsetA * 0.53;
+
+  const n1 = sampleNoise2(x1, y1);
+  const n2 = sampleNoise2(x2, y2);
+
+  const bias = normalizeTemplateNoiseDirectionalBias(directionalBias, 0);
+  const resolvedAxisAbsFlags = axisAbsFlags || resolvePathNoiseAxisAbsFlags();
+  const lateralAbsOrSigned = blendSignedNoiseWithAbsolute(n1, resolvedAxisAbsFlags.xAbsBlend);
+  const forwardAbsOrSigned = blendSignedNoiseWithAbsolute(n2, resolvedAxisAbsFlags.yAbsBlend);
+  const lateralSample = n1 * (1 - bias) + lateralAbsOrSigned * bias;
+  const forwardSample = n2 * (1 - bias) + forwardAbsOrSigned * bias;
+  const lateralMagnitude = lateralSample * noiseAmount * noiseScaleMultiplier;
+  const forwardMagnitude = forwardSample * noiseAmount * noiseScaleMultiplier;
+
+  if (directionalBasis) {
+    return {
+      dx: directionalBasis.lateral.x * lateralMagnitude + directionalBasis.forward.x * forwardMagnitude,
+      dy: directionalBasis.lateral.y * lateralMagnitude + directionalBasis.forward.y * forwardMagnitude,
+    };
+  }
+
+  return {
+    dx: lateralMagnitude * direction,
+    dy: forwardMagnitude * -1,
+  };
+}
+
+// =========================
+// Wind System Functions
+// =========================
+
+function areFlowersFullyOpen() {
+  const flowerGrowth = STATE.flowerGrowth;
+  return Boolean(
+    flowerGrowth 
+    && flowerGrowth.openStateLatched === true
+    && flowerGrowth.openSweepCompleted === true
+  );
+}
+
+function resolveWindConfig() {
+  const motionConfig = isPlainObjectLiteral(CONFIG.motion) ? CONFIG.motion : {};
+  const raw = isPlainObjectLiteral(motionConfig.wind) ? motionConfig.wind : {};
+  const influencersRaw = Array.isArray(raw.influencers) ? raw.influencers : [{}];
+  const influencers = influencersRaw.map((inf) => {
+    const safe = isPlainObjectLiteral(inf) ? inf : {};
+    return {
+      phaseShiftX: Number.isFinite(Number(safe.phaseShiftX)) ? Number(safe.phaseShiftX) : 0,
+      phaseShiftY: Number.isFinite(Number(safe.phaseShiftY)) ? Number(safe.phaseShiftY) : 0,
+    };
+  });
+  const debugRaw = isPlainObjectLiteral(raw.debug) ? raw.debug : {};
+  return {
+    enabled: raw.enabled !== false,
+    sweepSpeedPxPerSec: Number.isFinite(Number(raw.sweepSpeedPxPerSec)) ? Math.max(1, Number(raw.sweepSpeedPxPerSec)) : 120,
+    yAmplitudeRatio: Number.isFinite(Number(raw.yAmplitudeRatio)) ? clamp(Number(raw.yAmplitudeRatio), 0, 1) : 0.35,
+    yFrequencyHz: Number.isFinite(Number(raw.yFrequencyHz)) ? Math.max(0.001, Number(raw.yFrequencyHz)) : 0.18,
+    radiusFactor: Number.isFinite(Number(raw.radiusFactor)) ? Math.max(0, Number(raw.radiusFactor)) : 3.1,
+    influencers,
+    debug: {
+      enabled: debugRaw.enabled === true,
+      drawOnFrontLayer: debugRaw.drawOnFrontLayer !== false,
+      strokeStyle: typeof debugRaw.strokeStyle === 'string' ? debugRaw.strokeStyle : 'rgba(80, 180, 255, 0.9)',
+      fillStyle: typeof debugRaw.fillStyle === 'string' ? debugRaw.fillStyle : 'rgba(80, 180, 255, 0.12)',
+      lineWidthPx: Number.isFinite(Number(debugRaw.lineWidthPx)) ? Math.max(0.5, Number(debugRaw.lineWidthPx)) : 2,
+    },
+  };
+}
+
+function tickWindInfluencers(nowMs) {
+  if (resolveGlobalSwayMode() !== 'wind') {
+    STATE.windInfluencerPositions = [];
+    return;
+  }
+  if (!areFlowersFullyOpen()) {
+    STATE.windInfluencerPositions = [];
+    return;
+  }
+
+  const windConfig = resolveWindConfig();
+  if (!windConfig.enabled) {
+    STATE.windInfluencerPositions = [];
+    return;
+  }
+
+  const W = STATE.viewportWidth;
+  const H = STATE.viewportHeight;
+  if (W <= 0 || H <= 0) {
+    STATE.windInfluencerPositions = [];
+    return;
+  }
+
+  const flowersConfig = isPlainObjectLiteral(CONFIG.flowers) ? CONFIG.flowers : {};
+  const drawSize = Number.isFinite(flowersConfig.drawSize) ? Math.max(1, flowersConfig.drawSize) : 80;
+  const radius = drawSize * windConfig.radiusFactor;
+
+  const dtSec = STATE.windLastTickMs > 0
+    ? clamp((nowMs - STATE.windLastTickMs) / 1000, 0, 0.1)
+    : 0;
+  STATE.windLastTickMs = nowMs;
+
+  const tSec = nowMs / 1000;
+  const yCenter = H * 0.5;
+  const yAmplitude = H * windConfig.yAmplitudeRatio;
+
+  const newPositions = [];
+
+  for (let i = 0; i < windConfig.influencers.length; i += 1) {
+    const infCfg = windConfig.influencers[i];
+
+    if (!STATE.windInfluencers[i]) {
+      const startX = W * clamp(infCfg.phaseShiftX, 0, 1);
+      STATE.windInfluencers[i] = {
+        x: startX,
+        direction: 1,
+      };
+    }
+
+    const inf = STATE.windInfluencers[i];
+
+    inf.x += inf.direction * windConfig.sweepSpeedPxPerSec * dtSec;
+    if (inf.x >= W) {
+      inf.x = W;
+      inf.direction = -1;
+    } else if (inf.x <= 0) {
+      inf.x = 0;
+      inf.direction = 1;
+    }
+
+    const yPhaseRad = infCfg.phaseShiftY * 2 * Math.PI;
+    const y = yCenter + yAmplitude * Math.sin(2 * Math.PI * windConfig.yFrequencyHz * tSec + yPhaseRad);
+
+    newPositions.push({ x: inf.x, y, radius });
+  }
+
+  STATE.windInfluencerPositions = newPositions;
+}
+
+function drawWindDebugOverlay(targetCtx) {
+  const windConfig = resolveWindConfig();
+  if (!windConfig.debug.enabled) {
+    return;
+  }
+  const positions = STATE.windInfluencerPositions;
+  if (!positions || positions.length === 0) {
+    return;
+  }
+  const dbg = windConfig.debug;
+  targetCtx.save();
+  for (let i = 0; i < positions.length; i += 1) {
+    const pos = positions[i];
+    targetCtx.beginPath();
+    targetCtx.arc(pos.x, pos.y, pos.radius, 0, 2 * Math.PI);
+    targetCtx.lineWidth = dbg.lineWidthPx;
+    targetCtx.strokeStyle = dbg.strokeStyle;
+    targetCtx.fillStyle = dbg.fillStyle;
+    targetCtx.fill();
+    targetCtx.stroke();
+    targetCtx.font = '12px monospace';
+    targetCtx.fillStyle = dbg.strokeStyle;
+    targetCtx.fillText(`wind[${i}] x:${Math.round(pos.x)} y:${Math.round(pos.y)}`, pos.x + pos.radius + 4, pos.y + 4);
+  }
+  targetCtx.restore();
+}
+
+
+// =========================
+// 5) Branch Generation
+// =========================
+function getNoiseDelta(
+  time,
+  direction = -1,
+  noiseConfig = CONFIG.noise,
+  noisePhase = { x1: 0, y1: 0, x2: 0, y2: 0 },
+  noiseScaleMultiplier = 1,
+  directionalBasis = null,
+  axisAbsFlags = null,
+) {
+  const x1 = time / noiseConfig.stepSize + noisePhase.x1;
+  const y1 = time / noiseConfig.stepSize + noisePhase.y1;
+  const x2 = x1 + 4895943 + noisePhase.x2;
+  const y2 = y1 + 4838485943 + noisePhase.y2;
+
+  const n1 = sampleNoise2(x1, y1);
+  const n2 = sampleNoise2(x2, y2);
+
+  const resolvedAxisAbsFlags = axisAbsFlags || resolvePathNoiseAxisAbsFlags();
+  const lateralMagnitude = blendSignedNoiseWithAbsolute(
+    n1,
+    resolvedAxisAbsFlags.xAbsBlend,
+  ) * noiseConfig.scale * noiseScaleMultiplier;
+  const forwardMagnitude = blendSignedNoiseWithAbsolute(
+    n2,
+    resolvedAxisAbsFlags.yAbsBlend,
+  ) * noiseConfig.scale * noiseScaleMultiplier;
+
+  if (directionalBasis) {
+    return {
+      dx: directionalBasis.lateral.x * lateralMagnitude + directionalBasis.forward.x * forwardMagnitude,
+      dy: directionalBasis.lateral.y * lateralMagnitude + directionalBasis.forward.y * forwardMagnitude,
+    };
+  }
+
+  return {
+    dx: lateralMagnitude * direction,
+    dy: forwardMagnitude * -1,
+  };
+}
+
+/*
+  Generates one random-noise branch control-point list.
+  Returns both points and the updated time cursor so each branch can keep its
+  own independent generation timeline.
+*/
+
+function generate_manual_points() {
+  const generated = [];
+  const x0 = 200;
+  const y0 = 500;
+  const d = 25;
+
+  generated.push({ x: x0 + 8 * d, y: y0 + 2 * d });
+  generated.push({ x: x0 + 6 * d, y: y0 + 4 * d });
+  generated.push({ x: x0 + 5 * d, y: y0 + 4 * d });
+  generated.push({ x: x0 + 4 * d, y: y0 + 4 * d });
+  generated.push({ x: x0 + 3 * d, y: y0 + 5 * d });
+  generated.push({ x: x0 + 1 * d, y: y0 + 4 * d });
+  generated.push({ x: x0 - 3 * d, y: y0 - 4 * d });
+  generated.push({ x: x0 - 4 * d, y: y0 - 5 * d });
+  generated.push({ x: x0 - 6 * d, y: y0 - 5 * d });
+  generated.push({ x: x0 - 6.5 * d, y: y0 - 6 * d });
+
+  return generated;
+}
+
+function generateBranchControlPoints(
+  startX,
+  startY,
+  direction,
+  initialTime,
+  noiseConfig = CONFIG.noise,
+  branchProfile = {},
+) {
+  let simX = startX;
+  let simY = startY;
+  let timeCursor = initialTime;
+  const points = [{ x: simX, y: simY }];
+
+  const noisePhase = branchProfile.noisePhase || { x1: 0, y1: 0, x2: 0, y2: 0 };
+  const noiseScaleMultiplier = Number.isFinite(branchProfile.noiseScaleMultiplier)
+    ? branchProfile.noiseScaleMultiplier
+    : 1;
+  const directionalBasis = getDirectionalBasis(branchProfile.growthDir, direction);
+  const axisAbsFlags = resolvePathNoiseAxisAbsFlags(CONFIG.pathGeneration || {});
+  const baseRotationRad = resolveSignedBaseRotationRadForBranch(
+    direction,
+    branchProfile,
+    CONFIG.pathGeneration || {},
+  );
+
+  for (let i = 0; i < noiseConfig.checkpointCount; i += 1) {
+    for (let j = 0; j < noiseConfig.checkpointSpacingSteps; j += 1) {
+      timeCursor += noiseConfig.timeStep;
+      const delta = getNoiseDelta(
+        timeCursor,
+        direction,
+        noiseConfig,
+        noisePhase,
+        noiseScaleMultiplier,
+        directionalBasis,
+        axisAbsFlags,
+      );
+      simX += delta.dx;
+      simY += delta.dy;
+    }
+    points.push({ x: simX, y: simY });
+  }
+
+  const rotatedPoints = rotatePointsAroundAnchor(points, startX, startY, baseRotationRad);
+
+  return {
+    points: rotatedPoints,
+    endTime: timeCursor,
+  };
+}
+
+function generateTemplateControlPoints(
+  startX,
+  startY,
+  direction,
+  initialTime,
+  noiseConfig = CONFIG.noise,
+  branchProfile = {},
+  stableKey = '',
+  preferredTemplateIndex = null,
+) {
+  const templateEntries = getResolvedManualTemplateEntries();
+  if (templateEntries.length === 0) {
+    return generateBranchControlPoints(
+      startX,
+      startY,
+      direction,
+      initialTime,
+      noiseConfig,
+      branchProfile,
+    );
+  }
+
+  const templateIndex = resolveManualTemplateIndex(
+    templateEntries.length,
+    stableKey,
+    preferredTemplateIndex,
+  );
+  const templateEntry = templateEntries[templateIndex >= 0 ? templateIndex : 0];
+  const templateBase = templateEntry.points;
+  const templateRotationRad = normalizeTemplateRotationDeg(templateEntry.rotationDeg, 0) * Math.PI / 180;
+  const templateConfig = CONFIG.pathGeneration || {};
+  const axisAbsFlags = resolvePathNoiseAxisAbsFlags(templateConfig);
+  const inheritCheckpointSpacing = templateConfig.templateInheritCheckpointSpacingSteps !== false;
+  const requiredTemplatePoints = Math.max(
+    2,
+    Math.floor(
+      Number.isFinite(noiseConfig.checkpointSpacingSteps)
+        ? noiseConfig.checkpointSpacingSteps
+        : templateBase.length,
+    ),
+  );
+  const template = inheritCheckpointSpacing
+    ? ensureTemplateMinControlPoints(templateBase, requiredTemplatePoints)
+    : templateBase;
+
+  const noisePhase = branchProfile.noisePhase || { x1: 0, y1: 0, x2: 0, y2: 0 };
+  const noiseScaleMultiplier = Number.isFinite(branchProfile.noiseScaleMultiplier)
+    ? branchProfile.noiseScaleMultiplier
+    : 1;
+  const directionalBasis = getDirectionalBasis(branchProfile.growthDir, direction);
+
+  const baseNoiseStep = Number.isFinite(noiseConfig.timeStep) && noiseConfig.timeStep > 0
+    ? noiseConfig.timeStep
+    : 1 / 300;
+  const noiseAmount1 = Math.max(0, Number(templateConfig.templateNoiseAmount) || 0);
+  const noiseStep1 = Number.isFinite(templateConfig.templateNoiseStep) && templateConfig.templateNoiseStep > 0
+    ? templateConfig.templateNoiseStep
+    : baseNoiseStep;
+  const noiseAmount2 = Math.max(0, Number(templateConfig.templateNoiseAmount2) || 0);
+  const noiseStep2 = Number.isFinite(templateConfig.templateNoiseStep2) && templateConfig.templateNoiseStep2 > 0
+    ? templateConfig.templateNoiseStep2
+    : baseNoiseStep;
+  const noiseAmount3 = Math.max(0, Number(templateConfig.templateNoiseAmount3) || 0);
+  const noiseStep3 = Number.isFinite(templateConfig.templateNoiseStep3) && templateConfig.templateNoiseStep3 > 0
+    ? templateConfig.templateNoiseStep3
+    : baseNoiseStep;
+  const noiseHighpassWindow3 = normalizeTemplateNoiseHighpassWindow(
+    Number(templateConfig.templateNoiseHighpassWindow3),
+    7,
+  );
+  const directionalBias = normalizeTemplateNoiseDirectionalBias(
+    Number(templateConfig.templateNoiseDirectionalBias),
+    0,
+  );
+  const templateNoiseLayers = [];
+  if (noiseAmount1 > 0) {
+    templateNoiseLayers.push({ amount: noiseAmount1, step: noiseStep1, layerSeed: 0 });
+  }
+  if (noiseAmount2 > 0) {
+    templateNoiseLayers.push({ amount: noiseAmount2, step: noiseStep2, layerSeed: 1 });
+  }
+  const shouldAlign = templateConfig.alignTemplateToGrowth !== false;
+  const globalTemplateScale = resolvePerBranchTemplateScale(stableKey, templateConfig);
+  const branchTemplateScale = Number.isFinite(branchProfile.templateScaleMultiplier)
+    ? Math.max(0, branchProfile.templateScaleMultiplier)
+    : 1;
+  const templateScale = globalTemplateScale * branchTemplateScale;
+  // Positive direction branches (left side seeds) mirror horizontally.
+  const mirrorX = direction >= 0 ? -1 : 1;
+
+  const first = template[0];
+  const headingSource = getTemplateHeadingVector(template);
+  // Align uses the source heading before per-template rotation so rotationDeg
+  // remains an explicit per-template orientation control.
+  const unmirroredHeading = {
+    x: headingSource.x * templateScale,
+    y: headingSource.y * templateScale,
+  };
+  const templateHeading = normalize({
+    x: unmirroredHeading.x * mirrorX,
+    y: unmirroredHeading.y,
+  });
+  const targetHeading = normalize(
+    branchProfile.growthDir && Number.isFinite(branchProfile.growthDir.x) && Number.isFinite(branchProfile.growthDir.y)
+      ? branchProfile.growthDir
+      : { x: direction, y: -1 },
+  );
+
+  let rotation = 0;
+  if (shouldAlign) {
+    const cross = templateHeading.x * targetHeading.y - templateHeading.y * targetHeading.x;
+    const dot = templateHeading.x * targetHeading.x + templateHeading.y * targetHeading.y;
+    rotation = Math.atan2(cross, dot);
+  }
+
+  const layerTimeCursors = new Array(templateNoiseLayers.length).fill(initialTime);
+  const layer3RawOffsets = [];
+  let layer3TimeCursor = initialTime;
+  const points = [];
+  for (let i = 0; i < template.length; i += 1) {
+    const localUnrotated = {
+      x: (template[i].x - first.x) * templateScale,
+      y: (template[i].y - first.y) * templateScale,
+    };
+    // Per-template rotation is applied before side mirroring.
+    const localRotated = rotateVector(localUnrotated, templateRotationRad);
+    const local = {
+      x: localRotated.x * mirrorX,
+      y: localRotated.y,
+    };
+
+    const aligned = shouldAlign ? rotateVector(local, rotation) : local;
+    let point = {
+      x: startX + aligned.x,
+      y: startY + aligned.y,
+    };
+
+    // Keep the first point pinned to the seed; noise only perturbs subsequent checkpoints.
+    if (templateNoiseLayers.length > 0 && i > 0) {
+      let totalDx = 0;
+      let totalDy = 0;
+      for (let layerIndex = 0; layerIndex < templateNoiseLayers.length; layerIndex += 1) {
+        const layer = templateNoiseLayers[layerIndex];
+        layerTimeCursors[layerIndex] += layer.step;
+        const noiseOffset = getTemplateNoiseOffset(
+          layerTimeCursors[layerIndex] + i * 0.1618,
+          direction,
+          noiseConfig,
+          noisePhase,
+          noiseScaleMultiplier,
+          directionalBasis,
+          layer.amount,
+          layer.layerSeed,
+          directionalBias,
+          axisAbsFlags,
+        );
+        totalDx += noiseOffset.dx;
+        totalDy += noiseOffset.dy;
+      }
+      point = {
+        x: point.x + totalDx,
+        y: point.y + totalDy,
+      };
+    }
+
+    if (noiseAmount3 > 0 && i > 0) {
+      layer3TimeCursor += noiseStep3;
+      layer3RawOffsets[i] = getTemplateNoiseOffset(
+        layer3TimeCursor + i * 0.1618,
+        direction,
+        noiseConfig,
+        noisePhase,
+        noiseScaleMultiplier,
+        directionalBasis,
+        noiseAmount3,
+        2,
+        directionalBias,
+        axisAbsFlags,
+      );
+    } else {
+      layer3RawOffsets[i] = { dx: 0, dy: 0 };
+    }
+
+    points.push(point);
+  }
+
+  if (noiseAmount3 > 0 && points.length > 1) {
+    const radius = Math.floor(noiseHighpassWindow3 / 2);
+    const last = points.length - 1;
+    for (let i = 1; i <= last; i += 1) {
+      const start = Math.max(1, i - radius);
+      const end = Math.min(last, i + radius);
+      let sumDx = 0;
+      let sumDy = 0;
+      let count = 0;
+      for (let j = start; j <= end; j += 1) {
+        sumDx += layer3RawOffsets[j].dx;
+        sumDy += layer3RawOffsets[j].dy;
+        count += 1;
+      }
+      const baselineDx = count > 0 ? sumDx / count : 0;
+      const baselineDy = count > 0 ? sumDy / count : 0;
+      const detailDx = layer3RawOffsets[i].dx - baselineDx;
+      const detailDy = layer3RawOffsets[i].dy - baselineDy;
+      points[i] = {
+        x: points[i].x + detailDx,
+        y: points[i].y + detailDy,
+      };
+    }
+  }
+
+  let endTime = initialTime;
+  for (let i = 0; i < layerTimeCursors.length; i += 1) {
+    if (layerTimeCursors[i] > endTime) {
+      endTime = layerTimeCursors[i];
+    }
+  }
+  if (noiseAmount3 > 0 && layer3TimeCursor > endTime) {
+    endTime = layer3TimeCursor;
+  }
+
+  const baseRotationRad = resolveSignedBaseRotationRadForBranch(
+    direction,
+    branchProfile,
+    templateConfig,
+  );
+  const rotatedPoints = rotatePointsAroundAnchor(points, startX, startY, baseRotationRad);
+
+  return {
+    points: rotatedPoints,
+    endTime,
+    templateIndex,
+  };
+}
+
+// =========================
+// 6) Curve Smoothing
+// =========================
+function sampleCubicBezier(p0, p1, p2, p3, subdivisions) {
+  const samples = [];
+  const count = Math.max(2, subdivisions);
+
+  for (let i = 0; i <= count; i += 1) {
+    const t = i / count;
+    const mt = 1 - t;
+
+    samples.push({
+      x:
+        mt * mt * mt * p0.x +
+        3 * mt * mt * t * p1.x +
+        3 * mt * t * t * p2.x +
+        t * t * t * p3.x,
+      y:
+        mt * mt * mt * p0.y +
+        3 * mt * mt * t * p1.y +
+        3 * mt * t * t * p2.y +
+        t * t * t * p3.y,
+    });
+  }
+
+  return samples;
+}
+
+function buildBSplinePolyline(controlPoints, subdivisionsPerSpan = 10) {
+  if (!Array.isArray(controlPoints) || controlPoints.length < 2) {
+    return [];
+  }
+
+  const extended = [
+    controlPoints[0],
+    controlPoints[0],
+    ...controlPoints,
+    controlPoints[controlPoints.length - 1],
+    controlPoints[controlPoints.length - 1],
+  ];
+
+  const result = [];
+
+  for (let i = 0; i <= extended.length - 4; i += 1) {
+    const p0 = extended[i];
+    const p1 = extended[i + 1];
+    const p2 = extended[i + 2];
+    const p3 = extended[i + 3];
+
+    const start = {
+      x: (p0.x + 4 * p1.x + p2.x) / 6,
+      y: (p0.y + 4 * p1.y + p2.y) / 6,
+    };
+    const cp1 = {
+      x: (4 * p1.x + 2 * p2.x) / 6,
+      y: (4 * p1.y + 2 * p2.y) / 6,
+    };
+    const cp2 = {
+      x: (2 * p1.x + 4 * p2.x) / 6,
+      y: (2 * p1.y + 4 * p2.y) / 6,
+    };
+    const end = {
+      x: (p1.x + 4 * p2.x + p3.x) / 6,
+      y: (p1.y + 4 * p2.y + p3.y) / 6,
+    };
+
+    const sampled = sampleCubicBezier(start, cp1, cp2, end, subdivisionsPerSpan);
+
+    for (let j = 0; j < sampled.length; j += 1) {
+      if (result.length > 0 && j === 0) {
+        continue;
+      }
+      result.push(sampled[j]);
+    }
+  }
+
+  return result;
+}
+
+// =========================
+// 7) Arc-Length Path Data
+// =========================
+function createPathData(points) {
+  if (!Array.isArray(points) || points.length < 2) {
+    return null;
+  }
+
+  const segments = [];
+  const cumulative = [0];
+  let totalLength = 0;
+
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const start = points[i];
+    const end = points[i + 1];
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const length = Math.hypot(dx, dy);
+
+    if (length < 1e-8) {
+      continue;
+    }
+
+    segments.push({
+      start,
+      dx,
+      dy,
+      length,
+      tangent: { x: dx / length, y: dy / length },
+    });
+
+    totalLength += length;
+    cumulative.push(totalLength);
+  }
+
+  if (segments.length === 0) {
+    return null;
+  }
+
+  return {
+    points,
+    segments,
+    cumulative,
+    totalLength,
+  };
+}
+
+function findSegmentIndexForDistance(pathData, distance) {
+  const d = clamp(distance, 0, pathData.totalLength);
+  let low = 0;
+  let high = pathData.segments.length - 1;
+  let index = 0;
+
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    const segStart = pathData.cumulative[mid];
+    const segEnd = pathData.cumulative[mid + 1];
+
+    if (d < segStart) {
+      high = mid - 1;
+    } else if (d > segEnd) {
+      low = mid + 1;
+    } else {
+      index = mid;
+      break;
+    }
+  }
+
+  return index;
+}
+
+function getPathPointAtLength(pathData, distance) {
+  const d = clamp(distance, 0, pathData.totalLength);
+  const index = findSegmentIndexForDistance(pathData, d);
+  const segment = pathData.segments[index];
+  const segmentStart = pathData.cumulative[index];
+  const t = segment.length < 1e-8 ? 0 : (d - segmentStart) / segment.length;
+
+  return {
+    x: segment.start.x + segment.dx * t,
+    y: segment.start.y + segment.dy * t,
+  };
+}
+
+function getPathTangentAtLength(pathData, distance) {
+  const d = clamp(distance, 0, pathData.totalLength);
+  const index = findSegmentIndexForDistance(pathData, d);
+  const tangent = pathData.segments[index].tangent;
+  return { x: tangent.x, y: tangent.y };
+}
+
+function getSegmentRectEntryT(start, end, rect) {
+  if (
+    !start
+    || !end
+    || !rect
+    || !Number.isFinite(start.x)
+    || !Number.isFinite(start.y)
+    || !Number.isFinite(end.x)
+    || !Number.isFinite(end.y)
+    || !Number.isFinite(rect.leftX)
+    || !Number.isFinite(rect.rightX)
+    || !Number.isFinite(rect.topY)
+    || !Number.isFinite(rect.bottomY)
+  ) {
+    return null;
+  }
+  if (rect.leftX >= rect.rightX || rect.topY >= rect.bottomY) {
+    return null;
+  }
+
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const p = [-dx, dx, -dy, dy];
+  const q = [
+    start.x - rect.leftX,
+    rect.rightX - start.x,
+    start.y - rect.topY,
+    rect.bottomY - start.y,
+  ];
+
+  let tMin = 0;
+  let tMax = 1;
+  for (let i = 0; i < 4; i += 1) {
+    const pi = p[i];
+    const qi = q[i];
+    if (Math.abs(pi) <= 1e-12) {
+      if (qi < 0) {
+        return null;
+      }
+      continue;
+    }
+    const r = qi / pi;
+    if (pi < 0) {
+      if (r > tMax) {
+        return null;
+      }
+      if (r > tMin) {
+        tMin = r;
+      }
+    } else {
+      if (r < tMin) {
+        return null;
+      }
+      if (r < tMax) {
+        tMax = r;
+      }
+    }
+  }
+
+  if (tMin > tMax) {
+    return null;
+  }
+  return clamp(tMin, 0, 1);
+}
+
+function findPathEntryDistanceIntoOffshootCenterBlock(pathData, area) {
+  if (!pathData || !Array.isArray(pathData.segments) || pathData.segments.length === 0 || !area || area.enabled !== true) {
+    return null;
+  }
+  if (isPointInsideOffshootCenterBlock(pathData.segments[0].start, area)) {
+    return 0;
+  }
+
+  let distanceBefore = 0;
+  for (let i = 0; i < pathData.segments.length; i += 1) {
+    const segment = pathData.segments[i];
+    const end = {
+      x: segment.start.x + segment.dx,
+      y: segment.start.y + segment.dy,
+    };
+    const entryT = getSegmentRectEntryT(segment.start, end, area);
+    if (entryT !== null) {
+      return clamp(distanceBefore + entryT * segment.length, 0, pathData.totalLength);
+    }
+    distanceBefore += segment.length;
+  }
+  return null;
+}
+
+function trimPathDataAtDistance(pathData, maxDistance) {
+  if (!pathData || !Array.isArray(pathData.segments) || pathData.segments.length === 0) {
+    return null;
+  }
+  const totalLength = Number.isFinite(pathData.totalLength) ? Math.max(0, pathData.totalLength) : 0;
+  if (totalLength <= 1e-8) {
+    return null;
+  }
+  const cutoff = clamp(Number(maxDistance), 0, totalLength);
+  if (cutoff <= 1e-6) {
+    return null;
+  }
+  if (cutoff >= totalLength - 1e-6) {
+    return pathData;
+  }
+
+  const outPoints = [];
+  outPoints.push({ x: pathData.segments[0].start.x, y: pathData.segments[0].start.y });
+  let distanceBefore = 0;
+  for (let i = 0; i < pathData.segments.length; i += 1) {
+    const segment = pathData.segments[i];
+    const segEndDistance = distanceBefore + segment.length;
+    if (cutoff >= segEndDistance - 1e-8) {
+      outPoints.push({
+        x: segment.start.x + segment.dx,
+        y: segment.start.y + segment.dy,
+      });
+      distanceBefore = segEndDistance;
+      continue;
+    }
+
+    const t = segment.length <= 1e-8 ? 0 : clamp((cutoff - distanceBefore) / segment.length, 0, 1);
+    outPoints.push({
+      x: segment.start.x + segment.dx * t,
+      y: segment.start.y + segment.dy * t,
+    });
+    break;
+  }
+
+  if (outPoints.length < 2) {
+    return null;
+  }
+  return createPathData(outPoints);
+}
+
+function applyOffshootCenterBlockClipToPathData(branch, pathData) {
+  if (!branch || !pathData || !Number.isFinite(branch.depth) || branch.depth <= 0) {
+    return pathData;
+  }
+
+  const globalConfig = CONFIG.offshoot || {};
+  const localConfig = normalizeOffshootInput(branch.offshootInput);
+  const mergedConfig = {
+    ...globalConfig,
+    ...localConfig,
+  };
+  const area = resolveOffshootCenterBlockArea(mergedConfig);
+  if (area.enabled !== true) {
+    return pathData;
+  }
+  const entryDistance = findPathEntryDistanceIntoOffshootCenterBlock(pathData, area);
+  if (!Number.isFinite(entryDistance)) {
+    return pathData;
+  }
+  return trimPathDataAtDistance(pathData, entryDistance);
+}
+
+function samplePathPoints(pathData, spacing = 8) {
+  const out = [];
+  const step = Math.max(1, spacing);
+  for (let d = 0; d <= pathData.totalLength; d += step) {
+    out.push(getPathPointAtLength(pathData, d));
+  }
+  out.push(getPathPointAtLength(pathData, pathData.totalLength));
+  return out;
+}
+
+// =========================
+// 8) Branch and BranchGarden Classes
+// =========================
+class Branch {
+  constructor(seedX, seedY, direction = -1, options = {}) {
+    this.id = null;
+    this.parentId = Number.isFinite(options.parentId) ? options.parentId : null;
+    this.depth = Number.isFinite(options.depth) ? options.depth : 0;
+    this.seed = { x: seedX, y: seedY };
+    this.direction = direction >= 0 ? 1 : -1;
+    this.rootDirection = Number.isFinite(options.rootDirection)
+      ? (options.rootDirection >= 0 ? 1 : -1)
+      : this.direction;
+    this.growthDir = normalize(
+      options.growthDir && Number.isFinite(options.growthDir.x) && Number.isFinite(options.growthDir.y)
+        ? options.growthDir
+        : { x: this.direction, y: -1 },
+    );
+    this.useDirectionalBasis = options.useDirectionalBasis === true;
+    this.baseScale = Number.isFinite(options.baseScale) ? options.baseScale : 1;
+    this.thicknessBaseScale = Number.isFinite(options.thicknessBaseScale)
+      ? Math.max(0.01, options.thicknessBaseScale)
+      : Math.max(0.01, this.baseScale);
+    this.stableKey = typeof options.stableKey === 'string'
+      ? options.stableKey
+      : `branch:${seedX.toFixed(2)}:${seedY.toFixed(2)}:${this.direction}:${this.depth}`;
+    this.manualTemplateIndex = Number.isFinite(options.manualTemplateIndex)
+      ? Math.max(0, Math.floor(options.manualTemplateIndex))
+      : null;
+    this.pathGenerationModeOverride = (
+      options.pathGenerationMode === 'random' || options.pathGenerationMode === 'manualTemplate'
+    )
+      ? options.pathGenerationMode
+      : null;
+    this.filterVariantIndex = Number.isFinite(options.filterVariantIndex)
+      ? Math.max(-1, Math.floor(options.filterVariantIndex))
+      : -1;
+    this.filterHueDeg = Number.isFinite(options.filterHueDeg) ? options.filterHueDeg : 0;
+    this.filterBrightness = Number.isFinite(options.filterBrightness)
+      ? Math.max(0, options.filterBrightness)
+      : 1;
+    this.filteredStemImage = null;
+    this.filteredStemImageFlipped = null;
+    this.offshootInput = normalizeOffshootInput(options.offshoot);
+    this.offshootResolved = null;
+    this.spawnDistanceOnParent = Number.isFinite(options.spawnDistanceOnParent)
+      ? Math.max(0, options.spawnDistanceOnParent)
+      : 0;
+    this.startDistanceMetric = 0;
+    this.pathLength = 0;
+    this.sweepStartDelaySec = 0;
+    this.rootBranchId = null;
+
+    const hasProfileSeed = options.profileSeed !== undefined && options.profileSeed !== null;
+    const profileRng = hasProfileSeed ? mulberry32(hashSeed(options.profileSeed)) : null;
+
+    // Per-branch random profile so branches are not translated copies.
+    this.noisePhase = {
+      x1: (profileRng ? profileRng() : Math.random()) * 5000,
+      y1: (profileRng ? profileRng() : Math.random()) * 5000,
+      x2: (profileRng ? profileRng() : Math.random()) * 5000,
+      y2: (profileRng ? profileRng() : Math.random()) * 5000,
+    };
+    this.noiseScaleMultiplier = Math.max(0.05, this.baseScale);
+
+    // Also offset starting time per branch to decorrelate trajectories.
+    this.timeCursor = hasProfileSeed
+      ? (profileRng ? profileRng() : 0) * 10000
+      : Date.now() / 1000 + Math.random() * 1000;
+    this.timeOrigin = this.timeCursor;
+
+    this.controlPoints = [];
+    this.smoothPoints = [];
+    this.pathData = null;
+    this.renderCache = {
+      valid: false,
+      samples: [],
+      distances: [],
+      centerX: [],
+      centerY: [],
+      cacheKey: '',
+      pathDataRef: null,
+      defaultImageRef: null,
+      flippedImageRef: null,
+    };
+  }
+
+  regenerate(options = {}) {
+    const { resetTimeCursor = false } = options;
+    if (resetTimeCursor && Number.isFinite(this.timeOrigin)) {
+      this.timeCursor = this.timeOrigin;
+    }
+
+    const branchProfile = {
+      noisePhase: this.noisePhase,
+      noiseScaleMultiplier: this.noiseScaleMultiplier,
+      templateScaleMultiplier: this.baseScale,
+      growthDir: this.useDirectionalBasis ? this.growthDir : null,
+      rootDirection: this.rootDirection,
+    };
+
+    const generationMode = this.pathGenerationModeOverride || getPathGenerationMode();
+
+    let generated;
+    if (generationMode === 'manualTemplate') {
+      generated = generateTemplateControlPoints(
+        this.seed.x,
+        this.seed.y,
+        this.direction,
+        this.timeCursor,
+        CONFIG.noise,
+        branchProfile,
+        this.stableKey,
+        this.manualTemplateIndex,
+      );
+      if (Number.isFinite(generated.templateIndex) && generated.templateIndex >= 0) {
+        this.manualTemplateIndex = generated.templateIndex;
+      }
+    } else {
+      generated = generateBranchControlPoints(
+        this.seed.x,
+        this.seed.y,
+        this.direction,
+        this.timeCursor,
+        CONFIG.noise,
+        branchProfile,
+      );
+    }
+
+    this.timeCursor = generated.endTime;
+    this.controlPoints = generated.points;
+
+    this.smoothPoints = buildBSplinePolyline(
+      this.controlPoints,
+      CONFIG.path.smoothingSubdivisionsPerSpan,
+    );
+
+    const pointsForPath = this.smoothPoints.length >= 2 ? this.smoothPoints : this.controlPoints;
+    const generatedPathData = createPathData(pointsForPath);
+    this.pathData = applyOffshootCenterBlockClipToPathData(this, generatedPathData);
+    this.pathLength = this.pathData ? this.pathData.totalLength : 0;
+    invalidateBranchStripCache(this);
+
+    return this;
+  }
+}
+
+class BranchGarden {
+  constructor() {
+    this.branches = [];
+    this.rootBranches = [];
+    this.nextBranchId = 1;
+    this.rootStableCounter = 1;
+  }
+
+  clear() {
+    this.branches.length = 0;
+    this.rootBranches.length = 0;
+    this.nextBranchId = 1;
+    this.rootStableCounter = 1;
+    onBranchStructureChanged();
+  }
+
+  createRootBranch(seedX, seedY, direction = -1, options = {}) {
+    const stableKey = typeof options.stableKey === 'string' && options.stableKey.length > 0
+      ? options.stableKey
+      : `root-${this.rootStableCounter++}`;
+
+    const rootGrowthDir = normalize({ x: direction, y: -1 });
+    const root = new Branch(seedX, seedY, direction, {
+      parentId: null,
+      depth: 0,
+      rootDirection: direction,
+      growthDir: rootGrowthDir,
+      useDirectionalBasis: false,
+      baseScale: 1,
+      thicknessBaseScale: Number.isFinite(options.thicknessBaseScale)
+        ? Math.max(0.01, options.thicknessBaseScale)
+        : 1,
+      stableKey,
+      manualTemplateIndex: Number.isFinite(options.manualTemplateIndex)
+        ? options.manualTemplateIndex
+        : null,
+      offshoot: normalizeOffshootInput(options.offshoot),
+    });
+    root.regenerate();
+    return root;
+  }
+
+  resolveOffshootForBranch(branch) {
+    const globalConfig = CONFIG.offshoot || {};
+    const local = normalizeOffshootInput(branch.offshootInput);
+
+    const enabled = typeof local.enabled === 'boolean'
+      ? local.enabled
+      : Boolean(globalConfig.enabled);
+    const deterministic = typeof local.deterministic === 'boolean'
+      ? local.deterministic
+      : Boolean(globalConfig.deterministic);
+
+    const rng = deterministic
+      ? mulberry32(hashSeed(`${branch.stableKey}|resolve`))
+      : Math.random;
+
+    const maxDepthRange = resolveRangeValue(
+      local.maxDepthRange,
+      local.maxDepth,
+      globalConfig.maxDepth,
+      0,
+      0,
+    );
+    const countRangeRaw = resolveRangeValue(
+      local.countRange,
+      undefined,
+      globalConfig.countRange,
+      0,
+      0,
+    );
+    const biasExponentRange = resolveRangeValue(
+      local.biasExponentRange,
+      local.biasExponent,
+      globalConfig.biasExponent,
+      1,
+      1,
+    );
+    const angleDegRangeRaw = resolveRangeValue(
+      local.angleDegRange,
+      undefined,
+      globalConfig.angleDegRange,
+      0,
+      0,
+    );
+
+    const maxDepth = clamp(Math.round(sampleFloatRange(maxDepthRange, rng)), 0, 20);
+    const countRange = [
+      Math.max(0, Math.floor(countRangeRaw[0])),
+      Math.max(0, Math.floor(countRangeRaw[1])),
+    ];
+    countRange.sort((a, b) => a - b);
+
+    const biasExponent = Math.max(0.01, sampleFloatRange(biasExponentRange, rng));
+    const angleA = Number(angleDegRangeRaw[0]);
+    const angleB = Number(angleDegRangeRaw[1]);
+    const safeAngleA = Number.isFinite(angleA) ? angleA : 0;
+    const safeAngleB = Number.isFinite(angleB) ? angleB : 0;
+    const angleDegRangeUsesExplicitSign = safeAngleA < 0 || safeAngleB < 0;
+    const angleDegRange = angleDegRangeUsesExplicitSign
+      ? [
+        clamp(Math.min(safeAngleA, safeAngleB), -179, 179),
+        clamp(Math.max(safeAngleA, safeAngleB), -179, 179),
+      ]
+      : [
+        clamp(Math.min(safeAngleA, safeAngleB), 0, 179),
+        clamp(Math.max(safeAngleA, safeAngleB), 0, 179),
+      ];
+
+    const globalSpawnTMin = Number.isFinite(globalConfig.spawnTMin) ? globalConfig.spawnTMin : 0;
+    const globalSpawnTMax = Number.isFinite(globalConfig.spawnTMax) ? globalConfig.spawnTMax : 1;
+    const spawnTMinRaw = Number.isFinite(local.spawnTMin) ? local.spawnTMin : globalSpawnTMin;
+    const spawnTMaxRaw = Number.isFinite(local.spawnTMax) ? local.spawnTMax : globalSpawnTMax;
+    const spawnTMin = clamp(Math.min(spawnTMinRaw, spawnTMaxRaw), 0, 1);
+    const spawnTMax = clamp(Math.max(spawnTMinRaw, spawnTMaxRaw), 0, 1);
+
+    const sideMode = sanitizeSideMode(
+      typeof local.sideMode === 'string' ? local.sideMode : globalConfig.sideMode,
+    );
+    const pathGenerationMode = sanitizeOffshootPathGenerationMode(
+      typeof local.pathGenerationMode === 'string'
+        ? local.pathGenerationMode
+        : globalConfig.pathGenerationMode,
+    );
+    const templateIndexPoolSource = local.templateIndexPool !== undefined
+      ? local.templateIndexPool
+      : globalConfig.templateIndexPool;
+    const templateIndexPool = normalizeTemplateIndexPool(templateIndexPoolSource);
+    const globalDepthScale = Number.isFinite(globalConfig.depthScale) ? globalConfig.depthScale : 1;
+    const depthScale = Math.max(
+      0.05,
+      Number.isFinite(local.depthScale) ? local.depthScale : globalDepthScale,
+    );
+    const minSpawnSpacingT = clamp(
+      Number.isFinite(local.minSpawnSpacingT)
+        ? local.minSpawnSpacingT
+        : (Number.isFinite(globalConfig.minSpawnSpacingT) ? globalConfig.minSpawnSpacingT : 0),
+      0,
+      1,
+    );
+    const maxSpawnAttemptsPerChild = Math.max(
+      1,
+      Math.floor(
+        Number.isFinite(local.maxSpawnAttemptsPerChild)
+          ? local.maxSpawnAttemptsPerChild
+          : (Number.isFinite(globalConfig.maxSpawnAttemptsPerChild) ? globalConfig.maxSpawnAttemptsPerChild : 8),
+      ),
+    );
+
+    return {
+      enabled,
+      deterministic,
+      maxDepth,
+      countRange,
+      childCount: sampleIntRange(countRange, rng),
+      spawnTMin,
+      spawnTMax,
+      biasExponent,
+      angleDegRange,
+      sideMode,
+      angleDegRangeUsesExplicitSign,
+      pathGenerationMode,
+      templateIndexPool,
+      depthScale,
+      minSpawnSpacingT,
+      maxSpawnAttemptsPerChild,
+    };
+  }
+
+  sampleSpawnTs(parent, resolved, targetCount, rng) {
+    const out = [];
+    const span = resolved.spawnTMax - resolved.spawnTMin;
+    for (let i = 0; i < targetCount; i += 1) {
+      let accepted = null;
+      for (let attempt = 0; attempt < resolved.maxSpawnAttemptsPerChild; attempt += 1) {
+        const u = clamp(rng(), 0, 1);
+        const biased = 1 - Math.pow(1 - u, resolved.biasExponent);
+        const t = span > 1e-8 ? resolved.spawnTMin + span * biased : resolved.spawnTMin;
+
+        let isFarEnough = true;
+        for (let k = 0; k < out.length; k += 1) {
+          if (Math.abs(out[k] - t) < resolved.minSpawnSpacingT) {
+            isFarEnough = false;
+            break;
+          }
+        }
+
+        if (isFarEnough) {
+          accepted = t;
+          break;
+        }
+      }
+      if (accepted !== null) {
+        out.push(accepted);
+      }
+    }
+
+    out.sort((a, b) => a - b);
+    return out;
+  }
+
+  createOffshootBranches(parent, remainingCapacity) {
+    if (!parent.pathData || remainingCapacity <= 0) {
+      return [];
+    }
+
+    const resolved = parent.offshootResolved || this.resolveOffshootForBranch(parent);
+    if (!resolved.enabled || parent.depth >= resolved.maxDepth || resolved.childCount <= 0) {
+      return [];
+    }
+
+    const targetCount = Math.min(resolved.childCount, remainingCapacity);
+    const rng = resolved.deterministic
+      ? mulberry32(hashSeed(`${parent.stableKey}|spawn`))
+      : Math.random;
+    const spawnTs = this.sampleSpawnTs(parent, resolved, targetCount, rng);
+    const templateCount = getSanitizedManualTemplates().length;
+    const selectableTemplatePool = [];
+    for (let i = 0; i < resolved.templateIndexPool.length; i += 1) {
+      const index = resolved.templateIndexPool[i];
+      if (index >= 0 && index < templateCount) {
+        selectableTemplatePool.push(index);
+      }
+    }
+
+    const children = [];
+    for (let i = 0; i < spawnTs.length; i += 1) {
+      const t = spawnTs[i];
+      const distance = t * parent.pathData.totalLength;
+      const anchor = getPathPointAtLength(parent.pathData, distance);
+      const tangent = normalize(getPathTangentAtLength(parent.pathData, distance));
+      const sideSign = getSideSign(resolved.sideMode, i, rng);
+      const sampledAngleDeg = sampleFloatRange(resolved.angleDegRange, rng);
+      const angleDeg = resolved.angleDegRangeUsesExplicitSign
+        ? sampledAngleDeg
+        : (sampledAngleDeg * sideSign);
+      const angleRad = angleDeg * Math.PI / 180;
+      const growthDir = normalize(rotateVector(tangent, angleRad));
+
+      const childStableKey = `${parent.stableKey}|child:${i}`;
+      const childTemplateIndex = selectableTemplatePool.length > 0
+        ? selectableTemplatePool[
+            clamp(Math.floor(rng() * selectableTemplatePool.length), 0, selectableTemplatePool.length - 1)
+          ]
+        : null;
+      const childPathGenerationMode = resolved.pathGenerationMode === 'inherit'
+        ? null
+        : resolved.pathGenerationMode;
+      const parentThicknessBaseScale = getBranchThicknessBaseScale(parent);
+      const inheritedThicknessBaseScale = Math.max(
+        0.01,
+        parentThicknessBaseScale
+          * getThicknessTaperFactorAtDistance(distance, parent.pathData.totalLength, CONFIG.brush),
+      );
+      const child = new Branch(anchor.x, anchor.y, sideSign, {
+        parentId: parent.id,
+        depth: parent.depth + 1,
+        rootDirection: parent.rootDirection,
+        spawnDistanceOnParent: distance,
+        growthDir,
+        useDirectionalBasis: true,
+        baseScale: Math.max(0.05, parent.baseScale * resolved.depthScale),
+        thicknessBaseScale: inheritedThicknessBaseScale,
+        stableKey: childStableKey,
+        manualTemplateIndex: childTemplateIndex,
+        pathGenerationMode: childPathGenerationMode,
+        offshoot: parent.offshootInput,
+        profileSeed: `${childStableKey}|profile`,
+      }).regenerate();
+
+      child.offshootResolved = this.resolveOffshootForBranch(child);
+      children.push(child);
+    }
+
+    return children;
+  }
+
+  rebuildBranches(options = {}) {
+    const { regenerateRoots = false, resetRootTimeCursor = false } = options;
+    this.branches.length = 0;
+    this.nextBranchId = 1;
+
+    const maxTotal = Math.max(
+      1,
+      Math.floor(
+        Number.isFinite(CONFIG.offshoot.maxTotalBranches)
+          ? CONFIG.offshoot.maxTotalBranches
+          : 500,
+      ),
+    );
+
+    const queue = [];
+    for (let i = 0; i < this.rootBranches.length && this.branches.length < maxTotal; i += 1) {
+      const root = this.rootBranches[i];
+      if (regenerateRoots) {
+        root.regenerate({ resetTimeCursor: resetRootTimeCursor });
+      }
+      root.id = this.nextBranchId++;
+      root.parentId = null;
+      root.depth = 0;
+      root.offshootResolved = this.resolveOffshootForBranch(root);
+      this.branches.push(root);
+      queue.push(root);
+    }
+
+    while (queue.length > 0 && this.branches.length < maxTotal) {
+      const parent = queue.shift();
+      const remainingCapacity = maxTotal - this.branches.length;
+      if (remainingCapacity <= 0) {
+        break;
+      }
+
+      const children = this.createOffshootBranches(parent, remainingCapacity);
+      for (let i = 0; i < children.length && this.branches.length < maxTotal; i += 1) {
+        const child = children[i];
+        child.id = this.nextBranchId++;
+        child.parentId = parent.id;
+        this.branches.push(child);
+        queue.push(child);
+      }
+    }
+
+    onBranchStructureChanged();
+    return this.branches;
+  }
+
+  applyPriorityZonePruning() {
+    const priorityConfig = resolvePriorityConfig();
+    const resolvedZones = resolvePriorityZoneRectsPx(priorityConfig);
+    const zoneRects = Array.isArray(resolvedZones.rects) ? resolvedZones.rects : [];
+    const radiusPx = Number.isFinite(resolvedZones.radiusPx) ? Math.max(0, resolvedZones.radiusPx) : 0;
+    STATE.priorityDebugLastCulledCircles = [];
+    if (
+      priorityConfig.enabled !== true
+      || zoneRects.length <= 0
+      || !Array.isArray(this.branches)
+      || this.branches.length <= 0
+    ) {
+      return 0;
+    }
+
+    const useAnimation = Boolean(CONFIG.branchGrowth && CONFIG.branchGrowth.enabled === true);
+    const overlayWrapConfig = resolveOverlayWrapConfig();
+    const overlayWrapActive = isOverlayWrapActive(overlayWrapConfig, useAnimation);
+    if (overlayWrapActive !== true) {
+      return 0;
+    }
+    const hiddenBand = getOverlayHiddenBand(overlayWrapConfig);
+    if (!hiddenBand) {
+      return 0;
+    }
+
+    const branchById = new Map();
+    const childrenByParentId = new Map();
+    for (let i = 0; i < this.branches.length; i += 1) {
+      const branch = this.branches[i];
+      if (!branch || !Number.isFinite(branch.id)) {
+        continue;
+      }
+      branchById.set(branch.id, branch);
+      const parentId = Number.isFinite(branch.parentId) ? branch.parentId : null;
+      if (!childrenByParentId.has(parentId)) {
+        childrenByParentId.set(parentId, []);
+      }
+      childrenByParentId.get(parentId).push(branch.id);
+    }
+
+    const rootsToCull = new Set();
+    const branchSubtreesToCull = new Set();
+    const culledCircles = [];
+    const branchIds = Array.from(branchById.keys());
+    for (let i = 0; i < branchIds.length; i += 1) {
+      const branchId = branchIds[i];
+      const branch = branchById.get(branchId);
+      if (!branch || !branch.pathData || !Number.isFinite(branch.pathData.totalLength)) {
+        continue;
+      }
+      const pathLen = Math.max(0, branch.pathData.totalLength);
+      if (pathLen <= 1e-8) {
+        continue;
+      }
+      const endpoint = getPathPointAtLength(branch.pathData, pathLen);
+      if (!endpoint || !Number.isFinite(endpoint.x) || !Number.isFinite(endpoint.y)) {
+        continue;
+      }
+      // Promoted-only: mirror overlay wrap promotion semantics using final endpoint location.
+      if (isPointInsideOverlayHiddenBand(endpoint, hiddenBand)) {
+        continue;
+      }
+
+      let hit = false;
+      for (let r = 0; r < zoneRects.length; r += 1) {
+        if (circleIntersectsRect(endpoint.x, endpoint.y, radiusPx, zoneRects[r])) {
+          hit = true;
+          break;
+        }
+      }
+      if (!hit) {
+        continue;
+      }
+      culledCircles.push({ x: endpoint.x, y: endpoint.y, r: radiusPx });
+      if (Number.isFinite(branch.parentId)) {
+        branchSubtreesToCull.add(branch.id);
+      } else {
+        rootsToCull.add(branch.id);
+      }
+    }
+
+    if (rootsToCull.size <= 0 && branchSubtreesToCull.size <= 0) {
+      STATE.priorityDebugLastCulledCircles = culledCircles;
+      return 0;
+    }
+
+    const idsToCull = new Set();
+    const enqueueSubtree = (startId) => {
+      const queue = [startId];
+      while (queue.length > 0) {
+        const current = queue.shift();
+        if (!Number.isFinite(current) || idsToCull.has(current)) {
+          continue;
+        }
+        idsToCull.add(current);
+        const children = childrenByParentId.get(current);
+        if (!Array.isArray(children) || children.length <= 0) {
+          continue;
+        }
+        for (let i = 0; i < children.length; i += 1) {
+          queue.push(children[i]);
+        }
+      }
+    };
+    rootsToCull.forEach((id) => enqueueSubtree(id));
+    branchSubtreesToCull.forEach((id) => enqueueSubtree(id));
+
+    if (idsToCull.size <= 0) {
+      STATE.priorityDebugLastCulledCircles = culledCircles;
+      return 0;
+    }
+
+    this.rootBranches = this.rootBranches.filter((root) => {
+      if (!root || !Number.isFinite(root.id)) {
+        return false;
+      }
+      return !idsToCull.has(root.id);
+    });
+    this.branches = this.branches.filter((branch) => (
+      branch && Number.isFinite(branch.id) && !idsToCull.has(branch.id)
+    ));
+
+    const keptByOldId = new Map();
+    for (let i = 0; i < this.branches.length; i += 1) {
+      const branch = this.branches[i];
+      keptByOldId.set(branch.id, branch);
+    }
+    const oldToNewId = new Map();
+    this.nextBranchId = 1;
+    for (let i = 0; i < this.branches.length; i += 1) {
+      const branch = this.branches[i];
+      const oldId = branch.id;
+      const newId = this.nextBranchId++;
+      branch.id = newId;
+      oldToNewId.set(oldId, newId);
+    }
+    for (let i = 0; i < this.branches.length; i += 1) {
+      const branch = this.branches[i];
+      if (!Number.isFinite(branch.parentId)) {
+        branch.parentId = null;
+        continue;
+      }
+      const newParentId = oldToNewId.get(branch.parentId);
+      branch.parentId = Number.isFinite(newParentId) ? newParentId : null;
+    }
+    for (let i = 0; i < this.rootBranches.length; i += 1) {
+      const root = this.rootBranches[i];
+      if (!root || !Number.isFinite(root.id)) {
+        continue;
+      }
+      if (!keptByOldId.has(root.id)) {
+        continue;
+      }
+      const mapped = oldToNewId.get(root.id);
+      if (Number.isFinite(mapped)) {
+        root.id = mapped;
+        root.parentId = null;
+      }
+    }
+
+    STATE.priorityDebugLastCulledCircles = culledCircles;
+    return idsToCull.size;
+  }
+
+  addBranch(seedX, seedY, direction = -1, options = {}) {
+    if (!Number.isFinite(seedX) || !Number.isFinite(seedY)) {
+      return null;
+    }
+
+    const normalized = normalizeAddBranchOptions(options);
+    const root = this.createRootBranch(seedX, seedY, direction, normalized);
+    this.rootBranches.push(root);
+    this.rebuildBranches();
+    return root;
+  }
+
+  addBranches(branchDefs) {
+    if (!Array.isArray(branchDefs)) {
+      return [];
+    }
+
+    const added = [];
+    const dedupe = new Set();
+    for (let i = 0; i < this.rootBranches.length; i += 1) {
+      const existing = this.rootBranches[i];
+      dedupe.add(createBranchDefDedupeKey({
+        x: existing.seed.x,
+        y: existing.seed.y,
+        direction: existing.direction,
+      }));
+    }
+
+    for (let i = 0; i < branchDefs.length; i += 1) {
+      const def = branchDefs[i];
+      if (!def || !Number.isFinite(def.x) || !Number.isFinite(def.y)) {
+        continue;
+      }
+
+      const direction = Number.isFinite(def.direction) ? def.direction : -1;
+      const dedupeKey = createBranchDefDedupeKey({
+        x: def.x,
+        y: def.y,
+        direction,
+      });
+      if (dedupe.has(dedupeKey)) {
+        continue;
+      }
+
+      const root = this.createRootBranch(def.x, def.y, direction, {
+        offshoot: normalizeOffshootInput(def.offshoot),
+        stableKey: typeof def.stableKey === 'string' ? def.stableKey : undefined,
+        manualTemplateIndex: Number.isFinite(def.manualTemplateIndex) ? def.manualTemplateIndex : null,
+      });
+      this.rootBranches.push(root);
+      dedupe.add(dedupeKey);
+      added.push(root);
+    }
+
+    if (added.length > 0) {
+      this.rebuildBranches();
+    }
+
+    return added;
+  }
+
+  plantSeeds(seedPacket, options = {}) {
+    const { clearFirst = true } = options;
+    if (clearFirst) {
+      this.clear();
+    }
+
+    const packet = seedPacket || setSeeds();
+    const seedsLeft = Array.isArray(packet.seedsLeft) ? packet.seedsLeft : [];
+    const seedsRight = Array.isArray(packet.seedsRight) ? packet.seedsRight : [];
+
+    const branchDefs = [];
+    for (let i = 0; i < seedsLeft.length; i += 1) {
+      const def = seedsLeft[i];
+      if (!def || !Number.isFinite(def.x) || !Number.isFinite(def.y)) {
+        continue;
+      }
+      branchDefs.push({
+        x: def.x,
+        y: def.y,
+        direction: Number.isFinite(def.direction) ? def.direction : 1,
+        offshoot: normalizeOffshootInput(def.offshoot),
+        stableKey: typeof def.stableKey === 'string' ? def.stableKey : undefined,
+        manualTemplateIndex: Number.isFinite(def.manualTemplateIndex) ? def.manualTemplateIndex : null,
+      });
+    }
+
+    for (let i = 0; i < seedsRight.length; i += 1) {
+      const def = seedsRight[i];
+      if (!def || !Number.isFinite(def.x) || !Number.isFinite(def.y)) {
+        continue;
+      }
+      branchDefs.push({
+        x: def.x,
+        y: def.y,
+        direction: Number.isFinite(def.direction) ? def.direction : -1,
+        offshoot: normalizeOffshootInput(def.offshoot),
+        stableKey: typeof def.stableKey === 'string' ? def.stableKey : undefined,
+        manualTemplateIndex: Number.isFinite(def.manualTemplateIndex) ? def.manualTemplateIndex : null,
+      });
+    }
+
+    return this.addBranches(branchDefs);
+  }
+
+  regenerateAll() {
+    this.rebuildBranches({ regenerateRoots: true });
+  }
+}
+
+// =========================
+// 9) Seed Helpers
+// =========================
+function sanitizeSeedGenerationMode(mode, fallback = 'autoSpacing') {
+  if (mode === 'autoSpacing' || mode === 'explicitYRatios') {
+    return mode;
+  }
+  if (fallback === 'autoSpacing' || fallback === 'explicitYRatios') {
+    return fallback;
+  }
+  return 'autoSpacing';
+}
+
+function sanitizeSeedYRatioBasis(value, fallback = 'video') {
+  if (value === 'video' || value === 'viewport') {
+    return value;
+  }
+  if (fallback === 'video' || fallback === 'viewport') {
+    return fallback;
+  }
+  return 'video';
+}
+
+function normalizeSeedYRatioList(rawValue) {
+  if (!Array.isArray(rawValue)) {
+    return [];
+  }
+  const out = [];
+  for (let i = 0; i < rawValue.length; i += 1) {
+    const normalized = clamp(normalizeRatioOrPercentValue(rawValue[i], 0), 0, 1);
+    if (Number.isFinite(normalized)) {
+      out.push(normalized);
+    }
+  }
+  return out;
+}
+
+function resolveSeedYRatioReference(seedsConfig = CONFIG.seeds || {}) {
+  const basis = sanitizeSeedYRatioBasis(seedsConfig.explicitYRatioBasis, 'video');
+  if (basis === 'video') {
+    const videoRect = getHeroVideoRenderedRect();
+    if (
+      videoRect
+      && Number.isFinite(videoRect.top)
+      && Number.isFinite(videoRect.height)
+      && videoRect.height > 0
+    ) {
+      return {
+        basis: 'video',
+        topY: videoRect.top,
+        height: videoRect.height,
+      };
+    }
+  }
+  const viewportHeight = Number.isFinite(STATE.viewportHeight) && STATE.viewportHeight > 0
+    ? STATE.viewportHeight
+    : (Number.isFinite(window.innerHeight) ? Math.max(0, window.innerHeight) : 0);
+  return {
+    basis: 'viewport',
+    topY: 0,
+    height: viewportHeight,
+  };
+}
+
+function resolveSeedYValuesFromRatios(ratios, reference) {
+  if (!Array.isArray(ratios) || ratios.length === 0) {
+    return [];
+  }
+  if (!reference || !Number.isFinite(reference.topY) || !Number.isFinite(reference.height) || reference.height <= 0) {
+    return [];
+  }
+  const out = [];
+  for (let i = 0; i < ratios.length; i += 1) {
+    const ratio = clamp(Number(ratios[i]), 0, 1);
+    if (!Number.isFinite(ratio)) {
+      continue;
+    }
+    out.push(reference.topY + ratio * reference.height);
+  }
+  return out;
+}
+
+function sanitizeSeedSidePadBasis(value, fallback = 'px') {
+  if (value === 'px' || value === 'videoWidthRatio' || value === 'viewportWidthRatio') {
+    return value;
+  }
+  if (fallback === 'px' || fallback === 'videoWidthRatio' || fallback === 'viewportWidthRatio') {
+    return fallback;
+  }
+  return 'px';
+}
+
+function resolveSeedSidePadPixels(seedsConfig = CONFIG.seeds || {}) {
+  const sidePadValue = Number.isFinite(Number(seedsConfig.sidePad)) ? Number(seedsConfig.sidePad) : 0;
+  const basis = sanitizeSeedSidePadBasis(seedsConfig.sidePadBasis, 'px');
+  if (basis === 'px') {
+    return sidePadValue;
+  }
+  if (basis === 'viewportWidthRatio') {
+    const viewportWidth = Number.isFinite(STATE.viewportWidth) && STATE.viewportWidth > 0
+      ? STATE.viewportWidth
+      : (Number.isFinite(window.innerWidth) ? Math.max(0, window.innerWidth) : 0);
+    return sidePadValue * viewportWidth;
+  }
+  const videoRect = getHeroVideoRenderedRect();
+  const videoWidth = (
+    videoRect
+    && Number.isFinite(videoRect.width)
+    && videoRect.width > 0
+  )
+    ? videoRect.width
+    : (
+      Number.isFinite(STATE.viewportWidth) && STATE.viewportWidth > 0
+        ? STATE.viewportWidth
+        : (Number.isFinite(window.innerWidth) ? Math.max(0, window.innerWidth) : 0)
+    );
+  return sidePadValue * videoWidth;
+}
+
+function sanitizeSeedSideAnchorXMode(value, fallback = 'viewportEdges') {
+  if (value === 'viewportEdges' || value === 'videoCenter') {
+    return value;
+  }
+  if (fallback === 'viewportEdges' || fallback === 'videoCenter') {
+    return fallback;
+  }
+  return 'viewportEdges';
+}
+
+function resolveSeedVideoCenterX() {
+  const videoRect = getHeroVideoRenderedRect();
+  if (
+    videoRect
+    && Number.isFinite(videoRect.left)
+    && Number.isFinite(videoRect.width)
+    && videoRect.width > 0
+  ) {
+    return videoRect.left + videoRect.width * 0.5;
+  }
+  if (Number.isFinite(STATE.viewportWidth) && STATE.viewportWidth > 0) {
+    return STATE.viewportWidth * 0.5;
+  }
+  return Number.isFinite(window.innerWidth) ? Math.max(0, window.innerWidth * 0.5) : 0;
+}
+
+function normalizeSeedSpacingConfig(seedsConfig = CONFIG.seeds || {}) {
+  const rawMinSpacing = Number(seedsConfig.minSpacing);
+  const rawMaxSpacing = Number(seedsConfig.maxSpacing);
+  const minSpacing = Number.isFinite(rawMinSpacing) ? Math.max(0, rawMinSpacing) : 0;
+  const randomizeSpacing = seedsConfig.randomizeSpacing === true;
+  let maxSpacing;
+  if (Number.isFinite(rawMaxSpacing)) {
+    maxSpacing = Math.max(0, rawMaxSpacing);
+  } else if (randomizeSpacing) {
+    // Keep randomness available even when maxSpacing is omitted.
+    maxSpacing = minSpacing > 1e-6 ? (minSpacing * 1.6) : 120;
+  } else {
+    maxSpacing = minSpacing;
+  }
+  if (maxSpacing < minSpacing) {
+    maxSpacing = minSpacing;
+  }
+  return {
+    minSpacing,
+    maxSpacing,
+    randomizeSpacing,
+  };
+}
+
+function sampleSeedYValues(
+  count,
+  minY,
+  maxY,
+  minSpacing = 0,
+  maxSpacing = 0,
+  startY = null,
+  randomizeSpacing = false,
+) {
+  const targetCount = Math.max(0, Math.floor(Number(count) || 0));
+  if (targetCount <= 0) {
+    return [];
+  }
+
+  const span = Math.max(0, maxY - minY);
+  const initialY = Number.isFinite(Number(startY))
+    ? Number(startY)
+    : (minY + Math.random() * span);
+  const out = [initialY];
+  for (let i = 1; i < targetCount; i += 1) {
+    let gap = Math.max(0, minSpacing);
+    if (randomizeSpacing && Number.isFinite(maxSpacing) && maxSpacing > minSpacing + 1e-8) {
+      gap = sampleFloatRange([minSpacing, maxSpacing]);
+    }
+    out.push(out[i - 1] + gap);
+  }
+
+  return out;
+}
+
+function setSeeds() {
+  const seedsConfig = CONFIG.seeds || {};
+  const countPerSide = Math.max(0, Math.floor(Number(seedsConfig.countPerSide) || 0));
+  const seedGenerationMode = sanitizeSeedGenerationMode(
+    seedsConfig.mode !== undefined ? seedsConfig.mode : seedsConfig.generationMode,
+    'autoSpacing',
+  );
+  const sidePad = resolveSeedSidePadPixels(seedsConfig);
+  const sidePadDistance = Math.abs(sidePad);
+  const sideAnchorXMode = sanitizeSeedSideAnchorXMode(
+    seedsConfig.sideAnchorXMode,
+    'videoCenter',
+  );
+  const sideMargin = Number.isFinite(Number(seedsConfig.sideMargin)) ? Number(seedsConfig.sideMargin) : 0;
+  const seedsLeft = [];
+  const seedsRight = [];
+  const yMin = 100;
+  const yMax = STATE.viewportHeight + 100;
+  const startY = Number.isFinite(Number(seedsConfig.startY)) ? Number(seedsConfig.startY) : null;
+  const { minSpacing, maxSpacing, randomizeSpacing } = normalizeSeedSpacingConfig(seedsConfig);
+  let leftYValues = [];
+  let rightYValues = [];
+  const videoCenterX = resolveSeedVideoCenterX();
+  const leftSeedBaseX = sideAnchorXMode === 'videoCenter'
+    ? (videoCenterX + sidePadDistance)
+    : (0 - sidePad);
+  const rightSeedBaseX = sideAnchorXMode === 'videoCenter'
+    ? (videoCenterX - sidePadDistance)
+    : (STATE.viewportWidth + sidePad);
+
+  if (seedGenerationMode === 'explicitYRatios') {
+    const ratioReference = resolveSeedYRatioReference(seedsConfig);
+    const sharedRatios = normalizeSeedYRatioList(seedsConfig.explicitYRatios);
+    const sideLists = isPlainObjectLiteral(seedsConfig.explicitYRatiosBySide)
+      ? seedsConfig.explicitYRatiosBySide
+      : null;
+    const leftRatios = (
+      Array.isArray(sideLists && sideLists.left)
+        ? normalizeSeedYRatioList(sideLists.left)
+        : (
+          Array.isArray(seedsConfig.explicitYRatiosLeft)
+            ? normalizeSeedYRatioList(seedsConfig.explicitYRatiosLeft)
+            : []
+        )
+    );
+    const rightRatios = (
+      Array.isArray(sideLists && sideLists.right)
+        ? normalizeSeedYRatioList(sideLists.right)
+        : (
+          Array.isArray(seedsConfig.explicitYRatiosRight)
+            ? normalizeSeedYRatioList(seedsConfig.explicitYRatiosRight)
+            : []
+        )
+    );
+
+    leftYValues = resolveSeedYValuesFromRatios(
+      leftRatios.length > 0 ? leftRatios : sharedRatios,
+      ratioReference,
+    );
+    rightYValues = resolveSeedYValuesFromRatios(
+      rightRatios.length > 0 ? rightRatios : sharedRatios,
+      ratioReference,
+    );
+  }
+
+  if (
+    seedGenerationMode !== 'explicitYRatios'
+    && leftYValues.length === 0
+    && countPerSide > 0
+  ) {
+    leftYValues = sampleSeedYValues(
+      countPerSide,
+      yMin,
+      yMax,
+      minSpacing,
+      maxSpacing,
+      startY,
+      randomizeSpacing,
+    );
+  }
+  if (
+    seedGenerationMode !== 'explicitYRatios'
+    && rightYValues.length === 0
+    && countPerSide > 0
+  ) {
+    rightYValues = sampleSeedYValues(
+      countPerSide,
+      yMin,
+      yMax,
+      minSpacing,
+      maxSpacing,
+      startY,
+      randomizeSpacing,
+    );
+  }
+
+  for (let i = 0; i < leftYValues.length; i += 1) {
+    // Left side branches grow rightward (direction +1).
+    seedsLeft.push({
+      x: leftSeedBaseX + Math.random() * sideMargin,
+      y: leftYValues[i],
+      direction: 1,
+    });
+  }
+
+  for (let i = 0; i < rightYValues.length; i += 1) {
+    // Right side branches grow leftward (direction -1).
+    seedsRight.push({
+      x: rightSeedBaseX - Math.random() * sideMargin,
+      y: rightYValues[i],
+      direction: -1,
+    });
+  }
+
+  return { seedsLeft, seedsRight };
+}
+
+function plantSeeds(seedPacket, options = {}) {
+  if (!STATE.branchGarden) {
+    return [];
+  }
+  return STATE.branchGarden.plantSeeds(seedPacket, options);
+}
+
+// =========================
+// 10) Asset Loading
+// =========================
+function loadImage(url) {
+  return new Promise((resolve, reject) => {
+    const resolvedUrl = normalizeHostedAssetPath(url);
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('Failed to load image: ' + resolvedUrl));
+    image.src = resolvedUrl;
+  });
+}
+
+function createFallbackStemTexture() {
+  const texture = document.createElement('canvas');
+  texture.width = 160;
+  texture.height = 600;
+  const tctx = texture.getContext('2d');
+
+  const gradient = tctx.createLinearGradient(0, 0, 0, texture.height);
+  gradient.addColorStop(0, '#8dd17d');
+  gradient.addColorStop(0.4, '#5da460');
+  gradient.addColorStop(1, '#3f7f4a');
+  tctx.fillStyle = gradient;
+  tctx.fillRect(0, 0, texture.width, texture.height);
+
+  tctx.globalCompositeOperation = 'multiply';
+  for (let i = 0; i < 48; i += 1) {
+    const x = (i / 47) * texture.width;
+    tctx.fillStyle = i % 2 === 0 ? 'rgba(16, 45, 20, 0.09)' : 'rgba(8, 25, 14, 0.07)';
+    tctx.fillRect(x, 0, 2, texture.height);
+  }
+  tctx.globalCompositeOperation = 'source-over';
+
+  tctx.fillStyle = 'rgba(220, 255, 220, 0.22)';
+  tctx.fillRect(texture.width * 0.44, 0, texture.width * 0.08, texture.height);
+
+  return texture;
+}
+
+function createHorizontallyFlippedTexture(image) {
+  if (!image || !Number.isFinite(image.width) || !Number.isFinite(image.height) || image.width <= 0 || image.height <= 0) {
+    return image;
+  }
+
+  const texture = document.createElement('canvas');
+  texture.width = image.width;
+  texture.height = image.height;
+  const tctx = texture.getContext('2d');
+  tctx.setTransform(-1, 0, 0, 1, texture.width, 0);
+  tctx.drawImage(image, 0, 0);
+  return texture;
+}
+
+async function loadStemTexture() {
+  try {
+    return await loadImage('./stem_2.5.png');
+  } catch (error) {
+    console.warn(error.message + ' | Falling back to generated stem texture.');
+    return createFallbackStemTexture();
+  }
+}
+
+async function loadLeafTexture(leavesConfig = CONFIG.leaves || {}) {
+  const safeConfig = isPlainObjectLiteral(leavesConfig) ? leavesConfig : {};
+  const spritePath = (typeof safeConfig.spritePath === 'string' && safeConfig.spritePath.length > 0)
+    ? safeConfig.spritePath
+    : './leaves_new.png';
+  try {
+    return await loadImage(spritePath);
+  } catch (error) {
+    console.warn(error.message + ' | Leaves are disabled until the leaf sprite loads.');
+    return null;
+  }
+}
+
+// =========================
+// 11) Branch Endpoints + Flower System Bridge
+// =========================
+function getBranchEndpointPoint(branch) {
+  if (!branch || !branch.pathData || !Number.isFinite(branch.pathData.totalLength)) {
+    return null;
+  }
+  const totalLength = Math.max(0, branch.pathData.totalLength);
+  if (totalLength <= 1e-8) {
+    return null;
+  }
+  return getPathPointAtLength(branch.pathData, totalLength);
+}
+
+function getBranchPointAtDistance(branch, distanceOnPath) {
+  if (!branch || !branch.pathData || !Number.isFinite(branch.pathData.totalLength)) {
+    return null;
+  }
+  const totalLength = Math.max(0, branch.pathData.totalLength);
+  if (totalLength <= 1e-8) {
+    return null;
+  }
+  const clampedDistance = clamp(
+    Number.isFinite(distanceOnPath) ? distanceOnPath : totalLength,
+    0,
+    totalLength,
+  );
+  return getPathPointAtLength(branch.pathData, clampedDistance);
+}
+
+function getBranchTangentDegAtDistance(branch, distanceOnPath) {
+  if (!branch || !branch.pathData || !Number.isFinite(branch.pathData.totalLength)) {
+    return null;
+  }
+  const totalLength = Math.max(0, branch.pathData.totalLength);
+  if (totalLength <= 1e-8) {
+    return null;
+  }
+  const clampedDistance = clamp(
+    Number.isFinite(distanceOnPath) ? distanceOnPath : totalLength,
+    0,
+    totalLength,
+  );
+  const flowersConfig = CONFIG.flowers || {};
+  const tailLengthInput = Number(flowersConfig.endpointDirectionTailLengthPx);
+  const sampleCountInput = Number(flowersConfig.endpointDirectionSampleCount);
+  const tailLength = Number.isFinite(tailLengthInput)
+    ? Math.max(0, tailLengthInput)
+    : 26;
+  const sampleCount = Number.isFinite(sampleCountInput)
+    ? Math.max(1, Math.floor(sampleCountInput))
+    : 5;
+
+  const resolveSingleTangentDeg = () => {
+    const tangent = getPathTangentAtLength(branch.pathData, clampedDistance);
+    if (!tangent || !Number.isFinite(tangent.x) || !Number.isFinite(tangent.y)) {
+      return null;
+    }
+    return Math.atan2(tangent.y, tangent.x) * 180 / Math.PI;
+  };
+
+  if (tailLength <= 1e-6 || sampleCount <= 1) {
+    return resolveSingleTangentDeg();
+  }
+
+  const startDistance = Math.max(0, clampedDistance - tailLength);
+  const span = clampedDistance - startDistance;
+  if (span <= 1e-6) {
+    return resolveSingleTangentDeg();
+  }
+
+  let sumX = 0;
+  let sumY = 0;
+  let validCount = 0;
+  for (let i = 0; i < sampleCount; i += 1) {
+    const t = sampleCount <= 1 ? 1 : (i / (sampleCount - 1));
+    const distance = startDistance + span * t;
+    const tangent = getPathTangentAtLength(branch.pathData, distance);
+    if (!tangent || !Number.isFinite(tangent.x) || !Number.isFinite(tangent.y)) {
+      continue;
+    }
+    const len = Math.hypot(tangent.x, tangent.y);
+    if (len <= 1e-8) {
+      continue;
+    }
+    sumX += tangent.x / len;
+    sumY += tangent.y / len;
+    validCount += 1;
+  }
+
+  if (validCount <= 0 || Math.hypot(sumX, sumY) <= 1e-8) {
+    return resolveSingleTangentDeg();
+  }
+
+  return Math.atan2(sumY, sumX) * 180 / Math.PI;
+}
+
+function getBranchEndpointTangentDeg(branch) {
+  if (!branch || !branch.pathData || !Number.isFinite(branch.pathData.totalLength)) {
+    return null;
+  }
+  const totalLength = Math.max(0, branch.pathData.totalLength);
+  if (totalLength <= 1e-8) {
+    return null;
+  }
+  return getBranchTangentDegAtDistance(branch, totalLength);
+}
+
+function collectBranchEndpoints() {
+  if (!STATE.branchGarden || !Array.isArray(STATE.branchGarden.branches)) {
+    return [];
+  }
+
+  const endpoints = [];
+  for (let i = 0; i < STATE.branchGarden.branches.length; i += 1) {
+    const branch = STATE.branchGarden.branches[i];
+    const endpoint = getBranchEndpointPoint(branch);
+    const tangentDeg = getBranchEndpointTangentDeg(branch);
+    if (!endpoint) {
+      continue;
+    }
+    endpoints.push({
+      branchId: Number.isFinite(branch.id) ? branch.id : null,
+      parentId: Number.isFinite(branch.parentId) ? branch.parentId : null,
+      depth: Number.isFinite(branch.depth) ? branch.depth : 0,
+      stableKey: typeof branch.stableKey === 'string' ? branch.stableKey : `branch-index:${i}`,
+      x: endpoint.x,
+      y: endpoint.y,
+      tangentDeg: Number.isFinite(tangentDeg) ? tangentDeg : null,
+    });
+  }
+  return endpoints;
+}
+
+let __flowersLoggedLazyCreate = false;
+let __flowersLoggedSpriteLoadBegin = false;
+let __flowersLoggedSpriteLoadEnd = false;
+let __flowersLoggedSpriteLoadFail = false;
+let __flowersLoggedBranchCompleteTransition = false;
+let flowerGrowthAnimatedOpenTriggered = false;
+
+function shouldDebugFlowerHotkeys() {
+  return Boolean(CONFIG && CONFIG.flowers && CONFIG.flowers.debugLogHotkeys === true);
+}
+
+function flowerDebugLog(force, ...parts) {
+  if (!force && !shouldDebugFlowerHotkeys()) {
+    return;
+  }
+  try {
+    console.log('[flowers]', ...parts);
+  } catch (_error) {
+    // ignore
+  }
+}
+
+function getFlowerSystem() {
+  if (STATE.flowerSystem && typeof STATE.flowerSystem.render === 'function') {
+    return STATE.flowerSystem;
+  }
+  // Lazy init in case `script_11_flowers.js` loaded after bootstrap.
+  if (
+    !STATE.flowerSystem
+    && window.StemWarpFlowerSystem11
+    && typeof window.StemWarpFlowerSystem11.createFlowerSystem === 'function'
+  ) {
+    STATE.flowerSystem = window.StemWarpFlowerSystem11.createFlowerSystem();
+    if (STATE.flowerSystem && typeof STATE.flowerSystem.setPixiSurfaces === 'function') {
+      STATE.flowerSystem.setPixiSurfaces({
+        backCanvas: flowersBackCanvas,
+        frontCanvas: flowersFrontCanvas,
+      });
+    }
+    if (!__flowersLoggedLazyCreate) {
+      __flowersLoggedLazyCreate = true;
+      flowerDebugLog(false, 'created flower system (lazy init)', {
+        hasModule: Boolean(window.StemWarpFlowerSystem11),
+        hasSystem: Boolean(STATE.flowerSystem),
+      });
+    }
+    // If the system was missing during bootstrap, sprite load may have been skipped.
+    if (STATE.foliageLoad && STATE.foliageLoad.flowerReady !== true) {
+      loadFlowerSpriteIntoSystem()
+        .then(() => {
+          setFoliageLoadReadyFlag('flowerReady', true);
+          invalidateCompletedBranchLayer();
+          renderScene({ skipAutoStart: true });
+        })
+        .catch((error) => {
+          console.warn(error && error.message ? error.message : String(error));
+          setFoliageLoadReadyFlag('flowerReady', true);
+        });
+    }
+    if (typeof rebuildEndpointFlowers === 'function') {
+      rebuildEndpointFlowers();
+    }
+    return (STATE.flowerSystem && typeof STATE.flowerSystem.render === 'function') ? STATE.flowerSystem : null;
+  }
+  return null;
+}
+
+const LEGACY_LILY_FLOWER_KEYS = [
+  'method',
+  'spritePath',
+  'spriteCellWidth',
+  'spriteCellHeight',
+  'spriteScale',
+  'spriteCols',
+  'spriteRows',
+  'spriteRow',
+  'petalCountRange',
+  'alignToBranchDirection',
+  'alignmentDamping',
+  'petalBaseCenterDeg',
+  'petalSpreadDeg',
+  'displacementSpace',
+  'stamenRowMode',
+  'stamenFixedRow',
+  'stamenCount',
+  'stamenAdditionalMode',
+  'stamenRowList',
+  'closedUseMiddlePetalSprite',
+  'closedSpritePath',
+  'closedSpriteCols',
+  'closedSpriteRows',
+  'closedSpriteScale',
+  'pairRotationDegByRowPair',
+  'pairDisplacementYByRowPair',
+  'pairDisplacementXByRowPair',
+  'hoverAmplitudeDegRange',
+  'hoverSpeedRange',
+];
+
+function isPlainObjectLiteral(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function ensureFlowerConfigShapeInPlace(flowersConfig) {
+  if (!isPlainObjectLiteral(flowersConfig)) {
+    return;
+  }
+
+  if (!isPlainObjectLiteral(flowersConfig.types)) {
+    flowersConfig.types = {};
+  }
+  if (!isPlainObjectLiteral(flowersConfig.types.lily)) {
+    flowersConfig.types.lily = {};
+  }
+
+  const lilyTypeConfig = flowersConfig.types.lily;
+  for (let i = 0; i < LEGACY_LILY_FLOWER_KEYS.length; i += 1) {
+    const key = LEGACY_LILY_FLOWER_KEYS[i];
+    if (flowersConfig[key] !== undefined && lilyTypeConfig[key] === undefined) {
+      lilyTypeConfig[key] = flowersConfig[key];
+    }
+  }
+
+  if (flowersConfig.assignmentMode !== 'mixed') {
+    flowersConfig.assignmentMode = 'single';
+  }
+  if (typeof flowersConfig.singleType !== 'string' || flowersConfig.singleType.length === 0) {
+    flowersConfig.singleType = 'lily';
+  }
+  if (!isPlainObjectLiteral(flowersConfig.mixRatios)) {
+    flowersConfig.mixRatios = { lily: 1 };
+  }
+  if (!isPlainObjectLiteral(flowersConfig.performance)) {
+    flowersConfig.performance = {};
+  }
+  if (flowersConfig.performance.activeLayerCacheEnabled === undefined) {
+    flowersConfig.performance.activeLayerCacheEnabled = true;
+  } else {
+    flowersConfig.performance.activeLayerCacheEnabled = flowersConfig.performance.activeLayerCacheEnabled !== false;
+  }
+  flowersConfig.performance.logEnabled = flowersConfig.performance.logEnabled === true;
+  {
+    const logIntervalMs = Number(flowersConfig.performance.logIntervalMs);
+    flowersConfig.performance.logIntervalMs = Number.isFinite(logIntervalMs)
+      ? Math.max(100, logIntervalMs)
+      : 1000;
+  }
+  if (!isPlainObjectLiteral(flowersConfig.baked)) {
+    flowersConfig.baked = {};
+  }
+  if (typeof flowersConfig.baked.manifestPath !== 'string' || flowersConfig.baked.manifestPath.length === 0) {
+    flowersConfig.baked.manifestPath = './flowers/flowers_atlas_manifest_master.json';
+  }
+  flowersConfig.baked.enabled = flowersConfig.baked.enabled === true;
+  flowersConfig.baked.fallbackToLive = flowersConfig.baked.fallbackToLive === true;
+  flowersConfig.baked.allowFilenameFallback = flowersConfig.baked.allowFilenameFallback !== false;
+  flowersConfig.baked.forceCanvasRenderer = flowersConfig.baked.forceCanvasRenderer !== false;
+  flowersConfig.baked.logEnabled = flowersConfig.baked.logEnabled === true;
+  {
+    const playbackFps = Number(flowersConfig.baked.playbackFps);
+    flowersConfig.baked.playbackFps = Number.isFinite(playbackFps)
+      ? Math.max(0, playbackFps)
+      : 0;
+  }
+  {
+    const playbackSpeedMultiplier = Number(flowersConfig.baked.playbackSpeedMultiplier);
+    flowersConfig.baked.playbackSpeedMultiplier = Number.isFinite(playbackSpeedMultiplier)
+      ? Math.max(0.01, playbackSpeedMultiplier)
+      : 1;
+  }
+  {
+    const neutralFrameIndex = Number(flowersConfig.baked.neutralFrameIndex);
+    flowersConfig.baked.neutralFrameIndex = Number.isFinite(neutralFrameIndex)
+      ? Math.max(0, Math.floor(neutralFrameIndex))
+      : null;
+  }
+  flowersConfig.baked.frameInterpolationEnabled = flowersConfig.baked.frameInterpolationEnabled === true;
+}
+
+function normalizeFlowerOptionPatch(nextOptions) {
+  if (!isPlainObjectLiteral(nextOptions)) {
+    return {};
+  }
+
+  const patch = {};
+  const legacyLilyPatch = {};
+
+  const keys = Object.keys(nextOptions);
+  for (let i = 0; i < keys.length; i += 1) {
+    const key = keys[i];
+    const value = nextOptions[key];
+
+    if (LEGACY_LILY_FLOWER_KEYS.includes(key)) {
+      legacyLilyPatch[key] = value;
+      continue;
+    }
+
+    if (key === 'types' && isPlainObjectLiteral(value)) {
+      const typesPatch = {};
+      const typeKeys = Object.keys(value);
+      for (let t = 0; t < typeKeys.length; t += 1) {
+        const typeKey = typeKeys[t];
+        const typeValue = value[typeKey];
+        typesPatch[typeKey] = isPlainObjectLiteral(typeValue) ? { ...typeValue } : typeValue;
+      }
+      patch.types = typesPatch;
+      continue;
+    }
+
+    if (key === 'mixRatios' && isPlainObjectLiteral(value)) {
+      patch.mixRatios = { ...value };
+      continue;
+    }
+
+    if (key === 'performance' && isPlainObjectLiteral(value)) {
+      patch.performance = { ...value };
+      continue;
+    }
+
+    patch[key] = value;
+  }
+
+  if (Object.keys(legacyLilyPatch).length > 0) {
+    if (!isPlainObjectLiteral(patch.types)) {
+      patch.types = {};
+    }
+    const lilyPatch = isPlainObjectLiteral(patch.types.lily)
+      ? { ...patch.types.lily }
+      : {};
+    Object.assign(lilyPatch, legacyLilyPatch);
+    patch.types.lily = lilyPatch;
+  }
+
+  return patch;
+}
+
+function mergeFlowerOptionsInPlace(target, patch) {
+  if (!isPlainObjectLiteral(target) || !isPlainObjectLiteral(patch)) {
+    return;
+  }
+
+  if (isPlainObjectLiteral(patch.types)) {
+    if (!isPlainObjectLiteral(target.types)) {
+      target.types = {};
+    }
+    const typeKeys = Object.keys(patch.types);
+    for (let i = 0; i < typeKeys.length; i += 1) {
+      const typeKey = typeKeys[i];
+      const patchTypeValue = patch.types[typeKey];
+      if (isPlainObjectLiteral(patchTypeValue)) {
+        if (!isPlainObjectLiteral(target.types[typeKey])) {
+          target.types[typeKey] = {};
+        }
+        Object.assign(target.types[typeKey], patchTypeValue);
+      } else {
+        target.types[typeKey] = patchTypeValue;
+      }
+    }
+  }
+
+  if (isPlainObjectLiteral(patch.mixRatios)) {
+    target.mixRatios = { ...patch.mixRatios };
+  }
+  if (isPlainObjectLiteral(patch.performance)) {
+    if (!isPlainObjectLiteral(target.performance)) {
+      target.performance = {};
+    }
+    Object.assign(target.performance, patch.performance);
+  }
+
+  const keys = Object.keys(patch);
+  for (let i = 0; i < keys.length; i += 1) {
+    const key = keys[i];
+    if (
+      key === 'types'
+      || key === 'mixRatios'
+      || key === 'performance'
+      || LEGACY_LILY_FLOWER_KEYS.includes(key)
+    ) {
+      continue;
+    }
+    target[key] = patch[key];
+  }
+}
+
+async function loadFlowerSpriteIntoSystem() {
+  const flowerSystem = getFlowerSystem();
+  if (!flowerSystem) {
+    return;
+  }
+
+  ensureFlowerConfigShapeInPlace(CONFIG.flowers);
+
+  try {
+    if (!__flowersLoggedSpriteLoadBegin) {
+      __flowersLoggedSpriteLoadBegin = true;
+      flowerDebugLog(false, 'sprite load begin');
+    }
+    if (typeof flowerSystem.loadAssets === 'function') {
+      await flowerSystem.loadAssets(getFlowersRuntimeConfig());
+      if (!__flowersLoggedSpriteLoadEnd) {
+        __flowersLoggedSpriteLoadEnd = true;
+        flowerDebugLog(false, 'sprite load end (loadAssets)');
+      }
+      return;
+    }
+
+    const lilyConfig = CONFIG.flowers && CONFIG.flowers.types && CONFIG.flowers.types.lily
+      ? CONFIG.flowers.types.lily
+      : null;
+    const spritePath = (
+      lilyConfig && typeof lilyConfig.spritePath === 'string' && lilyConfig.spritePath.length > 0
+    )
+      ? lilyConfig.spritePath
+      : './lily_sprite.png';
+    await flowerSystem.loadSprite(spritePath);
+    if (!__flowersLoggedSpriteLoadEnd) {
+      __flowersLoggedSpriteLoadEnd = true;
+      flowerDebugLog(false, 'sprite load end (loadSprite)', spritePath);
+    }
+  } catch (error) {
+    if (!__flowersLoggedSpriteLoadFail) {
+      __flowersLoggedSpriteLoadFail = true;
+      flowerDebugLog(true, 'sprite load failed', error && error.message ? error.message : String(error));
+    }
+    console.warn(error.message + ' | Flowers disabled because sprite failed to load.');
+  }
+}
+
+function rebuildEndpointFlowers() {
+  const flowerSystem = getFlowerSystem();
+  if (!flowerSystem) {
+    return;
+  }
+  ensureFlowerConfigShapeInPlace(CONFIG.flowers);
+  const rebuildStartMs = performance.now();
+  flowerSystem.setEndpoints(STATE.branchEndpoints, getFlowersRuntimeConfig());
+  viewportDebugLog(
+    'rebuildEndpointFlowers',
+    `count=${Array.isArray(STATE.branchEndpoints) ? STATE.branchEndpoints.length : 0}`,
+    `duration=${(performance.now() - rebuildStartMs).toFixed(2)}ms`,
+  );
+}
+
+function refreshBranchEndpointsAndFlowerSystem() {
+  const refreshStartMs = performance.now();
+  STATE.branchEndpoints = collectBranchEndpoints();
+  rebuildEndpointFlowers();
+  viewportDebugLog(
+    'refreshBranchEndpointsAndFlowerSystem',
+    `endpointCount=${STATE.branchEndpoints.length}`,
+    `duration=${(performance.now() - refreshStartMs).toFixed(2)}ms`,
+  );
+}
+
+function clearFlowerGrowthOpenTimer() {
+  if (STATE.flowerGrowth && STATE.flowerGrowth.openTimerId !== null) {
+    clearTimeout(STATE.flowerGrowth.openTimerId);
+    STATE.flowerGrowth.openTimerId = null;
+  }
+}
+
+function resetFlowerGrowthRuntimeState(options = {}) {
+  const clearSignature = options.clearSignature !== false;
+  const clearOpenOverrides = options.clearOpenOverrides !== false;
+  const clearOpenLatch = options.clearOpenLatch === true || clearSignature;
+  const state = STATE.flowerGrowth;
+  if (!state) {
+    return;
+  }
+  const flowerSystem = getFlowerSystem();
+  clearFlowerGrowthOpenTimer();
+  state.openScheduled = false;
+  state.openTriggered = false;
+  state.openSweepStartMs = 0;
+  state.openSweepElapsedSec = 0;
+  state.openSweepLastTickMs = 0;
+  state.openSweepCompleted = false;
+  state.branchCompleteReached = false;
+  if (clearOpenLatch) {
+    state.openStateLatched = false;
+  }
+  state.cycleToken = (Number.isFinite(state.cycleToken) ? state.cycleToken : 0) + 1;
+  if (clearSignature) {
+    state.dynamicEndpointsActive = false;
+    state.lastEndpointSignature = -1;
+    flowerGrowthAnimatedOpenTriggered = false;
+  }
+  if (clearOpenOverrides) {
+    if (flowerSystem && typeof flowerSystem.clearFlowerOpenAmountOverridesByBranchId === 'function') {
+      flowerSystem.clearFlowerOpenAmountOverridesByBranchId();
+    }
+  }
+}
+
+function resolveFlowerGrowthAnimationConfig(flowersConfig = CONFIG.flowers || {}) {
+  const safeConfig = isPlainObjectLiteral(flowersConfig) ? flowersConfig : {};
+  const typeConfigs = isPlainObjectLiteral(safeConfig.types) ? safeConfig.types : {};
+  const lilyTypeConfig = isPlainObjectLiteral(typeConfigs.lily) ? typeConfigs.lily : {};
+  const blueTypeConfig = isPlainObjectLiteral(typeConfigs.blue) ? typeConfigs.blue : {};
+  const lilyGrowthConfig = isPlainObjectLiteral(lilyTypeConfig.growth) ? lilyTypeConfig.growth : {};
+  const blueGrowthConfig = isPlainObjectLiteral(blueTypeConfig.growth) ? blueTypeConfig.growth : {};
+
+  const resolveBaseGrowthConfig = (typeGrowthConfig) => {
+    const source = isPlainObjectLiteral(typeGrowthConfig) ? typeGrowthConfig : {};
+    const enabled = source.enabled !== undefined
+      ? source.enabled !== false
+      : (safeConfig.growthEnabled !== false);
+    const tipLeadFractionInput = Number(
+      source.tipLeadFraction !== undefined
+        ? source.tipLeadFraction
+        : safeConfig.growthTipLeadFraction,
+    );
+    const tipLeadFraction = Number.isFinite(tipLeadFractionInput)
+      ? clamp(tipLeadFractionInput, 0, 1)
+      : 0.1;
+    const sizeMinScaleInput = Number(
+      source.sizeMinScale !== undefined
+        ? source.sizeMinScale
+        : safeConfig.growthMinScale,
+    );
+    const sizeMinScale = Number.isFinite(sizeMinScaleInput)
+      ? clamp(sizeMinScaleInput, 0, 1)
+      : 0.05;
+    const sizeDurationSecInput = Number(
+      source.sizeDurationSec !== undefined
+        ? source.sizeDurationSec
+        : safeConfig.growthDurationSec,
+    );
+    const sizeDurationSec = Number.isFinite(sizeDurationSecInput)
+      ? Math.max(0, sizeDurationSecInput)
+      : 1;
+    const sizeEase = sanitizeLeafGrowthEaseMode(
+      source.sizeEase !== undefined ? source.sizeEase : safeConfig.growthEase,
+    );
+    const sizeEasePowerInput = Number(
+      source.sizeEasePower !== undefined
+        ? source.sizeEasePower
+        : safeConfig.growthEasePower,
+    );
+    const sizeEasePower = Number.isFinite(sizeEasePowerInput)
+      ? Math.max(0.01, sizeEasePowerInput)
+      : 2;
+    const sizeEaseInPowerInput = Number(
+      source.sizeEaseInPower !== undefined
+        ? source.sizeEaseInPower
+        : sizeEasePower,
+    );
+    const sizeEaseInPower = Number.isFinite(sizeEaseInPowerInput)
+      ? Math.max(0.01, sizeEaseInPowerInput)
+      : sizeEasePower;
+    const sizeEaseOutPowerInput = Number(
+      source.sizeEaseOutPower !== undefined
+        ? source.sizeEaseOutPower
+        : sizeEasePower,
+    );
+    const sizeEaseOutPower = Number.isFinite(sizeEaseOutPowerInput)
+      ? Math.max(0.01, sizeEaseOutPowerInput)
+      : sizeEasePower;
+    return {
+      enabled,
+      tipLeadFraction,
+      sizeMinScale,
+      sizeDurationSec,
+      sizeEase,
+      sizeEasePower,
+      sizeEaseInPower,
+      sizeEaseOutPower,
+    };
+  };
+
+  const lilyBase = resolveBaseGrowthConfig(lilyGrowthConfig);
+  const blueBase = resolveBaseGrowthConfig(blueGrowthConfig);
+
+  const bluePositionMinScaleInput = Number(
+    blueGrowthConfig.positionMinScale !== undefined
+      ? blueGrowthConfig.positionMinScale
+      : safeConfig.growthPositionMinScale,
+  );
+  const bluePositionMinScale = Number.isFinite(bluePositionMinScaleInput)
+    ? clamp(bluePositionMinScaleInput, 0, 1)
+    : blueBase.sizeMinScale;
+  const bluePositionDurationSecInput = Number(
+    blueGrowthConfig.positionDurationSec !== undefined
+      ? blueGrowthConfig.positionDurationSec
+      : safeConfig.growthPositionDurationSec,
+  );
+  const bluePositionDurationSec = Number.isFinite(bluePositionDurationSecInput)
+    ? Math.max(0, bluePositionDurationSecInput)
+    : blueBase.sizeDurationSec;
+  const bluePositionEase = sanitizeLeafGrowthEaseMode(
+    blueGrowthConfig.positionEase !== undefined
+      ? blueGrowthConfig.positionEase
+      : (
+        safeConfig.growthPositionEase !== undefined
+          ? safeConfig.growthPositionEase
+          : blueBase.sizeEase
+      ),
+  );
+  const bluePositionEasePowerInput = Number(
+    blueGrowthConfig.positionEasePower !== undefined
+      ? blueGrowthConfig.positionEasePower
+      : safeConfig.growthPositionEasePower,
+  );
+  const bluePositionEasePower = Number.isFinite(bluePositionEasePowerInput)
+    ? Math.max(0.01, bluePositionEasePowerInput)
+    : blueBase.sizeEasePower;
+  const bluePositionEaseInPowerInput = Number(
+    blueGrowthConfig.positionEaseInPower !== undefined
+      ? blueGrowthConfig.positionEaseInPower
+      : bluePositionEasePower,
+  );
+  const bluePositionEaseInPower = Number.isFinite(bluePositionEaseInPowerInput)
+    ? Math.max(0.01, bluePositionEaseInPowerInput)
+    : bluePositionEasePower;
+  const bluePositionEaseOutPowerInput = Number(
+    blueGrowthConfig.positionEaseOutPower !== undefined
+      ? blueGrowthConfig.positionEaseOutPower
+      : bluePositionEasePower,
+  );
+  const bluePositionEaseOutPower = Number.isFinite(bluePositionEaseOutPowerInput)
+    ? Math.max(0.01, bluePositionEaseOutPowerInput)
+    : bluePositionEasePower;
+
+  const lilyOpenAutoEnabled = lilyGrowthConfig.openAutoEnabled !== undefined
+    ? lilyGrowthConfig.openAutoEnabled !== false
+    : (safeConfig.growthAutoOpenEnabled !== false);
+  const lilyOpenDelayMsInput = Number(
+    lilyGrowthConfig.openDelayMs !== undefined
+      ? lilyGrowthConfig.openDelayMs
+      : safeConfig.growthOpenDelayMs,
+  );
+  const lilyOpenDelayMs = Number.isFinite(lilyOpenDelayMsInput)
+    ? Math.max(0, lilyOpenDelayMsInput)
+    : 350;
+  const lilyOpenSweepDirection = sanitizeBranchGrowthSweepDirection(
+    lilyGrowthConfig.openSweepDirection !== undefined
+      ? lilyGrowthConfig.openSweepDirection
+      : safeConfig.growthOpenSweepDirection,
+    'down',
+  );
+  const lilyOpenSweepDurationSecInput = Number(
+    lilyGrowthConfig.openSweepDurationSec !== undefined
+      ? lilyGrowthConfig.openSweepDurationSec
+      : safeConfig.growthOpenSweepDurationSec,
+  );
+  const lilyOpenSweepDurationSec = Number.isFinite(lilyOpenSweepDurationSecInput)
+    ? Math.max(0, lilyOpenSweepDurationSecInput)
+    : 0.8;
+  const lilyOpenPetalDurationSecInput = Number(
+    lilyGrowthConfig.openPetalDurationSec !== undefined
+      ? lilyGrowthConfig.openPetalDurationSec
+      : safeConfig.growthOpenPetalDurationSec,
+  );
+  const lilyOpenPetalDurationSec = Number.isFinite(lilyOpenPetalDurationSecInput)
+    ? Math.max(0, lilyOpenPetalDurationSecInput)
+    : (
+      Number.isFinite(Number(safeConfig.petalToggleAnimationDurationSec))
+        ? Math.max(0, Number(safeConfig.petalToggleAnimationDurationSec))
+        : 0.4
+    );
+  const lilyOpenPetalEase = sanitizeLeafGrowthEaseMode(
+    lilyGrowthConfig.openPetalEase !== undefined
+      ? lilyGrowthConfig.openPetalEase
+      : safeConfig.growthOpenPetalEase,
+  );
+  const lilyOpenPetalEasePowerInput = Number(
+    lilyGrowthConfig.openPetalEasePower !== undefined
+      ? lilyGrowthConfig.openPetalEasePower
+      : safeConfig.growthOpenPetalEasePower,
+  );
+  const lilyOpenPetalEasePower = Number.isFinite(lilyOpenPetalEasePowerInput)
+    ? Math.max(0.01, lilyOpenPetalEasePowerInput)
+    : 2;
+
+  return {
+    lily: {
+      enabled: lilyBase.enabled,
+      tipLeadFraction: lilyBase.tipLeadFraction,
+      size: {
+        minScale: lilyBase.sizeMinScale,
+        durationSec: lilyBase.sizeDurationSec,
+        ease: lilyBase.sizeEase,
+        easePower: lilyBase.sizeEasePower,
+        easeInPower: lilyBase.sizeEaseInPower,
+        easeOutPower: lilyBase.sizeEaseOutPower,
+      },
+      open: {
+        autoEnabled: lilyOpenAutoEnabled,
+        delayMs: lilyOpenDelayMs,
+        sweepDirection: lilyOpenSweepDirection,
+        sweepDurationSec: lilyOpenSweepDurationSec,
+        petalDurationSec: lilyOpenPetalDurationSec,
+        petalEase: lilyOpenPetalEase,
+        petalEasePower: lilyOpenPetalEasePower,
+      },
+    },
+    blue: {
+      enabled: blueBase.enabled,
+      tipLeadFraction: blueBase.tipLeadFraction,
+      size: {
+        minScale: blueBase.sizeMinScale,
+        durationSec: blueBase.sizeDurationSec,
+        ease: blueBase.sizeEase,
+        easePower: blueBase.sizeEasePower,
+        easeInPower: blueBase.sizeEaseInPower,
+        easeOutPower: blueBase.sizeEaseOutPower,
+      },
+      position: {
+        minScale: bluePositionMinScale,
+        durationSec: bluePositionDurationSec,
+        ease: bluePositionEase,
+        easePower: bluePositionEasePower,
+        easeInPower: bluePositionEaseInPower,
+        easeOutPower: bluePositionEaseOutPower,
+      },
+    },
+  };
+}
+
+function sanitizeFlowerGrowthAssignmentMode(mode) {
+  return mode === 'mixed' ? 'mixed' : 'single';
+}
+
+function sanitizeFlowerGrowthTypeName(typeName, fallback = 'lily') {
+  if (typeName === 'lily' || typeName === 'blue') {
+    return typeName;
+  }
+  return fallback;
+}
+
+function sanitizeFlowerGrowthMixRatios(rawRatios, fallback = 'lily') {
+  const out = {};
+  if (isPlainObjectLiteral(rawRatios)) {
+    const keys = Object.keys(rawRatios).sort();
+    for (let i = 0; i < keys.length; i += 1) {
+      const key = keys[i];
+      if (key !== 'lily' && key !== 'blue') {
+        continue;
+      }
+      const weight = Number(rawRatios[key]);
+      if (Number.isFinite(weight) && weight > 0) {
+        out[key] = weight;
+      }
+    }
+  }
+  if (Object.keys(out).length <= 0) {
+    out[fallback] = 1;
+  }
+  return out;
+}
+
+function getFlowerGrowthStableToken(endpoint, index) {
+  if (endpoint && typeof endpoint.stableKey === 'string' && endpoint.stableKey.length > 0) {
+    return endpoint.stableKey;
+  }
+  return `endpoint:${index}`;
+}
+
+function resolveFlowerTypeNameForGrowthEndpoint(endpoint, index, flowersConfig = CONFIG.flowers || {}) {
+  const safeConfig = isPlainObjectLiteral(flowersConfig) ? flowersConfig : {};
+  const mode = sanitizeFlowerGrowthAssignmentMode(safeConfig.assignmentMode);
+  const fallbackType = 'lily';
+
+  if (mode === 'single') {
+    return sanitizeFlowerGrowthTypeName(safeConfig.singleType, fallbackType);
+  }
+
+  const ratios = sanitizeFlowerGrowthMixRatios(safeConfig.mixRatios, fallbackType);
+  const entries = Object.entries(ratios);
+  if (entries.length <= 1) {
+    return entries[0] ? entries[0][0] : fallbackType;
+  }
+  let total = 0;
+  for (let i = 0; i < entries.length; i += 1) {
+    total += entries[i][1];
+  }
+  if (total <= 0) {
+    return fallbackType;
+  }
+  const stableToken = getFlowerGrowthStableToken(endpoint, index);
+  const rng = mulberry32(hashSeed(`${stableToken}|flower-type`));
+  const target = rng() * total;
+
+  let cumulative = 0;
+  for (let i = 0; i < entries.length; i += 1) {
+    cumulative += entries[i][1];
+    if (target <= cumulative) {
+      return entries[i][0];
+    }
+  }
+  return entries[entries.length - 1][0];
+}
+
+function buildFlowerGrowthEndpointSignature(endpoints) {
+  if (!Array.isArray(endpoints) || endpoints.length === 0) {
+    return 0;
+  }
+  let h = endpoints.length * 2654435761;
+  for (let i = 0; i < endpoints.length; i += 1) {
+    const ep = endpoints[i];
+    if (!ep) {
+      continue;
+    }
+    h = (h ^ (Number.isFinite(ep.branchId) ? (ep.branchId * 1000) | 0 : 0)) * 2246822519;
+    h = (h ^ (ep.assignedFlowerType === 'blue' ? 1 : 2)) * 2654435761;
+    h = (h ^ ((Number.isFinite(ep.x) ? ep.x * 100 : 0) | 0)) * 2246822519;
+    h = (h ^ ((Number.isFinite(ep.y) ? ep.y * 100 : 0) | 0)) * 2654435761;
+    h = (h ^ ((Number.isFinite(ep.tangentDeg) ? ep.tangentDeg * 100 : 0) | 0)) * 2246822519;
+    h = (h ^ ((Number.isFinite(ep.growthScale) ? ep.growthScale * 10000 : 10000) | 0)) * 2654435761;
+    h = (h ^ ((Number.isFinite(ep.growthPositionScale) ? ep.growthPositionScale * 10000 : 10000) | 0)) * 2246822519;
+    h = h >>> 0;
+  }
+  return h >>> 0;
+}
+
+function resolveFlowerGrowthChannelScaleAtBranchTip(
+  branch,
+  spawnDistanceOnPath,
+  elapsedSec,
+  growthChannelConfig,
+) {
+  if (!branch || !growthChannelConfig || CONFIG.branchGrowth.enabled !== true) {
+    return 1;
+  }
+  const minScale = clamp(growthChannelConfig.minScale, 0, 1);
+  const durationSec = Number.isFinite(growthChannelConfig.durationSec)
+    ? Math.max(0, growthChannelConfig.durationSec)
+    : 0;
+  if (durationSec <= 1e-8) {
+    return 1;
+  }
+  const ratePxPerSec = Number.isFinite(STATE.branchGrowth && STATE.branchGrowth.globalRatePxPerSec)
+    ? Math.max(0, STATE.branchGrowth.globalRatePxPerSec)
+    : 0;
+  if (ratePxPerSec <= 1e-8) {
+    return 1;
+  }
+  const branchStartMetric = Number.isFinite(branch.startDistanceMetric)
+    ? Math.max(0, branch.startDistanceMetric)
+    : 0;
+  const branchSweepStartDelaySec = Number.isFinite(branch.sweepStartDelaySec)
+    ? Math.max(0, branch.sweepStartDelaySec)
+    : 0;
+  const safeSpawnDistance = Number.isFinite(spawnDistanceOnPath)
+    ? Math.max(0, spawnDistanceOnPath)
+    : 0;
+  const spawnTimeSec = branchSweepStartDelaySec + ((branchStartMetric + safeSpawnDistance) / ratePxPerSec);
+  const ageSec = Math.max(0, (Number.isFinite(elapsedSec) ? elapsedSec : 0) - spawnTimeSec);
+  const progress = clamp(ageSec / durationSec, 0, 1);
+  const eased = evaluateFlowerGrowthEaseT(
+    progress,
+    growthChannelConfig.ease,
+    growthChannelConfig.easePower,
+    growthChannelConfig.easeInPower,
+    growthChannelConfig.easeOutPower,
+  );
+  return minScale + (1 - minScale) * eased;
+}
+
+function collectBranchEndpointsForGrowthAnimation(
+  branches,
+  branchVisibleLengthById,
+  elapsedSec,
+  growthConfigByType,
+  flowersRuntimeConfig,
+) {
+  _growthEndpointResult.length = 0;
+  if (!Array.isArray(branches) || branches.length === 0) {
+    return _growthEndpointResult;
+  }
+  for (let i = 0; i < branches.length; i += 1) {
+    const branch = branches[i];
+    if (!branch || !branch.pathData || !Number.isFinite(branch.pathData.totalLength)) {
+      continue;
+    }
+    const branchLength = Math.max(0, branch.pathData.totalLength);
+    if (branchLength <= 1e-8) {
+      continue;
+    }
+    const branchId = Number.isFinite(branch.id) ? branch.id : null;
+    const visibleLength = (
+      Number.isFinite(branchId)
+      && branchVisibleLengthById
+      && branchVisibleLengthById.has(branchId)
+    )
+      ? clamp(branchVisibleLengthById.get(branchId), 0, branchLength)
+      : branchLength;
+    const endpointIndex = _growthEndpointResult.length;
+    const stableKey = typeof branch.stableKey === 'string' ? branch.stableKey : `branch-index:${i}`;
+    const assignedFlowerType = resolveFlowerTypeNameForGrowthEndpoint(
+      {
+        stableKey,
+      },
+      endpointIndex,
+      flowersRuntimeConfig,
+    );
+    const typeGrowthConfig = assignedFlowerType === 'blue'
+      ? growthConfigByType.blue
+      : growthConfigByType.lily;
+    const growthEnabled = Boolean(typeGrowthConfig && typeGrowthConfig.enabled === true);
+    const tipLeadFraction = growthEnabled
+      ? clamp(
+        Number.isFinite(typeGrowthConfig.tipLeadFraction) ? typeGrowthConfig.tipLeadFraction : 0,
+        0,
+        1,
+      )
+      : 0;
+    const spawnDistanceOnPath = branchLength * (1 - tipLeadFraction);
+    if (visibleLength + 1e-6 < spawnDistanceOnPath) {
+      continue;
+    }
+    const tipDistance = clamp(visibleLength, 0, branchLength);
+    const tipPoint = getBranchPointAtDistance(branch, tipDistance);
+    if (!tipPoint || !Number.isFinite(tipPoint.x) || !Number.isFinite(tipPoint.y)) {
+      continue;
+    }
+    const tangentDeg = getBranchTangentDegAtDistance(branch, tipDistance);
+
+    let ep = _growthEndpointPool[endpointIndex];
+    if (!ep) {
+      ep = {};
+      _growthEndpointPool[endpointIndex] = ep;
+    }
+
+    ep.branchId = branchId;
+    ep.parentId = Number.isFinite(branch.parentId) ? branch.parentId : null;
+    ep.depth = Number.isFinite(branch.depth) ? branch.depth : 0;
+    ep.stableKey = stableKey;
+    ep.assignedFlowerType = assignedFlowerType;
+    ep.x = tipPoint.x;
+    ep.y = tipPoint.y;
+    ep.tangentDeg = Number.isFinite(tangentDeg) ? tangentDeg : null;
+    ep.growthScale = growthEnabled
+      ? resolveFlowerGrowthChannelScaleAtBranchTip(
+        branch,
+        spawnDistanceOnPath,
+        elapsedSec,
+        {
+          minScale: typeGrowthConfig && typeGrowthConfig.size
+            ? typeGrowthConfig.size.minScale
+            : 1,
+          durationSec: typeGrowthConfig && typeGrowthConfig.size
+            ? typeGrowthConfig.size.durationSec
+            : 0,
+          ease: typeGrowthConfig && typeGrowthConfig.size
+            ? typeGrowthConfig.size.ease
+            : 'linear',
+          easePower: typeGrowthConfig && typeGrowthConfig.size
+            ? typeGrowthConfig.size.easePower
+            : 1,
+          easeInPower: typeGrowthConfig && typeGrowthConfig.size
+            ? typeGrowthConfig.size.easeInPower
+            : 1,
+          easeOutPower: typeGrowthConfig && typeGrowthConfig.size
+            ? typeGrowthConfig.size.easeOutPower
+            : 1,
+        },
+      )
+      : 1;
+    ep.growthPositionScale = (
+      assignedFlowerType === 'blue'
+      && growthEnabled
+    )
+      ? resolveFlowerGrowthChannelScaleAtBranchTip(
+        branch,
+        spawnDistanceOnPath,
+        elapsedSec,
+        {
+          minScale: typeGrowthConfig && typeGrowthConfig.position
+            ? typeGrowthConfig.position.minScale
+            : 1,
+          durationSec: typeGrowthConfig && typeGrowthConfig.position
+            ? typeGrowthConfig.position.durationSec
+            : 0,
+          ease: typeGrowthConfig && typeGrowthConfig.position
+            ? typeGrowthConfig.position.ease
+            : 'linear',
+          easePower: typeGrowthConfig && typeGrowthConfig.position
+            ? typeGrowthConfig.position.easePower
+            : 1,
+          easeInPower: typeGrowthConfig && typeGrowthConfig.position
+            ? typeGrowthConfig.position.easeInPower
+            : 1,
+          easeOutPower: typeGrowthConfig && typeGrowthConfig.position
+            ? typeGrowthConfig.position.easeOutPower
+            : 1,
+        },
+      )
+      : 1;
+
+    _growthEndpointResult.push(ep);
+  }
+  return _growthEndpointResult;
+}
+
+function resolveFlowerOpenSweepByBranchId(
+  endpoints,
+  nowMs,
+  growthState,
+  lilyGrowthConfig,
+  elapsedSecOverride = null,
+) {
+  const openMap = new Map();
+  if (!Array.isArray(endpoints) || endpoints.length <= 0) {
+    return {
+      openMap,
+      completed: true,
+    };
+  }
+  const startMs = Number.isFinite(growthState && growthState.openSweepStartMs)
+    ? growthState.openSweepStartMs
+    : nowMs;
+  const elapsedSec = Number.isFinite(elapsedSecOverride)
+    ? Math.max(0, elapsedSecOverride)
+    : Math.max(0, (nowMs - startMs) / 1000);
+  const sweepDurationSec = Number.isFinite(
+    lilyGrowthConfig
+    && lilyGrowthConfig.open
+    && lilyGrowthConfig.open.sweepDurationSec,
+  )
+    ? Math.max(0, lilyGrowthConfig.open.sweepDurationSec)
+    : 0;
+  const perFlowerDurationSec = Number.isFinite(
+    lilyGrowthConfig
+    && lilyGrowthConfig.open
+    && lilyGrowthConfig.open.petalDurationSec,
+  )
+    ? Math.max(0, lilyGrowthConfig.open.petalDurationSec)
+    : 0;
+  const openEase = sanitizeLeafGrowthEaseMode(
+    lilyGrowthConfig
+    && lilyGrowthConfig.open
+    && lilyGrowthConfig.open.petalEase,
+  );
+  const openEasePower = Number.isFinite(
+    lilyGrowthConfig
+    && lilyGrowthConfig.open
+    && lilyGrowthConfig.open.petalEasePower,
+  )
+    ? Math.max(0.01, lilyGrowthConfig.open.petalEasePower)
+    : 2;
+  const sweepDirection = sanitizeBranchGrowthSweepDirection(
+    lilyGrowthConfig
+    && lilyGrowthConfig.open
+    && lilyGrowthConfig.open.sweepDirection,
+    'down',
+  );
+  const validEndpoints = [];
+  for (let i = 0; i < endpoints.length; i += 1) {
+    const endpoint = endpoints[i];
+    if (
+      !endpoint
+      || !Number.isFinite(endpoint.branchId)
+      || endpoint.assignedFlowerType !== 'lily'
+    ) {
+      continue;
+    }
+    validEndpoints.push(endpoint);
+  }
+  if (validEndpoints.length <= 0) {
+    return {
+      openMap,
+      completed: true,
+    };
+  }
+
+  let minY = Number.POSITIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  for (let i = 0; i < validEndpoints.length; i += 1) {
+    const y = Number(validEndpoints[i].y);
+    if (!Number.isFinite(y)) {
+      continue;
+    }
+    minY = Math.min(minY, y);
+    maxY = Math.max(maxY, y);
+  }
+  const hasYRange = Number.isFinite(minY) && Number.isFinite(maxY);
+  const spanY = hasYRange ? Math.max(0, maxY - minY) : 0;
+
+  let allOpen = true;
+  for (let i = 0; i < validEndpoints.length; i += 1) {
+    const endpoint = validEndpoints[i];
+    const y = Number(endpoint.y);
+    const normalizedOrder = (
+      hasYRange
+      && spanY > 1e-8
+      && Number.isFinite(y)
+    )
+      ? (
+        sweepDirection === 'up'
+          ? clamp((maxY - y) / spanY, 0, 1)
+          : clamp((y - minY) / spanY, 0, 1)
+      )
+      : (
+        validEndpoints.length <= 1
+          ? 0
+          : (i / (validEndpoints.length - 1))
+      );
+    const startOffsetSec = normalizedOrder * sweepDurationSec;
+    const progress = perFlowerDurationSec <= 1e-8
+      ? (elapsedSec >= startOffsetSec ? 1 : 0)
+      : clamp((elapsedSec - startOffsetSec) / perFlowerDurationSec, 0, 1);
+    const openAmount = evaluateLeafGrowthEaseT(progress, openEase, openEasePower);
+    openMap.set(endpoint.branchId, openAmount);
+    if (openAmount < 0.999) {
+      allOpen = false;
+    }
+  }
+  return {
+    openMap,
+    completed: allOpen,
+  };
+}
+
+function syncFlowerGrowthAnimationWithBranchGrowth(
+  useAnimation,
+  elapsedSec,
+  animationTotalTimeSec,
+  branches,
+  branchVisibleLengthById,
+  nowMs,
+) {
+  const flowerSystem = getFlowerSystem();
+  if (!flowerSystem || !CONFIG.flowers || CONFIG.flowers.enabled !== true) {
+    resetFlowerGrowthRuntimeState({ clearSignature: true });
+    return;
+  }
+  const clearOpenOverrides = () => {
+    if (typeof flowerSystem.clearFlowerOpenAmountOverridesByBranchId === 'function') {
+      flowerSystem.clearFlowerOpenAmountOverridesByBranchId();
+    }
+  };
+  ensureFlowerConfigShapeInPlace(CONFIG.flowers);
+  const flowersRuntimeConfig = getFlowersRuntimeConfig();
+  const growthConfigByType = resolveFlowerGrowthAnimationConfig(flowersRuntimeConfig);
+  const lilyGrowthConfig = growthConfigByType && growthConfigByType.lily
+    ? growthConfigByType.lily
+    : null;
+  const blueGrowthConfig = growthConfigByType && growthConfigByType.blue
+    ? growthConfigByType.blue
+    : null;
+  const growthState = STATE.flowerGrowth;
+  const useGrowthAnimation = (
+    useAnimation
+    && (
+      (lilyGrowthConfig && lilyGrowthConfig.enabled === true)
+      || (blueGrowthConfig && blueGrowthConfig.enabled === true)
+    )
+  );
+
+  if (!useGrowthAnimation) {
+    if (growthState.dynamicEndpointsActive) {
+      STATE.branchEndpoints = collectBranchEndpoints();
+      flowerSystem.setEndpoints(STATE.branchEndpoints, flowersRuntimeConfig);
+    }
+    resetFlowerGrowthRuntimeState({ clearSignature: true });
+    clearOpenOverrides();
+    return;
+  }
+
+  const dynamicEndpoints = collectBranchEndpointsForGrowthAnimation(
+    branches,
+    branchVisibleLengthById,
+    elapsedSec,
+    growthConfigByType,
+    flowersRuntimeConfig,
+  );
+  const endpointSignature = buildFlowerGrowthEndpointSignature(dynamicEndpoints);
+  if (endpointSignature !== growthState.lastEndpointSignature) {
+    STATE.branchEndpoints = dynamicEndpoints;
+    flowerSystem.setEndpoints(dynamicEndpoints, flowersRuntimeConfig);
+    growthState.lastEndpointSignature = endpointSignature;
+  }
+  growthState.dynamicEndpointsActive = true;
+
+  const hadBranchCompleteLatch = growthState.branchCompleteReached === true;
+  const branchCompleteNow = (
+    animationTotalTimeSec <= 1e-8
+    || elapsedSec >= animationTotalTimeSec - 1e-6
+  );
+  if (branchCompleteNow) {
+    growthState.branchCompleteReached = true;
+  }
+  const branchComplete = branchCompleteNow || growthState.branchCompleteReached === true;
+  if (!__flowersLoggedBranchCompleteTransition && !hadBranchCompleteLatch && branchCompleteNow) {
+    __flowersLoggedBranchCompleteTransition = true;
+    flowerDebugLog(false, 'branchComplete transitioned true', {
+      elapsedSec: Number.isFinite(elapsedSec) ? Number(elapsedSec.toFixed(3)) : elapsedSec,
+      animationTotalTimeSec: Number.isFinite(animationTotalTimeSec)
+        ? Number(animationTotalTimeSec.toFixed(3))
+        : animationTotalTimeSec,
+    });
+  }
+
+  if (!branchComplete) {
+    if (
+      growthState.openScheduled
+      || growthState.openTriggered
+      || growthState.openSweepCompleted
+      || growthState.openStateLatched
+    ) {
+      resetFlowerGrowthRuntimeState({ clearSignature: false, clearOpenLatch: true });
+    }
+    flowerGrowthAnimatedOpenTriggered = false;
+    clearOpenOverrides();
+    const currentOpen = typeof flowerSystem.getPetalOpenAmount === 'function'
+      ? flowerSystem.getPetalOpenAmount()
+      : 1;
+    if (currentOpen > 0.001 && typeof flowerSystem.setPetalOpenAmount === 'function') {
+      flowerSystem.setPetalOpenAmount(0);
+    }
+    return;
+  }
+
+  const lilyAutoOpenEnabled = Boolean(
+    lilyGrowthConfig
+    && lilyGrowthConfig.enabled === true
+    && lilyGrowthConfig.open
+    && lilyGrowthConfig.open.autoEnabled === true,
+  );
+
+  if (!lilyAutoOpenEnabled) {
+    clearOpenOverrides();
+    flowerGrowthAnimatedOpenTriggered = false;
+    return;
+  }
+
+  if (growthState.openStateLatched === true) {
+    clearOpenOverrides();
+    return;
+  }
+
+  if (!growthState.openScheduled) {
+    const openDelayMs = Number.isFinite(lilyGrowthConfig && lilyGrowthConfig.open && lilyGrowthConfig.open.delayMs)
+      ? Math.max(0, lilyGrowthConfig.open.delayMs)
+      : 0;
+    growthState.openScheduled = true;
+    growthState.openTriggered = false;
+    growthState.openSweepCompleted = false;
+    growthState.openStateLatched = false;
+    growthState.openSweepStartMs = nowMs + openDelayMs;
+    growthState.openSweepElapsedSec = 0;
+    growthState.openSweepLastTickMs = 0;
+    flowerGrowthAnimatedOpenTriggered = false;
+  }
+
+  if (nowMs < growthState.openSweepStartMs) {
+    const currentOpen = typeof flowerSystem.getPetalOpenAmount === 'function'
+      ? flowerSystem.getPetalOpenAmount()
+      : 1;
+    if (currentOpen > 0.001 && typeof flowerSystem.setPetalOpenAmount === 'function') {
+      flowerSystem.setPetalOpenAmount(0);
+    }
+    clearOpenOverrides();
+    return;
+  }
+
+  growthState.openTriggered = true;
+  
+  // Detect if we're in export mode (frame-by-frame rendering)
+  const isExportMode = typeof window !== 'undefined' 
+    && window.STEM_WARP_EXPORT_FUNCTIONS 
+    && typeof window.STEM_WARP_EXPORT_FUNCTIONS.stepAnimationFrame === 'function';
+  
+  if (isExportMode) {
+    // In export mode, use animation time instead of wall-clock time
+    // Calculate sweep elapsed time based on when the sweep started in animation time
+    if (!Number.isFinite(growthState.openSweepStartElapsedSec)) {
+      // Record the animation time when sweep started
+      growthState.openSweepStartElapsedSec = elapsedSec;
+    }
+    growthState.openSweepElapsedSec = Math.max(0, elapsedSec - growthState.openSweepStartElapsedSec);
+    // Update last tick to prevent wall-clock deltas from being added
+    growthState.openSweepLastTickMs = nowMs;
+  } else {
+    // Normal mode: use wall-clock time
+    if (!Number.isFinite(growthState.openSweepLastTickMs) || growthState.openSweepLastTickMs <= 0) {
+      growthState.openSweepLastTickMs = nowMs;
+    }
+    const sweepDtSec = clamp(
+      (nowMs - growthState.openSweepLastTickMs) / 1000,
+      0,
+      0.05,
+    );
+    growthState.openSweepElapsedSec = Math.max(
+      0,
+      (Number.isFinite(growthState.openSweepElapsedSec) ? growthState.openSweepElapsedSec : 0) + sweepDtSec,
+    );
+    growthState.openSweepLastTickMs = nowMs;
+  }
+  const sweepResult = resolveFlowerOpenSweepByBranchId(
+    dynamicEndpoints,
+    nowMs,
+    growthState,
+    lilyGrowthConfig,
+    growthState.openSweepElapsedSec,
+  );
+  if (typeof flowerSystem.setFlowerOpenAmountOverridesByBranchId === 'function') {
+    flowerSystem.setFlowerOpenAmountOverridesByBranchId(sweepResult.openMap);
+  } else {
+    clearOpenOverrides();
+    const currentOpen = typeof flowerSystem.getPetalOpenAmount === 'function'
+      ? flowerSystem.getPetalOpenAmount()
+      : 1;
+    if (currentOpen < 0.5 && typeof flowerSystem.animateTogglePetalOpenState === 'function') {
+      flowerSystem.animateTogglePetalOpenState(getFlowersRuntimeConfig(), performance.now());
+    }
+    growthState.openSweepCompleted = true;
+    growthState.openStateLatched = true;
+    flowerGrowthAnimatedOpenTriggered = true;
+    return;
+  }
+
+  if (sweepResult.completed) {
+    growthState.openSweepCompleted = true;
+    growthState.openStateLatched = true;
+    clearOpenOverrides();
+    if (!flowerGrowthAnimatedOpenTriggered && typeof flowerSystem.setPetalOpenAmount === 'function') {
+      flowerSystem.setPetalOpenAmount(1);
+    }
+    flowerGrowthAnimatedOpenTriggered = true;
+    return;
+  } else {
+    growthState.openSweepCompleted = false;
+    growthState.openStateLatched = false;
+    flowerGrowthAnimatedOpenTriggered = false;
+  }
+
+  if (shouldDebugFlowerHotkeys()) {
+    flowerDebugLog(false, 'branchComplete sweep state', {
+      scheduled: growthState.openScheduled === true,
+      triggered: growthState.openTriggered === true,
+      completed: growthState.openSweepCompleted === true,
+      openCount: sweepResult && sweepResult.openMap ? sweepResult.openMap.size : 0,
+      nowMs: Number.isFinite(nowMs) ? Number(nowMs.toFixed(2)) : nowMs,
+      openSweepStartMs: Number.isFinite(growthState.openSweepStartMs)
+        ? Number(growthState.openSweepStartMs.toFixed(2))
+        : growthState.openSweepStartMs,
+    });
+  }
+
+  if (shouldDebugFlowerHotkeys() && growthState.openSweepCompleted === true) {
+    flowerDebugLog(false, 'branchComplete open attempt', {
+      didTriggerOpen: true,
+      currentOpen: 1,
+      hasAnimateToggle: typeof flowerSystem.animateTogglePetalOpenState === 'function',
+    });
+  } else if (shouldDebugFlowerHotkeys()) {
+    const currentOpen = typeof flowerSystem.getPetalOpenAmount === 'function'
+      ? flowerSystem.getPetalOpenAmount()
+      : 1;
+    flowerDebugLog(false, 'branchComplete open attempt', {
+      didTriggerOpen: false,
+      currentOpen,
+      hasAnimateToggle: typeof flowerSystem.animateTogglePetalOpenState === 'function',
+    });
+  }
+  return;
+}
+
+function shouldRenderEndpointFlowers() {
+  if (!CONFIG.flowers || CONFIG.flowers.enabled !== true) {
+    return false;
+  }
+  const flowerSystem = getFlowerSystem();
+  if (!flowerSystem || !flowerSystem.hasRenderableFlowers()) {
+    return false;
+  }
+  return true;
+}
+
+function maybeLogFlowerPerformance(nowMs) {
+  ensureFlowerConfigShapeInPlace(CONFIG.flowers);
+  const perfConfig = CONFIG.flowers && CONFIG.flowers.performance
+    ? CONFIG.flowers.performance
+    : null;
+  if (!perfConfig || perfConfig.logEnabled !== true) {
+    return;
+  }
+
+  const flowerSystem = getFlowerSystem();
+  if (!flowerSystem || typeof flowerSystem.getPerformanceSnapshot !== 'function') {
+    return;
+  }
+
+  const intervalMs = Number.isFinite(perfConfig.logIntervalMs)
+    ? Math.max(100, perfConfig.logIntervalMs)
+    : 1000;
+  const now = Number.isFinite(nowMs) ? nowMs : performance.now();
+  if (
+    Number.isFinite(STATE.flowerPerfLastLogMs)
+    && STATE.flowerPerfLastLogMs > 0
+    && (now - STATE.flowerPerfLastLogMs) < intervalMs
+  ) {
+    return;
+  }
+
+  const snapshot = flowerSystem.getPerformanceSnapshot();
+  if (!snapshot) {
+    return;
+  }
+  STATE.flowerPerfLastLogMs = now;
+  console.log(
+    '[FlowersPerf]',
+    `active=${snapshot.activeFlowerCount}/${snapshot.flowerCount}`,
+    `avgUpdateMs=${snapshot.avgUpdateMs.toFixed(3)}`,
+    `avgDrawMs=${snapshot.avgDrawMs.toFixed(3)}`,
+    `simHz=${Number(snapshot.simStepsPerSecond || 0).toFixed(2)}`,
+    `simStepMs=${Number(snapshot.simStepMsAvg || 0).toFixed(3)}`,
+    `interpFrames=${Math.floor(Number(snapshot.interpolatedFrames) || 0)}`,
+    `staticRebuilds=${snapshot.staticLayerRebuildCount}`,
+    `avgStaticRebuildMs=${snapshot.avgStaticLayerRebuildMs.toFixed(3)}`,
+  );
+}
+
+function drawEndpointFlowers(nowMs, targetCtx = ctx, renderOptions = null, skipPerfLog = false) {
+  const flowerSystem = getFlowerSystem();
+  if (!flowerSystem) {
+    return null;
+  }
+  ensureFlowerConfigShapeInPlace(CONFIG.flowers);
+  const result = flowerSystem.render(targetCtx, getFlowersRuntimeConfig(), nowMs, renderOptions);
+  if (!skipPerfLog) {
+    maybeLogFlowerPerformance(nowMs);
+  }
+  return result && typeof result === 'object' ? result : null;
+}
+
+function cancelFlowerInteractionFrame() {
+  if (STATE.flowerInteractionRafId !== null) {
+    cancelAnimationFrame(STATE.flowerInteractionRafId);
+    STATE.flowerInteractionRafId = null;
+  }
+  STATE.nextInteractionFrameDueMs = 0;
+}
+
+function shouldKeepFlowerInteractionLoopAlive() {
+  if (STATE.branchGrowth.running) {
+    return false;
+  }
+
+  const growthState = STATE.flowerGrowth;
+  if (
+    growthState
+    && growthState.openScheduled === true
+    && growthState.openStateLatched !== true
+  ) {
+    return true;
+  }
+
+  if (resolveGlobalSwayMode() === 'wind' && areFlowersFullyOpen()) {
+    const windCfg = resolveWindConfig();
+    if (windCfg.enabled) {
+      return true;
+    }
+  }
+
+  const leavesConfig = resolveLeavesConfig(CONFIG.leaves || {});
+  if (isLeafSwayActive(leavesConfig)) {
+    return true;
+  }
+
+  if (!shouldRenderEndpointFlowers()) {
+    return false;
+  }
+  const flowerSystem = getFlowerSystem();
+  return Boolean(flowerSystem && flowerSystem.needsContinuousFrames());
+}
+
+function scheduleFlowerInteractionFrame(force = false) {
+  if (STATE.branchGrowth.running || STATE.flowerInteractionRafId !== null) {
+    return;
+  }
+  if (!force && !shouldKeepFlowerInteractionLoopAlive()) {
+    return;
+  }
+  STATE.flowerInteractionRafId = requestAnimationFrame(stepFlowerInteractionFrame);
+}
+
+function syncFlowerInteractionLoop() {
+  if (shouldKeepFlowerInteractionLoopAlive()) {
+    scheduleFlowerInteractionFrame(false);
+    return;
+  }
+  cancelFlowerInteractionFrame();
+}
+
+function stepFlowerInteractionFrame(timestampMs) {
+  STATE.flowerInteractionRafId = null;
+  if (STATE.branchGrowth.running) {
+    return;
+  }
+  const nowMs = Number.isFinite(timestampMs) ? timestampMs : performance.now();
+  const maxSwayFps = resolveGlobalMaxSwayFps();
+  if (maxSwayFps > 0 && isSwayFastPathEnabled()) {
+    const minFrameMs = 1000 / maxSwayFps;
+    const dueMs = Number.isFinite(STATE.nextInteractionFrameDueMs) ? STATE.nextInteractionFrameDueMs : 0;
+    if (dueMs > 0 && nowMs < dueMs - 0.5) {
+      scheduleFlowerInteractionFrame(false);
+      return;
+    }
+    const nextDue = (dueMs > 0)
+      ? (dueMs + minFrameMs)
+      : (nowMs + minFrameMs);
+    STATE.nextInteractionFrameDueMs = Math.max(nowMs, nextDue);
+  } else {
+    STATE.nextInteractionFrameDueMs = 0;
+  }
+  STATE.lastInteractionRenderMs = nowMs;
+
+  tickWindInfluencers(nowMs);
+
+  if (resolveGlobalSwayMode() === 'wind') {
+    const flowerSystem = getFlowerSystem();
+    if (flowerSystem && CONFIG.flowers && CONFIG.flowers.enabled === true) {
+      const positions = STATE.windInfluencerPositions;
+      if (positions && positions.length > 0) {
+        flowerSystem.setWindPositions(positions);
+      } else {
+        flowerSystem.clearMousePosition();
+      }
+    }
+  }
+
+  renderScene({ skipAutoStart: true, timestampMs: nowMs });
+}
+
+// =========================
+// 12) Draw Helpers
+// =========================
+function drawBackground() {
+  // Always clear first so the base canvas stays transparent when no fill is set.
+  ctx.clearRect(0, 0, STATE.viewportWidth, STATE.viewportHeight);
+  const fill = CONFIG.backgroundColor;
+  if (fill === null || fill === undefined) {
+    return;
+  }
+  if (typeof fill === 'string') {
+    const normalizedFill = fill.trim().toLowerCase();
+    if (normalizedFill.length === 0 || normalizedFill === 'transparent') {
+      return;
+    }
+  }
+  ctx.fillStyle = fill;
+  ctx.fillRect(0, 0, STATE.viewportWidth, STATE.viewportHeight);
+}
+
+function drawOpenButtonArrowHint(gateConfig = resolveHeroPlaybackGateConfig(), nowMs = performance.now()) {
+  if (!gateConfig || !gateConfig.openButtonArrow || gateConfig.openButtonArrow.enabled !== true) {
+    return;
+  }
+  const arrowConfig = gateConfig.openButtonArrow;
+  const image = STATE.openButtonArrowImage;
+  const spritePath = (
+    typeof arrowConfig.spritePath === 'string' && arrowConfig.spritePath.trim().length > 0
+  )
+    ? arrowConfig.spritePath.trim()
+    : '';
+  if (
+    !image
+    || spritePath.length === 0
+    || STATE.openButtonArrowImagePath !== spritePath
+  ) {
+    requestOpenButtonArrowImageLoad().catch(() => {});
+    return;
+  }
+  const currentFrame = getCurrentHeroVideoFrame(gateConfig);
+  if (!Number.isFinite(currentFrame) || currentFrame < arrowConfig.appearAfterFrame) {
+    return;
+  }
+  const rect = getHeroVideoRenderedRect();
+  if (!rect) {
+    return;
+  }
+  const videoSizePx = Math.min(rect.width, rect.height);
+  if (!Number.isFinite(videoSizePx) || videoSizePx <= 0) {
+    return;
+  }
+  const baseWidthPx = videoSizePx * arrowConfig.sizeRatio;
+  if (!Number.isFinite(baseWidthPx) || baseWidthPx <= 0) {
+    return;
+  }
+  const imageWidth = Math.max(1, Number(image.width) || 1);
+  const imageHeight = Math.max(1, Number(image.height) || 1);
+  const drawWidthPx = baseWidthPx;
+  const drawHeightPx = drawWidthPx * (imageHeight / imageWidth);
+
+  let alpha = clamp(
+    Number.isFinite(Number(arrowConfig.maxOpacity)) ? Number(arrowConfig.maxOpacity) : 1,
+    0,
+    1,
+  );
+  const gateState = STATE.heroPlaybackGate;
+  if (
+    gateState
+    && arrowConfig.fadeOutAfterOpenButtonClick === true
+    && Number.isFinite(gateState.openButtonClickedAtMs)
+  ) {
+    const fadeDurationSec = Number.isFinite(Number(arrowConfig.fadeOutDurationSec))
+      ? Math.max(0, Number(arrowConfig.fadeOutDurationSec))
+      : 0.45;
+    if (fadeDurationSec <= 1e-6) {
+      alpha = 0;
+    } else {
+      const elapsedSec = Math.max(0, (nowMs - gateState.openButtonClickedAtMs) / 1000);
+      alpha *= clamp(1 - (elapsedSec / fadeDurationSec), 0, 1);
+    }
+  }
+  if (alpha <= 1e-4) {
+    return;
+  }
+
+  const centerX = rect.left + rect.width * arrowConfig.centerXRatio;
+  const centerY = rect.top + rect.height * arrowConfig.centerYRatio;
+  const drawX = centerX - drawWidthPx * 0.5;
+  const drawY = centerY - drawHeightPx * 0.5;
+
+  ctx.save();
+  ctx.globalAlpha *= alpha;
+  ctx.drawImage(image, drawX, drawY, drawWidthPx, drawHeightPx);
+  ctx.restore();
+}
+
+function drawHeroPlaybackOpenButtonDebugOverlay(
+  gateConfig = resolveHeroPlaybackGateConfig(),
+  targetCtx = ctx,
+) {
+  if (!gateConfig || gateConfig.enabled !== true || !targetCtx) {
+    return;
+  }
+  const debugConfig = gateConfig.openButtonDebug;
+  if (!debugConfig || debugConfig.enabled !== true) {
+    return;
+  }
+  const currentFrame = getCurrentHeroVideoFrame(gateConfig);
+  if (!isHeroPlaybackOpenButtonEnabledAtFrame(currentFrame, gateConfig)) {
+    return;
+  }
+  const hitCircle = resolveHeroPlaybackOpenButtonHitCircle(gateConfig);
+  if (!hitCircle || !Number.isFinite(hitCircle.centerX) || !Number.isFinite(hitCircle.centerY)) {
+    return;
+  }
+  const baseRadius = Number.isFinite(hitCircle.baseRadiusPx) ? Math.max(0, hitCircle.baseRadiusPx) : 0;
+  const hitRadius = Number.isFinite(hitCircle.radiusPx) ? Math.max(0, hitCircle.radiusPx) : 0;
+  const lineWidth = Number.isFinite(debugConfig.lineWidthPx) ? Math.max(0.25, debugConfig.lineWidthPx) : 2;
+
+  targetCtx.save();
+  targetCtx.lineWidth = lineWidth;
+  if (debugConfig.showPaddedHitCircle !== false && hitRadius > 0) {
+    targetCtx.beginPath();
+    targetCtx.arc(hitCircle.centerX, hitCircle.centerY, hitRadius, 0, Math.PI * 2);
+    targetCtx.fillStyle = debugConfig.hitFillStyle;
+    targetCtx.strokeStyle = debugConfig.hitStrokeStyle;
+    targetCtx.fill();
+    targetCtx.stroke();
+  }
+  if (debugConfig.showBaseButtonCircle !== false && baseRadius > 0) {
+    targetCtx.beginPath();
+    targetCtx.arc(hitCircle.centerX, hitCircle.centerY, baseRadius, 0, Math.PI * 2);
+    targetCtx.fillStyle = debugConfig.baseFillStyle;
+    targetCtx.strokeStyle = debugConfig.baseStrokeStyle;
+    targetCtx.fill();
+    targetCtx.stroke();
+  }
+  targetCtx.restore();
+}
+
+function drawHeroPlaybackWiggleButtonDebugOverlay(
+  gateConfig = resolveHeroPlaybackGateConfig(),
+  targetCtx = ctx,
+) {
+  if (!gateConfig || gateConfig.enabled !== true || !targetCtx) {
+    return;
+  }
+  const debugConfig = gateConfig.wiggleButtonDebug;
+  if (!debugConfig || debugConfig.enabled !== true) {
+    return;
+  }
+  const currentFrame = getCurrentHeroVideoFrame(gateConfig);
+  if (!isHeroPlaybackWiggleButtonEnabledAtFrame(currentFrame, gateConfig)) {
+    return;
+  }
+  const hitRect = resolveHeroPlaybackWiggleButtonHitRect(gateConfig);
+  if (
+    !hitRect
+    || !Number.isFinite(hitRect.left)
+    || !Number.isFinite(hitRect.top)
+    || !Number.isFinite(hitRect.widthPx)
+    || !Number.isFinite(hitRect.heightPx)
+    || hitRect.widthPx <= 0
+    || hitRect.heightPx <= 0
+  ) {
+    return;
+  }
+  const lineWidth = Number.isFinite(debugConfig.lineWidthPx) ? Math.max(0.25, debugConfig.lineWidthPx) : 2;
+  targetCtx.save();
+  targetCtx.lineWidth = lineWidth;
+  targetCtx.strokeStyle = debugConfig.strokeStyle;
+  targetCtx.fillStyle = debugConfig.fillStyle;
+  targetCtx.beginPath();
+  targetCtx.rect(hitRect.left, hitRect.top, hitRect.widthPx, hitRect.heightPx);
+  targetCtx.fill();
+  targetCtx.stroke();
+  targetCtx.restore();
+}
+
+function drawCircle(x, y, radius, fillColor) {
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.fillStyle = fillColor;
+  ctx.fill();
+}
+
+function drawControlPoints(points) {
+  for (let i = 0; i < points.length; i += 1) {
+    drawCircle(points[i].x, points[i].y, 2, 'rgba(124, 248, 186, 0.5)');
+  }
+}
+
+function drawControlCurve(points, stroke = 'rgba(74, 222, 128, 0.6)', lineWidth = 1.6) {
+  if (!Array.isArray(points) || points.length < 2) {
+    return;
+  }
+
+  const extended = [points[0], points[0], ...points, points[points.length - 1], points[points.length - 1]];
+
+  ctx.beginPath();
+  for (let i = 0; i <= extended.length - 4; i += 1) {
+    const p0 = extended[i];
+    const p1 = extended[i + 1];
+    const p2 = extended[i + 2];
+    const p3 = extended[i + 3];
+
+    const startX = (p0.x + 4 * p1.x + p2.x) / 6;
+    const startY = (p0.y + 4 * p1.y + p2.y) / 6;
+    const cp1X = (4 * p1.x + 2 * p2.x) / 6;
+    const cp1Y = (4 * p1.y + 2 * p2.y) / 6;
+    const cp2X = (2 * p1.x + 4 * p2.x) / 6;
+    const cp2Y = (2 * p1.y + 4 * p2.y) / 6;
+    const endX = (p1.x + 4 * p2.x + p3.x) / 6;
+    const endY = (p1.y + 4 * p2.y + p3.y) / 6;
+
+    if (i === 0) {
+      ctx.moveTo(startX, startY);
+    }
+    ctx.bezierCurveTo(cp1X, cp1Y, cp2X, cp2Y, endX, endY);
+  }
+
+  ctx.strokeStyle = stroke;
+  ctx.lineWidth = lineWidth;
+  ctx.stroke();
+}
+
+function drawPathOutline(pathData) {
+  const points = samplePathPoints(pathData, CONFIG.debug.pathSampleStep);
+  if (points.length < 2) {
+    return;
+  }
+
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  for (let i = 1; i < points.length; i += 1) {
+    ctx.lineTo(points[i].x, points[i].y);
+  }
+  ctx.strokeStyle = 'rgba(114, 191, 255, 0.9)';
+  ctx.lineWidth = 1.4;
+  ctx.stroke();
+}
+
+function drawPathVectors(pathData) {
+  const spacing = Math.max(16, CONFIG.debug.vectorSampleSpacing);
+  for (let d = 0; d <= pathData.totalLength; d += spacing) {
+    const point = getPathPointAtLength(pathData, d);
+    const tangent = normalize(getPathTangentAtLength(pathData, d));
+    const normal = { x: -tangent.y, y: tangent.x };
+
+    drawCircle(point.x, point.y, 2, 'rgba(255, 255, 255, 0.95)');
+
+    if (CONFIG.debug.showTangents) {
+      ctx.beginPath();
+      ctx.moveTo(point.x, point.y);
+      ctx.lineTo(point.x + tangent.x * 28, point.y + tangent.y * 28);
+      ctx.strokeStyle = 'rgba(255, 91, 91, 0.85)';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+    }
+
+    if (CONFIG.debug.showNormals) {
+      ctx.beginPath();
+      ctx.moveTo(point.x, point.y);
+      ctx.lineTo(point.x + normal.x * 20, point.y + normal.y * 20);
+      ctx.strokeStyle = 'rgba(85, 242, 147, 0.85)';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+    }
+  }
+}
+
+function drawStripCenters(stripCenters) {
+  if (!stripCenters || stripCenters.length === 0) {
+    return;
+  }
+
+  const step = Math.max(1, Math.floor(stripCenters.length / 350));
+  for (let i = 0; i < stripCenters.length; i += step) {
+    const p = stripCenters[i];
+    drawCircle(p.x, p.y, 1.3, 'rgba(255, 202, 39, 0.32)');
+  }
+}
+
+function getBrushScale(brushConfig) {
+  const foliageScale = resolveResponsiveFoliageScale();
+  if (Number.isFinite(brushConfig.scale) && brushConfig.scale > 0) {
+    return brushConfig.scale * foliageScale;
+  }
+  if (Number.isFinite(brushConfig.sclale) && brushConfig.sclale > 0) {
+    return brushConfig.sclale * foliageScale;
+  }
+  return 0.5 * foliageScale;
+}
+
+function getBrushGlobalHueDeg(brushConfig) {
+  const hueDeg = Number(brushConfig.globalHueDeg);
+  return Number.isFinite(hueDeg) ? hueDeg : 0;
+}
+
+function getBrushGlobalBrightness(brushConfig) {
+  const brightness = Number(brushConfig.globalBrightness);
+  if (!Number.isFinite(brightness)) {
+    return 1;
+  }
+  return Math.max(0, brightness);
+}
+
+function isBranchFilterRandomizationEnabled(brushConfig) {
+  return Boolean(brushConfig.randomizeBranchFilter);
+}
+
+function getBrushRandomHueRangeDeg(brushConfig) {
+  const minCandidate = Number(brushConfig.randomHueMinDeg);
+  const maxCandidate = Number(brushConfig.randomHueMaxDeg);
+  const minDeg = Number.isFinite(minCandidate) ? minCandidate : 0;
+  const maxDeg = Number.isFinite(maxCandidate) ? maxCandidate : 0;
+  return minDeg <= maxDeg ? [minDeg, maxDeg] : [maxDeg, minDeg];
+}
+
+function getBrushRandomBrightnessRange(brushConfig) {
+  const minCandidate = Number(brushConfig.randomBrightnessMin);
+  const maxCandidate = Number(brushConfig.randomBrightnessMax);
+  const minBrightness = Number.isFinite(minCandidate) ? Math.max(0, minCandidate) : 1;
+  const maxBrightness = Number.isFinite(maxCandidate) ? Math.max(0, maxCandidate) : 1;
+  return minBrightness <= maxBrightness
+    ? [minBrightness, maxBrightness]
+    : [maxBrightness, minBrightness];
+}
+
+function getBrushRandomFilterVariantCount(brushConfig) {
+  const count = Number(brushConfig.randomFilterVariantCount);
+  if (!Number.isFinite(count)) {
+    return 24;
+  }
+  return clamp(Math.round(count), 1, 512);
+}
+
+function getBrushRandomFilterAssignmentMode(brushConfig) {
+  return brushConfig.randomFilterAssignmentMode === 'inheritParent'
+    ? 'inheritParent'
+    : 'perBranch';
+}
+
+function getBranchStableToken(branch, fallbackIndex = 0) {
+  if (branch && typeof branch.stableKey === 'string' && branch.stableKey.length > 0) {
+    return branch.stableKey;
+  }
+  if (branch && Number.isFinite(branch.id)) {
+    return `id:${branch.id}`;
+  }
+  return `idx:${fallbackIndex}`;
+}
+
+function buildRandomBranchFilterVariants(brushConfig) {
+  const [hueMinDeg, hueMaxDeg] = getBrushRandomHueRangeDeg(brushConfig);
+  const [brightnessMin, brightnessMax] = getBrushRandomBrightnessRange(brushConfig);
+  const variantCount = getBrushRandomFilterVariantCount(brushConfig);
+  const seedKey = [
+    hueMinDeg.toFixed(4),
+    hueMaxDeg.toFixed(4),
+    brightnessMin.toFixed(4),
+    brightnessMax.toFixed(4),
+    variantCount,
+  ].join('|');
+  const rng = mulberry32(hashSeed(`branch-filter-variants|${seedKey}`));
+  const variants = [];
+  for (let i = 0; i < variantCount; i += 1) {
+    variants.push({
+      hueDeg: sampleRangeValue(hueMinDeg, hueMaxDeg, rng),
+      brightness: sampleRangeValue(brightnessMin, brightnessMax, rng),
+    });
+  }
+  return variants;
+}
+
+function sampleRangeValue(rangeMin, rangeMax, rng) {
+  if (!Number.isFinite(rangeMin) || !Number.isFinite(rangeMax)) {
+    return 0;
+  }
+  if (Math.abs(rangeMax - rangeMin) <= 1e-8) {
+    return rangeMin;
+  }
+  return rangeMin + (rangeMax - rangeMin) * rng();
+}
+
+function getBranchFilterValues(branch, brushConfig) {
+  const globalHueDeg = getBrushGlobalHueDeg(brushConfig);
+  const globalBrightness = getBrushGlobalBrightness(brushConfig);
+  const branchHueDeg = branch && Number.isFinite(branch.filterHueDeg) ? branch.filterHueDeg : 0;
+  const branchBrightness = branch && Number.isFinite(branch.filterBrightness)
+    ? Math.max(0, branch.filterBrightness)
+    : 1;
+  return {
+    hueDeg: globalHueDeg + branchHueDeg,
+    brightness: Math.max(0, globalBrightness * branchBrightness),
+  };
+}
+
+function resetFilteredStemTextureCache() {
+  STATE.filteredStemTextureCache = new WeakMap();
+  if (!STATE.branchGarden || !Array.isArray(STATE.branchGarden.branches)) {
+    return;
+  }
+  for (let i = 0; i < STATE.branchGarden.branches.length; i += 1) {
+    const branch = STATE.branchGarden.branches[i];
+    if (!branch) {
+      continue;
+    }
+    branch.filteredStemImage = null;
+    branch.filteredStemImageFlipped = null;
+  }
+}
+
+function quantizeFilterValue(value, step) {
+  const safeStep = Number.isFinite(step) && step > 0 ? step : 1;
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.round(value / safeStep) * safeStep;
+}
+
+function ensureFilteredTextureBucket(sourceImage) {
+  if (!sourceImage) {
+    return null;
+  }
+  let bucket = STATE.filteredStemTextureCache.get(sourceImage);
+  if (!bucket) {
+    bucket = new Map();
+    STATE.filteredStemTextureCache.set(sourceImage, bucket);
+  }
+  return bucket;
+}
+
+function getPrecomputedFilteredTexture(sourceImage, hueDeg, brightness) {
+  if (!sourceImage) {
+    return sourceImage;
+  }
+
+  const normalizedBrightness = Number.isFinite(brightness) ? Math.max(0, brightness) : 1;
+  const normalizedHue = Number.isFinite(hueDeg) ? hueDeg : 0;
+  const qHue = quantizeFilterValue(normalizedHue, FILTER_CACHE_HUE_STEP_DEG);
+  const qBrightness = quantizeFilterValue(normalizedBrightness, FILTER_CACHE_BRIGHTNESS_STEP);
+
+  if (Math.abs(qHue) <= 1e-6 && Math.abs(qBrightness - 1) <= 1e-6) {
+    return sourceImage;
+  }
+
+  const bucket = ensureFilteredTextureBucket(sourceImage);
+  if (!bucket) {
+    return sourceImage;
+  }
+  const key = `${qHue}|${qBrightness}`;
+  const cached = bucket.get(key);
+  if (cached) {
+    return cached;
+  }
+
+  const texture = document.createElement('canvas');
+  texture.width = sourceImage.width;
+  texture.height = sourceImage.height;
+  const tctx = texture.getContext('2d');
+  if (!tctx || typeof tctx.filter !== 'string') {
+    return sourceImage;
+  }
+
+  tctx.filter = `hue-rotate(${qHue}deg) brightness(${qBrightness})`;
+  tctx.drawImage(sourceImage, 0, 0);
+  tctx.filter = 'none';
+  bucket.set(key, texture);
+  return texture;
+}
+
+function assignBranchStemTextures(branch, brushConfig = CONFIG.brush) {
+  if (!branch || !STATE.stemImage) {
+    return { defaultImage: null, flippedImage: null };
+  }
+
+  const values = getBranchFilterValues(branch, brushConfig);
+  const defaultImage = getPrecomputedFilteredTexture(STATE.stemImage, values.hueDeg, values.brightness);
+  const baseFlippedImage = STATE.stemImageFlippedX || STATE.stemImage;
+  const flippedImage = getPrecomputedFilteredTexture(baseFlippedImage, values.hueDeg, values.brightness);
+
+  branch.filteredStemImage = defaultImage;
+  branch.filteredStemImageFlipped = flippedImage;
+  return { defaultImage, flippedImage };
+}
+
+function getBranchStemTextures(branch, brushConfig = CONFIG.brush) {
+  if (!branch || !STATE.stemImage) {
+    return { defaultImage: null, flippedImage: null };
+  }
+  if (branch.filteredStemImage && branch.filteredStemImageFlipped) {
+    return {
+      defaultImage: branch.filteredStemImage,
+      flippedImage: branch.filteredStemImageFlipped,
+    };
+  }
+  return assignBranchStemTextures(branch, brushConfig);
+}
+
+function isBrushThicknessTaperEnabled(brushConfig) {
+  if (!brushConfig || typeof brushConfig !== 'object') {
+    return true;
+  }
+  if (brushConfig.thicknessTaperEnabled === undefined) {
+    return true;
+  }
+  return Boolean(brushConfig.thicknessTaperEnabled);
+}
+
+function getBrushThicknessMinScale(brushConfig) {
+  if (!brushConfig || typeof brushConfig !== 'object') {
+    return 0.1;
+  }
+  const minScale = Number(brushConfig.thicknessMinScale);
+  if (!Number.isFinite(minScale)) {
+    return 0.1;
+  }
+  return clamp(minScale, 0.01, 1);
+}
+
+function getBrushThicknessTaperExponent(brushConfig) {
+  if (!brushConfig || typeof brushConfig !== 'object') {
+    return 1;
+  }
+  const exponent = Number(brushConfig.thicknessTaperExponent);
+  if (!Number.isFinite(exponent)) {
+    return 1;
+  }
+  return Math.max(0.01, exponent);
+}
+
+function getBrushThicknessMinWidth(brushConfig) {
+  const foliageScale = resolveResponsiveFoliageScale();
+  if (!brushConfig || typeof brushConfig !== 'object') {
+    return 0;
+  }
+  const minWidth = Number(brushConfig.thicknessMinWidth);
+  if (!Number.isFinite(minWidth)) {
+    return 0;
+  }
+  return Math.max(0, minWidth) * foliageScale;
+}
+
+function getBranchThicknessBaseScale(branch) {
+  if (!branch || !Number.isFinite(branch.thicknessBaseScale)) {
+    return 1;
+  }
+  return Math.max(0.01, branch.thicknessBaseScale);
+}
+
+function getThicknessTaperFactorAtDistance(distanceOnPath, referenceLength, brushConfig) {
+  if (!isBrushThicknessTaperEnabled(brushConfig)) {
+    return 1;
+  }
+  const minScale = getBrushThicknessMinScale(brushConfig);
+  const safeReferenceLength = Number.isFinite(referenceLength)
+    ? Math.max(1e-6, referenceLength)
+    : 1;
+  const normalizedDistance = clamp(
+    Number.isFinite(distanceOnPath) ? distanceOnPath / safeReferenceLength : 1,
+    0,
+    1,
+  );
+  const exponent = getBrushThicknessTaperExponent(brushConfig);
+  const weightedDistance = exponent === 1
+    ? normalizedDistance
+    : Math.pow(normalizedDistance, exponent);
+  return 1 + (minScale - 1) * weightedDistance;
+}
+
+function isLikelyMobileForBrushOverrides() {
+  const flowersConfig = isPlainObjectLiteral(CONFIG.flowers) ? CONFIG.flowers : {};
+  const autoProfile = isPlainObjectLiteral(flowersConfig.autoProfile) ? flowersConfig.autoProfile : {};
+  const deviceInfo = resolveFlowerAdaptiveProfileDeviceInfo(autoProfile);
+  return Boolean(deviceInfo && deviceInfo.likelyMobile === true);
+}
+
+function resolveBrushStripRuntimeSettings(brushConfig) {
+  const likelyMobile = isLikelyMobileForBrushOverrides();
+  const stripWidthDesktop = Number(brushConfig && brushConfig.stripWidth);
+  const stripWidthMobile = Number(brushConfig && brushConfig.stripWidthMobile);
+  const hasMobileStripWidth = (
+    brushConfig
+    && brushConfig.stripWidthMobile !== null
+    && brushConfig.stripWidthMobile !== undefined
+    && Number.isFinite(stripWidthMobile)
+    && stripWidthMobile > 0
+  );
+  const stripWidth = likelyMobile && hasMobileStripWidth
+    ? stripWidthMobile
+    : stripWidthDesktop;
+
+  const repeatOverlapDesktop = Number(brushConfig && brushConfig.repeatOverlap);
+  const repeatOverlapMobile = Number(brushConfig && brushConfig.repeatOverlapMobile);
+  const hasMobileRepeatOverlap = (
+    brushConfig
+    && brushConfig.repeatOverlapMobile !== null
+    && brushConfig.repeatOverlapMobile !== undefined
+    && Number.isFinite(repeatOverlapMobile)
+  );
+  const repeatOverlap = likelyMobile && hasMobileRepeatOverlap
+    ? repeatOverlapMobile
+    : repeatOverlapDesktop;
+
+  return {
+    stripWidth: Number.isFinite(stripWidth) ? Math.max(0.1, stripWidth) : 0.1,
+    repeatOverlap: Number.isFinite(repeatOverlap) ? repeatOverlap : 0,
+  };
+}
+
+function getBrushCacheKey(brushConfig) {
+  const brushScale = getBrushScale(brushConfig);
+  const stripRuntime = resolveBrushStripRuntimeSettings(brushConfig);
+  const stripWidth = stripRuntime.stripWidth;
+  const repeatOverlap = stripRuntime.repeatOverlap;
+  const repeatGap = Number.isFinite(Number(brushConfig.repeatGap))
+    ? Number(brushConfig.repeatGap)
+    : 0;
+  const startOffset = Number.isFinite(Number(brushConfig.startOffset))
+    ? Number(brushConfig.startOffset)
+    : 0;
+  const pathOffset = Number.isFinite(Number(brushConfig.pathOffset))
+    ? Number(brushConfig.pathOffset)
+    : 0;
+  const cropPartialRepeat = brushConfig.cropPartialRepeat ? 1 : 0;
+  return [
+    brushScale,
+    stripWidth,
+    repeatOverlap,
+    repeatGap,
+    startOffset,
+    pathOffset,
+    cropPartialRepeat,
+  ].join('|');
+}
+
+function getBranchRenderCache(branch) {
+  if (!branch) {
+    return null;
+  }
+  if (!branch.renderCache || typeof branch.renderCache !== 'object') {
+    branch.renderCache = {
+      valid: false,
+      samples: [],
+      distances: [],
+      centerX: [],
+      centerY: [],
+      cacheKey: '',
+      pathDataRef: null,
+      defaultImageRef: null,
+      flippedImageRef: null,
+    };
+  }
+  return branch.renderCache;
+}
+
+function invalidateBranchStripCache(branch) {
+  const cache = getBranchRenderCache(branch);
+  if (!cache) {
+    return;
+  }
+  cache.valid = false;
+  cache.pathDataRef = null;
+  cache.defaultImageRef = null;
+  cache.flippedImageRef = null;
+}
+
+function invalidateAllBranchStripCaches() {
+  if (!STATE.branchGarden || !Array.isArray(STATE.branchGarden.branches)) {
+    return;
+  }
+  for (let i = 0; i < STATE.branchGarden.branches.length; i += 1) {
+    invalidateBranchStripCache(STATE.branchGarden.branches[i]);
+  }
+}
+
+function getCompletedBranchLayerState(layerName = 'single') {
+  if (layerName === 'back') {
+    return STATE.completedLayerBack;
+  }
+  if (layerName === 'front') {
+    return STATE.completedLayerFront;
+  }
+  return STATE.completedLayer;
+}
+
+function ensureCompletedBranchLayer(layerName = 'single') {
+  const layer = getCompletedBranchLayerState(layerName);
+  if (!layer.canvas) {
+    layer.canvas = document.createElement('canvas');
+    layer.ctx = layer.canvas.getContext('2d');
+  }
+  if (!(layer.committedBranchIds instanceof Set)) {
+    layer.committedBranchIds = new Set();
+  }
+  if (!(layer.committedStemEndByBranchId instanceof Map)) {
+    layer.committedStemEndByBranchId = new Map();
+  }
+
+  const targetCanvas = layerName === 'front' ? (frontCanvas || canvas) : canvas;
+  const desiredWidth = targetCanvas.width;
+  const desiredHeight = targetCanvas.height;
+  if (layer.canvas.width !== desiredWidth || layer.canvas.height !== desiredHeight) {
+    layer.canvas.width = desiredWidth;
+    layer.canvas.height = desiredHeight;
+    layer.committedBranchIds.clear();
+    layer.committedStemEndByBranchId.clear();
+  }
+
+  if (layer.ctx) {
+    layer.ctx.setTransform(STATE.dpr, 0, 0, STATE.dpr, 0, 0);
+  }
+  return layer;
+}
+
+function clearCompletedBranchLayer(layer) {
+  if (!layer || typeof layer !== 'object') {
+    return;
+  }
+  layer.committedBranchIds.clear();
+  layer.committedStemEndByBranchId.clear();
+  layer.leavesConfigKey = '';
+  if (!layer.canvas || !layer.ctx) {
+    return;
+  }
+  layer.ctx.setTransform(1, 0, 0, 1, 0, 0);
+  layer.ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
+  layer.ctx.setTransform(STATE.dpr, 0, 0, STATE.dpr, 0, 0);
+}
+
+function hasCompletedBranchLayerContent(layerName = 'single') {
+  const layer = getCompletedBranchLayerState(layerName);
+  if (!layer) {
+    return false;
+  }
+  const hasCommittedIds = layer.committedBranchIds instanceof Set && layer.committedBranchIds.size > 0;
+  const hasCommittedStemRanges = (
+    layer.committedStemEndByBranchId instanceof Map
+    && layer.committedStemEndByBranchId.size > 0
+  );
+  const hasLeavesKey = typeof layer.leavesConfigKey === 'string' && layer.leavesConfigKey.length > 0;
+  return hasCommittedIds || hasCommittedStemRanges || hasLeavesKey;
+}
+
+function invalidateCompletedBranchLayer(layerName = 'all') {
+  if (layerName === 'all') {
+    clearCompletedBranchLayer(STATE.completedLayer);
+    clearCompletedBranchLayer(STATE.completedLayerBack);
+    clearCompletedBranchLayer(STATE.completedLayerFront);
+  } else {
+    clearCompletedBranchLayer(getCompletedBranchLayerState(layerName));
+  }
+  invalidateLeafOverlayCache();
+}
+
+function invalidateLeafOverlayCache() {
+  const cache = STATE.leafOverlayCache;
+  cache.valid = false;
+  cache.layoutKey = '';
+  cache.branchCount = 0;
+  cache.branchPathRefs.length = 0;
+  cache.leaves.length = 0;
+  const branches = STATE.branchGarden && Array.isArray(STATE.branchGarden.branches)
+    ? STATE.branchGarden.branches
+    : [];
+  for (let i = 0; i < branches.length; i += 1) {
+    const leafCache = getBranchLeafCache(branches[i]);
+    if (leafCache) {
+      leafCache._committedLeavesKey = '';
+    }
+  }
+}
+
+function ensureLeafOverlayCache(leavesConfig) {
+  const cache = STATE.leafOverlayCache;
+  const branches = STATE.branchGarden && Array.isArray(STATE.branchGarden.branches)
+    ? STATE.branchGarden.branches
+    : [];
+  let mustRebuild = cache.valid !== true || cache.layoutKey !== leavesConfig.layoutKey;
+  if (!mustRebuild) {
+    if (cache.branchCount !== branches.length || cache.branchPathRefs.length !== branches.length) {
+      mustRebuild = true;
+    } else {
+      for (let i = 0; i < branches.length; i += 1) {
+        const branch = branches[i];
+        const pathRef = branch ? branch.pathData : null;
+        if (cache.branchPathRefs[i] !== pathRef) {
+          mustRebuild = true;
+          break;
+        }
+      }
+    }
+  }
+  if (!mustRebuild) {
+    return cache;
+  }
+
+  cache.leaves.length = 0;
+  cache.branchPathRefs.length = 0;
+  for (let i = 0; i < branches.length; i += 1) {
+    const branch = branches[i];
+    cache.branchPathRefs.push(branch ? branch.pathData : null);
+    if (!branch || !branch.pathData) {
+      continue;
+    }
+    const leaves = ensureBranchLeaves(branch, leavesConfig, i);
+    if (!Array.isArray(leaves) || leaves.length === 0) {
+      continue;
+    }
+    for (let j = 0; j < leaves.length; j += 1) {
+      cache.leaves.push(leaves[j]);
+    }
+  }
+  cache.layoutKey = leavesConfig.layoutKey;
+  cache.branchCount = branches.length;
+  cache.valid = true;
+  return cache;
+}
+
+function getBranchRenderId(branch) {
+  if (branch && Number.isFinite(branch.id)) {
+    return `id:${branch.id}`;
+  }
+  return `stable:${branch && branch.stableKey ? branch.stableKey : 'unknown'}`;
+}
+
+function resolveLeavesConfig(leavesConfigCandidate = CONFIG.leaves || {}) {
+  const safeConfig = isPlainObjectLiteral(leavesConfigCandidate) ? leavesConfigCandidate : {};
+  const floralScale = resolveResponsiveFoliageScale();
+  const enabled = safeConfig.enabled !== false;
+  const deterministic = safeConfig.deterministic !== false;
+  const spritePath = (typeof safeConfig.spritePath === 'string' && safeConfig.spritePath.length > 0)
+    ? safeConfig.spritePath
+    : './leaves_new.png';
+  const spriteCellWidth = Number.isFinite(Number(safeConfig.spriteCellWidth))
+    ? Math.max(1, Number(safeConfig.spriteCellWidth))
+    : 44;
+  const spriteCellHeight = Number.isFinite(Number(safeConfig.spriteCellHeight))
+    ? Math.max(1, Number(safeConfig.spriteCellHeight))
+    : 45.819;
+  const spriteScale = Number.isFinite(Number(safeConfig.spriteScale))
+    ? Math.max(0.01, Number(safeConfig.spriteScale))
+    : 8.3333333;
+  const spriteCols = Number.isFinite(Number(safeConfig.spriteCols))
+    ? Math.max(1, Math.floor(Number(safeConfig.spriteCols)))
+    : 10;
+  const spriteRows = Number.isFinite(Number(safeConfig.spriteRows))
+    ? Math.max(1, Math.floor(Number(safeConfig.spriteRows)))
+    : 8;
+  const spriteRowRangeInput = Array.isArray(safeConfig.spriteRowRange) ? safeConfig.spriteRowRange : null;
+  let spriteRowMinOneBased = NaN;
+  let spriteRowMaxOneBased = NaN;
+  if (spriteRowRangeInput && spriteRowRangeInput.length >= 2) {
+    const rowA = Number(spriteRowRangeInput[0]);
+    const rowB = Number(spriteRowRangeInput[1]);
+    if (Number.isFinite(rowA) && Number.isFinite(rowB)) {
+      spriteRowMinOneBased = clamp(Math.floor(Math.min(rowA, rowB)), 1, spriteRows);
+      spriteRowMaxOneBased = clamp(Math.floor(Math.max(rowA, rowB)), 1, spriteRows);
+    }
+  }
+  if (!Number.isFinite(spriteRowMinOneBased) || !Number.isFinite(spriteRowMaxOneBased)) {
+    const spriteRowOneBasedInput = Number(safeConfig.spriteRow);
+    const spriteRowOneBased = Number.isFinite(spriteRowOneBasedInput)
+      ? clamp(Math.floor(spriteRowOneBasedInput), 1, spriteRows)
+      : clamp(5, 1, spriteRows);
+    spriteRowMinOneBased = spriteRowOneBased;
+    spriteRowMaxOneBased = spriteRowOneBased;
+  }
+  const spriteRowMinIndex = spriteRowMinOneBased - 1;
+  const spriteRowMaxIndex = spriteRowMaxOneBased - 1;
+  const drawSizeRangeRaw = resolveRangeValue(
+    safeConfig.drawSizeRange,
+    safeConfig.drawSize,
+    70,
+    70,
+    70,
+  );
+  const drawSizeRange = [
+    Math.max(1, drawSizeRangeRaw[0] * floralScale),
+    Math.max(1, drawSizeRangeRaw[1] * floralScale),
+  ];
+  drawSizeRange.sort((a, b) => a - b);
+  const drawSize = drawSizeRange[0];
+  const drawSizeBaseMultiplierInput = Number(safeConfig.drawSizeBaseMultiplier);
+  const drawSizeBaseMultiplier = Number.isFinite(drawSizeBaseMultiplierInput)
+    ? Math.max(0.01, drawSizeBaseMultiplierInput)
+    : 1;
+  const drawSizeBaseMultiplierEaseInInput = Number(safeConfig.drawSizeBaseMultiplierEaseIn);
+  const drawSizeBaseMultiplierEaseIn = Number.isFinite(drawSizeBaseMultiplierEaseInInput)
+    ? clamp(drawSizeBaseMultiplierEaseInInput, 0, 1)
+    : 0;
+  const growthEnabled = safeConfig.growthEnabled !== false;
+  const growthMinScaleInput = Number(safeConfig.growthMinScale);
+  const growthMinScale = Number.isFinite(growthMinScaleInput)
+    ? clamp(growthMinScaleInput, 0, 1)
+    : 0.15;
+  const growthDurationSecInput = Number(safeConfig.growthDurationSec);
+  const growthDurationSec = Number.isFinite(growthDurationSecInput)
+    ? Math.max(0, growthDurationSecInput)
+    : 0.6;
+  const growthEase = sanitizeLeafGrowthEaseMode(safeConfig.growthEase);
+  const growthEasePowerInput = Number(safeConfig.growthEasePower);
+  const growthEasePower = Number.isFinite(growthEasePowerInput)
+    ? Math.max(0.01, growthEasePowerInput)
+    : 2;
+  const swayEnabled = safeConfig.swayEnabled !== false;
+  const swayMode = resolveGlobalSwayMode();
+  const swayInteractionRadiusFactor = Number.isFinite(Number(safeConfig.swayInteractionRadiusFactor))
+    ? Math.max(0, Number(safeConfig.swayInteractionRadiusFactor))
+    : 2.1;
+  const swayRiseSpeed = Number.isFinite(Number(safeConfig.swayRiseSpeed))
+    ? Math.max(0, Number(safeConfig.swayRiseSpeed))
+    : 5.5;
+  const swayFallSpeed = Number.isFinite(Number(safeConfig.swayFallSpeed))
+    ? Math.max(0, Number(safeConfig.swayFallSpeed))
+    : 0.5;
+  const swayEpsilon = Number.isFinite(Number(safeConfig.swayEpsilon))
+    ? Math.max(0, Number(safeConfig.swayEpsilon))
+    : 0.0008;
+  const mouseSpeedSwayAffect = Number.isFinite(Number(safeConfig.mouseSpeedSwayAffect))
+    ? Math.max(0, Number(safeConfig.mouseSpeedSwayAffect))
+    : 0.7;
+  const swayAmplitudeDegRange = normalizeRangeInput(safeConfig.swayAmplitudeDegRange, 0.8, 2.6);
+  const swaySpeedRange = normalizeRangeInput(safeConfig.swaySpeedRange, 0.7, 1.6);
+  const countRangeRaw = normalizeRangeInput(safeConfig.countRange, 8, 16);
+  const countRange = [
+    Math.max(0, Math.floor(countRangeRaw[0])),
+    Math.max(0, Math.floor(countRangeRaw[1])),
+  ];
+  countRange.sort((a, b) => a - b);
+  const spawnTMinInput = Number(safeConfig.spawnTMin);
+  const spawnTMaxInput = Number(safeConfig.spawnTMax);
+  const spawnTMinRaw = Number.isFinite(spawnTMinInput) ? spawnTMinInput : 0.08;
+  const spawnTMaxRaw = Number.isFinite(spawnTMaxInput) ? spawnTMaxInput : 0.94;
+  const spawnTMin = clamp(Math.min(spawnTMinRaw, spawnTMaxRaw), 0, 1);
+  const spawnTMax = clamp(Math.max(spawnTMinRaw, spawnTMaxRaw), 0, 1);
+  const spawnBiasMode = sanitizeLeafSpawnBiasMode(safeConfig.spawnBiasMode);
+  const spawnBiasExponentInput = Number(safeConfig.spawnBiasExponent);
+  const spawnBiasExponent = Number.isFinite(spawnBiasExponentInput)
+    ? Math.max(0.01, spawnBiasExponentInput)
+    : 1.6;
+  const minSpawnSpacingTInput = Number(safeConfig.minSpawnSpacingT);
+  const minSpawnSpacingT = Number.isFinite(minSpawnSpacingTInput)
+    ? clamp(minSpawnSpacingTInput, 0, 1)
+    : 0.03;
+  const maxSpawnAttemptsPerLeafInput = Number(safeConfig.maxSpawnAttemptsPerLeaf);
+  const maxSpawnAttemptsPerLeaf = Number.isFinite(maxSpawnAttemptsPerLeafInput)
+    ? Math.max(1, Math.floor(maxSpawnAttemptsPerLeafInput))
+    : 40;
+  const sideMode = sanitizeSideMode(safeConfig.sideMode);
+  const rotationAwayFromNormalDegRange = normalizeRangeInput(
+    safeConfig.rotationAwayFromNormalDegRange,
+    -22,
+    22,
+  );
+  const layoutKey = [
+    enabled ? 1 : 0,
+    deterministic ? 1 : 0,
+    countRange[0],
+    countRange[1],
+    spawnTMin,
+    spawnTMax,
+    spawnBiasMode,
+    spawnBiasExponent,
+    minSpawnSpacingT,
+    maxSpawnAttemptsPerLeaf,
+    sideMode,
+  ].join('|');
+  const appearanceKey = [
+    spritePath,
+    spriteCellWidth,
+    spriteCellHeight,
+    spriteScale,
+    spriteCols,
+    spriteRows,
+    spriteRowMinIndex,
+    spriteRowMaxIndex,
+    floralScale,
+    drawSizeRange[0],
+    drawSizeRange[1],
+    drawSizeBaseMultiplier,
+    drawSizeBaseMultiplierEaseIn,
+    growthEnabled ? 1 : 0,
+    growthMinScale,
+    growthDurationSec,
+    growthEase,
+    growthEasePower,
+    swayEnabled ? 1 : 0,
+    swayMode,
+    swayInteractionRadiusFactor,
+    swayRiseSpeed,
+    swayFallSpeed,
+    swayEpsilon,
+    mouseSpeedSwayAffect,
+    swayAmplitudeDegRange[0],
+    swayAmplitudeDegRange[1],
+    swaySpeedRange[0],
+    swaySpeedRange[1],
+    rotationAwayFromNormalDegRange[0],
+    rotationAwayFromNormalDegRange[1],
+  ].join('|');
+  const cacheKey = `${layoutKey}||${appearanceKey}`;
+
+  return {
+    enabled,
+    deterministic,
+    spritePath,
+    spriteCellWidth,
+    spriteCellHeight,
+    spriteScale,
+    spriteCols,
+    spriteRows,
+    spriteRowMinIndex,
+    spriteRowMaxIndex,
+    floralResponsiveScaleFactor: floralScale,
+    drawSize,
+    drawSizeRange,
+    drawSizeBaseMultiplier,
+    drawSizeBaseMultiplierEaseIn,
+    growthEnabled,
+    growthMinScale,
+    growthDurationSec,
+    growthEase,
+    growthEasePower,
+    swayEnabled,
+    swayMode,
+    swayInteractionRadiusFactor,
+    swayRiseSpeed,
+    swayFallSpeed,
+    swayEpsilon,
+    mouseSpeedSwayAffect,
+    swayAmplitudeDegRange,
+    swaySpeedRange,
+    countRange,
+    spawnTMin,
+    spawnTMax,
+    spawnBiasMode,
+    spawnBiasExponent,
+    minSpawnSpacingT,
+    maxSpawnAttemptsPerLeaf,
+    sideMode,
+    rotationAwayFromNormalDegRange,
+    layoutKey,
+    appearanceKey,
+    cacheKey,
+  };
+}
+
+function getLeafSpriteSourceRect(leavesConfig, col, row = leavesConfig.spriteRowMinIndex) {
+  const safeCol = clamp(
+    Math.floor(Number.isFinite(col) ? col : 0),
+    0,
+    Math.max(0, leavesConfig.spriteCols - 1),
+  );
+  const safeRow = clamp(
+    Math.floor(Number.isFinite(row) ? row : leavesConfig.spriteRowMinIndex),
+    0,
+    Math.max(0, leavesConfig.spriteRows - 1),
+  );
+  return {
+    sx: safeCol * leavesConfig.spriteCellWidth * leavesConfig.spriteScale,
+    sy: safeRow * leavesConfig.spriteCellHeight * leavesConfig.spriteScale,
+    sw: leavesConfig.spriteCellWidth * leavesConfig.spriteScale,
+    sh: leavesConfig.spriteCellHeight * leavesConfig.spriteScale,
+  };
+}
+
+function getBranchLeafCache(branch) {
+  if (!branch) {
+    return null;
+  }
+  if (!branch.leafCache || typeof branch.leafCache !== 'object') {
+    branch.leafCache = {
+      pathDataRef: null,
+      layoutKey: '',
+      appearanceKey: '',
+      leaves: [],
+      bounds: null,
+    };
+  }
+  return branch.leafCache;
+}
+
+function resolveBranchStemHalfWidth(branch, distanceOnPath, referenceLength, brushConfig = CONFIG.brush) {
+  if (!branch || !STATE.stemImage) {
+    return 0;
+  }
+  const branchTextures = getBranchStemTextures(branch, brushConfig);
+  const sourceImage = branchTextures && branchTextures.defaultImage
+    ? branchTextures.defaultImage
+    : STATE.stemImage;
+  if (!sourceImage || !Number.isFinite(sourceImage.width) || sourceImage.width <= 0) {
+    return 0;
+  }
+
+  const brushScale = getBrushScale(brushConfig);
+  const branchThicknessBaseScale = getBranchThicknessBaseScale(branch);
+  const taperFactor = getThicknessTaperFactorAtDistance(distanceOnPath, referenceLength, brushConfig);
+  let widthOnPath = sourceImage.width * brushScale * branchThicknessBaseScale * taperFactor;
+  if (isBrushThicknessTaperEnabled(brushConfig)) {
+    const minWidth = getBrushThicknessMinWidth(brushConfig);
+    if (minWidth > 0) {
+      widthOnPath = Math.max(widthOnPath, minWidth);
+    }
+  }
+  return Math.max(0, widthOnPath * 0.5);
+}
+
+function sampleLeafSpawnT(leavesConfig, rng) {
+  const span = leavesConfig.spawnTMax - leavesConfig.spawnTMin;
+  if (span <= 1e-8) {
+    return leavesConfig.spawnTMin;
+  }
+
+  const u = clamp(rng(), 0, 1);
+  let biased = u;
+  if (leavesConfig.spawnBiasMode === 'towardBase') {
+    biased = Math.pow(u, leavesConfig.spawnBiasExponent);
+  } else if (leavesConfig.spawnBiasMode === 'towardTip') {
+    biased = 1 - Math.pow(1 - u, leavesConfig.spawnBiasExponent);
+  }
+  return leavesConfig.spawnTMin + span * biased;
+}
+
+function isLeafSwayActive(leavesConfig = resolveLeavesConfig(CONFIG.leaves || {})) {
+  if (!leavesConfig || leavesConfig.enabled !== true || leavesConfig.swayEnabled !== true) {
+    return false;
+  }
+  if (leavesConfig.swayMode !== 'always') {
+    if (leavesConfig.swayMode === 'wind') {
+      if (STATE.windInfluencerPositions && STATE.windInfluencerPositions.length > 0) {
+        return true;
+      }
+    } else if (Number.isFinite(STATE.pointerX) && Number.isFinite(STATE.pointerY)) {
+      return true;
+    }
+    const cachedLeaves = STATE.leafOverlayCache && Array.isArray(STATE.leafOverlayCache.leaves)
+      ? STATE.leafOverlayCache.leaves
+      : null;
+    if (cachedLeaves && cachedLeaves.length > 0) {
+      for (let i = 0; i < cachedLeaves.length; i += 1) {
+        const leaf = cachedLeaves[i];
+        if ((Number(leaf.hoverInfluence) || 0) > leavesConfig.swayEpsilon) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+  const maxAmplitudeDeg = Math.max(
+    Math.abs(Number(leavesConfig.swayAmplitudeDegRange[0]) || 0),
+    Math.abs(Number(leavesConfig.swayAmplitudeDegRange[1]) || 0),
+  );
+  const maxSpeed = Math.max(
+    Math.abs(Number(leavesConfig.swaySpeedRange[0]) || 0),
+    Math.abs(Number(leavesConfig.swaySpeedRange[1]) || 0),
+  );
+  return maxAmplitudeDeg > 1e-6 && maxSpeed > 1e-6;
+}
+
+function getEffectiveInfluencePosition(leafX, leafY) {
+  if (resolveGlobalSwayMode() === 'wind') {
+    const positions = STATE.windInfluencerPositions;
+    if (!positions || positions.length === 0) {
+      return { x: Number.NEGATIVE_INFINITY, y: Number.NEGATIVE_INFINITY };
+    }
+    if (positions.length === 1) {
+      return { x: positions[0].x, y: positions[0].y };
+    }
+    const lx = Number.isFinite(leafX) ? leafX : 0;
+    const ly = Number.isFinite(leafY) ? leafY : 0;
+    let bestDist = Infinity;
+    let best = positions[0];
+    for (let i = 0; i < positions.length; i += 1) {
+      const p = positions[i];
+      const d = Math.hypot(p.x - lx, p.y - ly);
+      if (d < bestDist) {
+        bestDist = d;
+        best = p;
+      }
+    }
+    return { x: best.x, y: best.y };
+  }
+  return { x: STATE.pointerX, y: STATE.pointerY };
+}
+
+function resolveLeafSwayInfluence(leaf, leavesConfig, nowMs) {
+  if (!leaf || !leavesConfig) {
+    return 0;
+  }
+  if (!Number.isFinite(leaf.hoverInfluence)) {
+    leaf.hoverInfluence = leavesConfig.swayMode === 'always' ? 1 : 0;
+  }
+  if (!Number.isFinite(leaf.targetInfluence)) {
+    leaf.targetInfluence = leavesConfig.swayMode === 'always' ? 1 : 0;
+  }
+  if (!Number.isFinite(leaf.motionTime)) {
+    leaf.motionTime = 0;
+  }
+  if (!Number.isFinite(leaf.lastSwayUpdateMs) || leaf.lastSwayUpdateMs <= 0) {
+    leaf.lastSwayUpdateMs = Number.isFinite(nowMs) ? nowMs : performance.now();
+  }
+
+  // Get effective influence position (wind or mouse)
+  const influencePos = getEffectiveInfluencePosition(leaf.x, leaf.y);
+  
+  if (
+    leavesConfig.swayMode !== 'always'
+    && leaf.hoverInfluence === 0
+    && leaf.targetInfluence === 0
+    && influencePos.x === Number.NEGATIVE_INFINITY
+    && influencePos.y === Number.NEGATIVE_INFINITY
+  ) {
+    leaf.lastSwayUpdateMs = Number.isFinite(nowMs) ? nowMs : performance.now();
+    return 0;
+  }
+
+  const updateNowMs = Number.isFinite(nowMs) ? nowMs : performance.now();
+  const dtSec = clamp((updateNowMs - leaf.lastSwayUpdateMs) / 1000, 0, 0.05);
+  leaf.lastSwayUpdateMs = updateNowMs;
+
+  const mouseSpeedDecayPxPerSec = 2600;
+  STATE.pointerSpeedPxPerSec = Math.max(0, STATE.pointerSpeedPxPerSec - (mouseSpeedDecayPxPerSec * dtSec));
+  const mouseSpeedNorm = clamp((STATE.pointerSpeedPxPerSec || 0) / 1600, 0, 1);
+  const mouseSwayScale = clamp(
+    1 + (mouseSpeedNorm * Math.max(0, Number(leavesConfig.mouseSpeedSwayAffect) || 0)),
+    1,
+    8,
+  );
+
+  if (leavesConfig.swayMode === 'always') {
+    leaf.targetInfluence = 1;
+  } else if (!Number.isFinite(influencePos.x) || !Number.isFinite(influencePos.y)) {
+    leaf.targetInfluence = 0;
+  } else {
+    const leafDrawSize = Number.isFinite(leaf.drawSize) ? Math.max(1, leaf.drawSize) : 1;
+    const interactionRadius = leafDrawSize * Math.max(0, leavesConfig.swayInteractionRadiusFactor);
+    if (interactionRadius <= 1e-6) {
+      leaf.targetInfluence = 0;
+    } else {
+      const dx = influencePos.x - leaf.x;
+      const dy = influencePos.y - leaf.y;
+      const distance = Math.hypot(dx, dy);
+      leaf.targetInfluence = distance >= interactionRadius ? 0 : (1 - distance / interactionRadius) * mouseSwayScale;
+    }
+  }
+
+  const influenceSpeed = leaf.targetInfluence > leaf.hoverInfluence
+    ? leavesConfig.swayRiseSpeed
+    : leavesConfig.swayFallSpeed;
+  const maxStep = Math.max(0, influenceSpeed * mouseSwayScale * dtSec);
+  if (leaf.hoverInfluence < leaf.targetInfluence) {
+    leaf.hoverInfluence = Math.min(leaf.hoverInfluence + maxStep, leaf.targetInfluence);
+  } else {
+    leaf.hoverInfluence = Math.max(leaf.hoverInfluence - maxStep, leaf.targetInfluence);
+  }
+  if (leaf.targetInfluence === 0 && leaf.hoverInfluence <= leavesConfig.swayEpsilon) {
+    leaf.hoverInfluence = 0;
+  }
+  if (leaf.hoverInfluence > 0 || leaf.targetInfluence > 0) {
+    leaf.motionTime += dtSec * mouseSwayScale;
+  }
+  return leaf.hoverInfluence;
+}
+
+function evaluateLeafGrowthEaseT(t, easeMode, easePower) {
+  const clampedT = clamp(Number.isFinite(t) ? t : 0, 0, 1);
+  const power = Number.isFinite(easePower) ? Math.max(0.01, easePower) : 2;
+  if (easeMode === 'linear') {
+    return clampedT;
+  }
+  if (easeMode === 'easeIn') {
+    return Math.pow(clampedT, power);
+  }
+  if (easeMode === 'easeInOut') {
+    if (clampedT <= 0.5) {
+      return 0.5 * Math.pow(clampedT * 2, power);
+    }
+    return 1 - (0.5 * Math.pow((1 - clampedT) * 2, power));
+  }
+  return 1 - Math.pow(1 - clampedT, power);
+}
+
+function evaluateFlowerGrowthEaseT(
+  t,
+  easeMode,
+  easePower,
+  easeInPower = null,
+  easeOutPower = null,
+) {
+  const clampedT = clamp(Number.isFinite(t) ? t : 0, 0, 1);
+  const basePower = Number.isFinite(easePower) ? Math.max(0.01, easePower) : 2;
+  const inPower = Number.isFinite(easeInPower) ? Math.max(0.01, easeInPower) : basePower;
+  const outPower = Number.isFinite(easeOutPower) ? Math.max(0.01, easeOutPower) : basePower;
+  if (easeMode === 'linear') {
+    return clampedT;
+  }
+  if (easeMode === 'easeIn') {
+    return Math.pow(clampedT, inPower);
+  }
+  if (easeMode === 'easeInOut') {
+    if (clampedT <= 0.5) {
+      return 0.5 * Math.pow(clampedT * 2, inPower);
+    }
+    return 1 - (0.5 * Math.pow((1 - clampedT) * 2, outPower));
+  }
+  return 1 - Math.pow(1 - clampedT, outPower);
+}
+
+function resolveLeafGrowthScale(leaf, branch, leavesConfig) {
+  if (!leaf || !branch || !leavesConfig || leavesConfig.growthEnabled !== true || CONFIG.branchGrowth.enabled !== true) {
+    return 1;
+  }
+  if (leaf._growthScaleCachedValue >= 1 - 1e-6) {
+    return 1;
+  }
+  const durationSec = Number.isFinite(leavesConfig.growthDurationSec)
+    ? Math.max(0, leavesConfig.growthDurationSec)
+    : 0;
+  if (durationSec <= 1e-8) {
+    return 1;
+  }
+  const ratePxPerSec = Number.isFinite(STATE.branchGrowth && STATE.branchGrowth.globalRatePxPerSec)
+    ? Math.max(0, STATE.branchGrowth.globalRatePxPerSec)
+    : 0;
+  if (ratePxPerSec <= 1e-8) {
+    return 1;
+  }
+  const elapsedSec = Number.isFinite(STATE.branchGrowth && STATE.branchGrowth.elapsedSec)
+    ? Math.max(0, STATE.branchGrowth.elapsedSec)
+    : 0;
+  if (
+    leaf._growthScaleCachedElapsed >= 0
+    && Math.abs(elapsedSec - leaf._growthScaleCachedElapsed) < 0.016
+  ) {
+    return leaf._growthScaleCachedValue;
+  }
+  const branchStartMetric = Number.isFinite(branch.startDistanceMetric)
+    ? Math.max(0, branch.startDistanceMetric)
+    : 0;
+  const branchSweepStartDelaySec = Number.isFinite(branch.sweepStartDelaySec)
+    ? Math.max(0, branch.sweepStartDelaySec)
+    : 0;
+  const leafDistanceOnBranch = Number.isFinite(leaf.distanceOnPath)
+    ? Math.max(0, leaf.distanceOnPath)
+    : 0;
+  const spawnTimeSec = branchSweepStartDelaySec + ((branchStartMetric + leafDistanceOnBranch) / ratePxPerSec);
+  const ageSec = elapsedSec - spawnTimeSec;
+  let scale;
+  if (ageSec <= 0) {
+    scale = clamp(leavesConfig.growthMinScale, 0, 1);
+  } else {
+    const progress = clamp(ageSec / durationSec, 0, 1);
+    const eased = evaluateLeafGrowthEaseT(progress, leavesConfig.growthEase, leavesConfig.growthEasePower);
+    const minScale = clamp(leavesConfig.growthMinScale, 0, 1);
+    scale = minScale + (1 - minScale) * eased;
+  }
+  leaf._growthScaleCachedElapsed = elapsedSec;
+  leaf._growthScaleCachedValue = scale;
+  return scale;
+}
+
+function isLeafSpawnTAllowed(candidateT, placedTs, minSpawnSpacingT) {
+  if (!Number.isFinite(candidateT)) {
+    return false;
+  }
+  if (!Array.isArray(placedTs) || placedTs.length === 0 || minSpawnSpacingT <= 1e-8) {
+    return true;
+  }
+  for (let i = 0; i < placedTs.length; i += 1) {
+    if (Math.abs(placedTs[i] - candidateT) < minSpawnSpacingT) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function findLeafSpawnFallbackT(leavesConfig, placedTs) {
+  const minT = leavesConfig.spawnTMin;
+  const maxT = leavesConfig.spawnTMax;
+  const span = maxT - minT;
+  if (span <= 1e-8) {
+    return isLeafSpawnTAllowed(minT, placedTs, leavesConfig.minSpawnSpacingT) ? minT : null;
+  }
+
+  const spacing = Math.max(0, leavesConfig.minSpawnSpacingT);
+  const step = Math.max(1e-4, spacing * 0.5, span / 512);
+  const towardTip = leavesConfig.spawnBiasMode === 'towardTip';
+  let t = towardTip ? maxT : minT;
+  while (towardTip ? (t >= minT - 1e-8) : (t <= maxT + 1e-8)) {
+    const candidate = clamp(t, minT, maxT);
+    if (isLeafSpawnTAllowed(candidate, placedTs, spacing)) {
+      return candidate;
+    }
+    t += towardTip ? -step : step;
+  }
+
+  return null;
+}
+
+function estimateLeafSpawnCapacity(leavesConfig) {
+  const span = Math.max(0, leavesConfig.spawnTMax - leavesConfig.spawnTMin);
+  const spacing = Math.max(0, leavesConfig.minSpawnSpacingT);
+  if (span <= 1e-8) {
+    return 1;
+  }
+  if (spacing <= 1e-8) {
+    return Number.POSITIVE_INFINITY;
+  }
+  return Math.max(1, Math.floor(span / spacing) + 1);
+}
+
+function ensureBranchLeaves(branch, leavesConfig, branchIndex = 0) {
+  if (!branch || !branch.pathData || !leavesConfig || !leavesConfig.enabled) {
+    return [];
+  }
+  const cache = getBranchLeafCache(branch);
+  if (!cache) {
+    return [];
+  }
+  if (
+    cache.pathDataRef === branch.pathData
+    && cache.layoutKey === leavesConfig.layoutKey
+    && cache.appearanceKey === leavesConfig.appearanceKey
+  ) {
+    return cache.leaves;
+  }
+
+  cache.leaves.length = 0;
+  const totalLength = Number.isFinite(branch.pathData.totalLength)
+    ? Math.max(0, branch.pathData.totalLength)
+    : 0;
+  if (totalLength <= 1e-8 || leavesConfig.countRange[1] <= 0) {
+    cache.pathDataRef = branch.pathData;
+    cache.layoutKey = leavesConfig.layoutKey;
+    cache.appearanceKey = leavesConfig.appearanceKey;
+    return cache.leaves;
+  }
+
+  const stableToken = getBranchStableToken(branch, branchIndex);
+  const rng = leavesConfig.deterministic
+    ? mulberry32(hashSeed(`${stableToken}|leaves|${leavesConfig.layoutKey}`))
+    : Math.random;
+  const requestedLeafCount = sampleIntRange(leavesConfig.countRange, rng);
+  const estimatedCapacity = estimateLeafSpawnCapacity(leavesConfig);
+  const leafCount = Number.isFinite(estimatedCapacity)
+    ? Math.max(0, Math.min(requestedLeafCount, estimatedCapacity))
+    : Math.max(0, requestedLeafCount);
+  const placedTs = [];
+
+  for (let i = 0; i < leafCount; i += 1) {
+    let acceptedT = null;
+    for (let attempt = 0; attempt < leavesConfig.maxSpawnAttemptsPerLeaf; attempt += 1) {
+      const t = sampleLeafSpawnT(leavesConfig, rng);
+      if (isLeafSpawnTAllowed(t, placedTs, leavesConfig.minSpawnSpacingT)) {
+        acceptedT = t;
+        break;
+      }
+    }
+
+    if (acceptedT === null) {
+      acceptedT = findLeafSpawnFallbackT(leavesConfig, placedTs);
+    }
+    if (acceptedT === null) {
+      continue;
+    }
+
+    placedTs.push(acceptedT);
+    const distanceOnPath = acceptedT * totalLength;
+    const point = getPathPointAtLength(branch.pathData, distanceOnPath);
+    const tangent = normalize(getPathTangentAtLength(branch.pathData, distanceOnPath));
+    const sideSign = getSideSign(leavesConfig.sideMode, i, rng);
+    const outwardNormal = {
+      x: -tangent.y * sideSign,
+      y: tangent.x * sideSign,
+    };
+    const halfStemWidth = resolveBranchStemHalfWidth(branch, distanceOnPath, totalLength, CONFIG.brush);
+    const baseDrawSize = sampleFloatRange(leavesConfig.drawSizeRange, rng);
+    const normalizedBranchT = totalLength > 1e-8 ? clamp(distanceOnPath / totalLength, 0, 1) : 0;
+    const tipEaseExponent = 1 + leavesConfig.drawSizeBaseMultiplierEaseIn * 49;
+    const easedTipBlend = Math.pow(normalizedBranchT, tipEaseExponent);
+    const sizeMultiplier = 1 + (leavesConfig.drawSizeBaseMultiplier - 1) * easedTipBlend;
+    const drawSize = Math.max(1, baseDrawSize * sizeMultiplier);
+    const attachOffset = -halfStemWidth * 0.2 + Math.max(0.5, baseDrawSize * 0.03);
+    const anchorX = point.x + outwardNormal.x * attachOffset;
+    const anchorY = point.y + outwardNormal.y * attachOffset;
+    const rotationOffsetDeg = sampleFloatRange(leavesConfig.rotationAwayFromNormalDegRange, rng);
+    const sideCompensatedOffsetDeg = rotationOffsetDeg * -sideSign;
+    // Leaf sprites are authored with "up" along -Y; rotate normal-aligned +X angle by +90deg.
+    const rotationRad = (
+      Math.atan2(outwardNormal.y, outwardNormal.x)
+      + (Math.PI * 0.5)
+      + (sideCompensatedOffsetDeg * Math.PI / 180)
+    );
+    const col = clamp(Math.floor(rng() * leavesConfig.spriteCols), 0, leavesConfig.spriteCols - 1);
+    const spriteRowCount = Math.max(1, (leavesConfig.spriteRowMaxIndex - leavesConfig.spriteRowMinIndex) + 1);
+    const row = clamp(
+      leavesConfig.spriteRowMinIndex + Math.floor(rng() * spriteRowCount),
+      leavesConfig.spriteRowMinIndex,
+      leavesConfig.spriteRowMaxIndex,
+    );
+    const swayRng = mulberry32(hashSeed(`${stableToken}|leaf-sway|${i}|${acceptedT.toFixed(6)}`));
+    const swayAmplitudeDeg = sampleFloatRange(leavesConfig.swayAmplitudeDegRange, swayRng);
+    const swaySpeed = sampleFloatRange(leavesConfig.swaySpeedRange, swayRng);
+    const swayPhase = swayRng() * Math.PI * 2;
+
+    cache.leaves.push({
+      x: anchorX,
+      y: anchorY,
+      col,
+      row,
+      distanceOnPath,
+      rotationRad,
+      drawSize,
+      swayAmplitudeRad: swayAmplitudeDeg * Math.PI / 180,
+      swaySpeed,
+      swayPhase,
+      hoverInfluence: leavesConfig.swayMode === 'always' ? 1 : 0,
+      targetInfluence: leavesConfig.swayMode === 'always' ? 1 : 0,
+      motionTime: 0,
+      lastSwayUpdateMs: 0,
+      _growthScaleCachedElapsed: -1,
+      _growthScaleCachedValue: -1,
+    });
+  }
+
+  cache.leaves.sort((a, b) => a.distanceOnPath - b.distanceOnPath);
+  if (cache.leaves.length > 0) {
+    let minX = Number.POSITIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+    for (let i = 0; i < cache.leaves.length; i += 1) {
+      const leaf = cache.leaves[i];
+      const half = (Number.isFinite(leaf.drawSize) ? leaf.drawSize : leavesConfig.drawSize) * 0.9;
+      minX = Math.min(minX, leaf.x - half);
+      minY = Math.min(minY, leaf.y - half);
+      maxX = Math.max(maxX, leaf.x + half);
+      maxY = Math.max(maxY, leaf.y + half);
+    }
+    cache.bounds = { minX, minY, maxX, maxY };
+  } else {
+    cache.bounds = null;
+  }
+  cache.pathDataRef = branch.pathData;
+  cache.layoutKey = leavesConfig.layoutKey;
+  cache.appearanceKey = leavesConfig.appearanceKey;
+  return cache.leaves;
+}
+
+function drawBranchLeaves(branch, leavesConfig, renderOptions = {}) {
+  if (!branch || !branch.pathData || !leavesConfig || !leavesConfig.enabled || !STATE.leafImage) {
+    return { drawn: 0, culled: 0, skippedHidden: 0 };
+  }
+
+  const targetCtx = renderOptions.targetCtx || ctx;
+  if (!targetCtx) {
+    return { drawn: 0, culled: 0, skippedHidden: 0 };
+  }
+
+  const branchIndex = Number.isFinite(renderOptions.branchIndex) ? renderOptions.branchIndex : 0;
+  const nowMs = Number.isFinite(renderOptions.nowMs)
+    ? renderOptions.nowMs
+    : performance.now();
+  const visibleLength = Number.isFinite(renderOptions.visibleLength)
+    ? clamp(renderOptions.visibleLength, 0, branch.pathData.totalLength)
+    : branch.pathData.totalLength;
+  const visibleStartLength = Number.isFinite(renderOptions.visibleStartLength)
+    ? clamp(renderOptions.visibleStartLength, 0, visibleLength)
+    : 0;
+  if (visibleLength <= 1e-8 || visibleLength <= visibleStartLength + 1e-8) {
+    return { drawn: 0, culled: 0, skippedHidden: 0 };
+  }
+
+  const leafCache = getBranchLeafCache(branch);
+  const leaves = ensureBranchLeaves(branch, leavesConfig, branchIndex);
+  if (!Array.isArray(leaves) || leaves.length === 0) {
+    return { drawn: 0, culled: 0, skippedHidden: 0 };
+  }
+  const hiddenBand = renderOptions.hiddenBand && typeof renderOptions.hiddenBand === 'object'
+    ? renderOptions.hiddenBand
+    : null;
+  const hiddenSpriteCullInnerPaddingPx = Number.isFinite(Number(renderOptions.hiddenSpriteCullInnerPaddingPx))
+    ? Math.max(0, Number(renderOptions.hiddenSpriteCullInnerPaddingPx))
+    : 0;
+  const hiddenSpriteCullRadiusScale = Number.isFinite(Number(renderOptions.hiddenSpriteCullRadiusScale))
+    ? clamp(Number(renderOptions.hiddenSpriteCullRadiusScale), 0.05, 1)
+    : 1;
+  const hiddenSpriteCullDebug = (
+    renderOptions.hiddenSpriteCullDebug
+    && typeof renderOptions.hiddenSpriteCullDebug === 'object'
+  )
+    ? renderOptions.hiddenSpriteCullDebug
+    : null;
+  const hiddenSpriteCullDebugBudget = (
+    renderOptions.hiddenSpriteCullDebugBudget
+    && typeof renderOptions.hiddenSpriteCullDebugBudget === 'object'
+  )
+    ? renderOptions.hiddenSpriteCullDebugBudget
+    : null;
+  const hiddenBands = Array.isArray(renderOptions.hiddenBands) ? renderOptions.hiddenBands : (hiddenBand ? [hiddenBand] : []);
+  const skipFullyHiddenInBand = renderOptions.skipFullyHiddenInBand === true && hiddenBands.length > 0;
+  let drawn = 0;
+  let culled = 0;
+  let skippedHidden = 0;
+
+  for (let i = 0; i < leaves.length; i += 1) {
+    const leaf = leaves[i];
+    if (leaf.distanceOnPath + 1e-6 < visibleStartLength) {
+      continue;
+    }
+    if (leaf.distanceOnPath > visibleLength + 1e-6) {
+      break;
+    }
+
+    const baseDrawSize = Number.isFinite(leaf.drawSize)
+      ? Math.max(1, leaf.drawSize)
+      : leavesConfig.drawSize;
+    const growthScale = resolveLeafGrowthScale(leaf, branch, leavesConfig);
+    const drawSize = Math.max(0.01, baseDrawSize * growthScale);
+    const drawX = -drawSize * 0.5;
+    const drawY = -drawSize + ((2.2 / leavesConfig.spriteCellHeight) * drawSize);
+    const spriteRadius = Math.hypot(drawSize * 0.5, drawSize * 0.5) * hiddenSpriteCullRadiusScale;
+    const swayInfluence = resolveLeafSwayInfluence(leaf, leavesConfig, nowMs);
+    const swayOffsetRad = leavesConfig.swayEnabled
+      ? (
+        (Number.isFinite(leaf.swayAmplitudeRad) ? leaf.swayAmplitudeRad : 0)
+        * Math.sin(((Number.isFinite(leaf.motionTime) ? leaf.motionTime : 0) * (Number.isFinite(leaf.swaySpeed) ? leaf.swaySpeed : 0)) + (leaf.swayPhase || 0))
+        * swayInfluence
+      )
+      : 0;
+    const drawRotationRad = leaf.rotationRad + swayOffsetRad;
+    const centerLocalX = drawX + (drawSize * 0.5);
+    const centerLocalY = drawY + (drawSize * 0.5);
+    const drawCos = Math.cos(drawRotationRad);
+    const drawSin = Math.sin(drawRotationRad);
+    const spriteCenterX = leaf.x + (centerLocalX * drawCos) - (centerLocalY * drawSin);
+    const spriteCenterY = leaf.y + (centerLocalX * drawSin) + (centerLocalY * drawCos);
+    if (skipFullyHiddenInBand) {
+      const hiddenByBand = isSpriteCircleFullyInsideAnyHiddenBand(
+        spriteCenterX,
+        spriteCenterY,
+        spriteRadius,
+        hiddenBands,
+        hiddenSpriteCullInnerPaddingPx,
+      );
+      drawHiddenSpriteCullDebugCircle(
+        targetCtx,
+        spriteCenterX,
+        spriteCenterY,
+        spriteRadius,
+        hiddenByBand,
+        hiddenSpriteCullDebug,
+        hiddenSpriteCullDebugBudget,
+      );
+      if (hiddenByBand) {
+        skippedHidden += 1;
+        continue;
+      }
+    }
+    const sourceRect = getLeafSpriteSourceRect(leavesConfig, leaf.col, leaf.row);
+    targetCtx.translate(leaf.x, leaf.y);
+    targetCtx.rotate(drawRotationRad);
+    targetCtx.drawImage(
+      STATE.leafImage,
+      sourceRect.sx,
+      sourceRect.sy,
+      sourceRect.sw,
+      sourceRect.sh,
+      drawX,
+      drawY,
+      drawSize,
+      drawSize,
+    );
+    targetCtx.setTransform(STATE.dpr, 0, 0, STATE.dpr, 0, 0);
+    drawn += 1;
+  }
+  return { drawn, culled, skippedHidden };
+}
+
+function drawLeafOverlayFast(leavesConfig, nowMs, targetCtx = ctx, hiddenBands = []) {
+  if (!leavesConfig || !leavesConfig.enabled || !STATE.leafImage || !targetCtx) {
+    return { drawn: 0, culled: 0 };
+  }
+  const overlayCache = ensureLeafOverlayCache(leavesConfig);
+  const leaves = overlayCache && Array.isArray(overlayCache.leaves) ? overlayCache.leaves : [];
+  if (leaves.length === 0) {
+    return { drawn: 0, culled: 0 };
+  }
+
+  let drawn = 0;
+  let culled = 0;
+  for (let i = 0; i < leaves.length; i += 1) {
+    const leaf = leaves[i];
+    const drawSize = Number.isFinite(leaf.drawSize) ? Math.max(1, leaf.drawSize) : leavesConfig.drawSize;
+    const drawX = -drawSize * 0.5;
+    const drawY = -drawSize + ((2.2 / leavesConfig.spriteCellHeight) * drawSize);
+    if (hiddenBands.length > 0) {
+      const spriteRadius = Math.hypot(drawSize * 0.5, drawSize * 0.5);
+      const centerLocalX = drawX + (drawSize * 0.5);
+      const centerLocalY = drawY + (drawSize * 0.5);
+      const rotRad = Number.isFinite(leaf.rotationRad) ? leaf.rotationRad : 0;
+      const drawCos = Math.cos(rotRad);
+      const drawSin = Math.sin(rotRad);
+      const spriteCenterX = leaf.x + (centerLocalX * drawCos) - (centerLocalY * drawSin);
+      const spriteCenterY = leaf.y + (centerLocalX * drawSin) + (centerLocalY * drawCos);
+      if (isSpriteCircleFullyInsideAnyHiddenBand(spriteCenterX, spriteCenterY, spriteRadius, hiddenBands, 0)) {
+        culled += 1;
+        continue;
+      }
+    }
+
+    const sourceRect = getLeafSpriteSourceRect(leavesConfig, leaf.col, leaf.row);
+    const swayInfluence = resolveLeafSwayInfluence(leaf, leavesConfig, nowMs);
+    const swayOffsetRad = leavesConfig.swayEnabled
+      ? (
+        (Number.isFinite(leaf.swayAmplitudeRad) ? leaf.swayAmplitudeRad : 0)
+        * Math.sin(((Number.isFinite(leaf.motionTime) ? leaf.motionTime : 0) * (Number.isFinite(leaf.swaySpeed) ? leaf.swaySpeed : 0)) + (leaf.swayPhase || 0))
+        * swayInfluence
+      )
+      : 0;
+    targetCtx.translate(leaf.x, leaf.y);
+    targetCtx.rotate(leaf.rotationRad + swayOffsetRad);
+    targetCtx.drawImage(
+      STATE.leafImage,
+      sourceRect.sx,
+      sourceRect.sy,
+      sourceRect.sw,
+      sourceRect.sh,
+      drawX,
+      drawY,
+      drawSize,
+      drawSize,
+    );
+    targetCtx.setTransform(STATE.dpr, 0, 0, STATE.dpr, 0, 0);
+    drawn += 1;
+  }
+  return { drawn, culled };
+}
+
+function drawCommittedBranchLeavesFast(branch, leavesConfig, completedLayerCtx, mainCtx, branchIndex, nowMs, hiddenBands = []) {
+  if (!branch || !leavesConfig || !leavesConfig.enabled || !STATE.leafImage) {
+    return { drawn: 0, culled: 0 };
+  }
+  const leaves = ensureBranchLeaves(branch, leavesConfig, branchIndex);
+  if (!Array.isArray(leaves) || leaves.length === 0) {
+    return { drawn: 0, culled: 0 };
+  }
+
+  const swayEpsilon = Number.isFinite(leavesConfig.swayEpsilon) ? leavesConfig.swayEpsilon : 0.001;
+  const leafCache = getBranchLeafCache(branch);
+  const leavesConfigKey = leavesConfig.cacheKey || '';
+
+  let drawn = 0;
+  let culled = 0;
+
+  const needsBake = (
+    completedLayerCtx
+    && (!leafCache || leafCache._committedLeavesKey !== leavesConfigKey)
+  );
+
+  for (let i = 0; i < leaves.length; i += 1) {
+    const leaf = leaves[i];
+    const drawSize = Number.isFinite(leaf.drawSize) ? Math.max(1, leaf.drawSize) : leavesConfig.drawSize;
+    const drawX = -drawSize * 0.5;
+    const drawY = -drawSize + ((2.2 / leavesConfig.spriteCellHeight) * drawSize);
+
+    if (hiddenBands.length > 0) {
+      const spriteRadius = Math.hypot(drawSize * 0.5, drawSize * 0.5);
+      const centerLocalX = drawX + (drawSize * 0.5);
+      const centerLocalY = drawY + (drawSize * 0.5);
+      const rotRad = Number.isFinite(leaf.rotationRad) ? leaf.rotationRad : 0;
+      const drawCos = Math.cos(rotRad);
+      const drawSin = Math.sin(rotRad);
+      const spriteCenterX = leaf.x + (centerLocalX * drawCos) - (centerLocalY * drawSin);
+      const spriteCenterY = leaf.y + (centerLocalX * drawSin) + (centerLocalY * drawCos);
+      if (isSpriteCircleFullyInsideAnyHiddenBand(spriteCenterX, spriteCenterY, spriteRadius, hiddenBands, 0)) {
+        culled += 1;
+        continue;
+      }
+    }
+
+    const swayInfluence = resolveLeafSwayInfluence(leaf, leavesConfig, nowMs);
+    const isSwaying = swayInfluence > swayEpsilon || leaf.targetInfluence > swayEpsilon;
+    const sourceRect = getLeafSpriteSourceRect(leavesConfig, leaf.col, leaf.row);
+
+    if (needsBake) {
+      completedLayerCtx.setTransform(STATE.dpr, 0, 0, STATE.dpr, 0, 0);
+      completedLayerCtx.translate(leaf.x, leaf.y);
+      completedLayerCtx.rotate(leaf.rotationRad);
+      completedLayerCtx.drawImage(
+        STATE.leafImage,
+        sourceRect.sx,
+        sourceRect.sy,
+        sourceRect.sw,
+        sourceRect.sh,
+        drawX,
+        drawY,
+        drawSize,
+        drawSize,
+      );
+      completedLayerCtx.setTransform(STATE.dpr, 0, 0, STATE.dpr, 0, 0);
+    }
+
+    if (isSwaying && mainCtx) {
+      const swayOffsetRad = leavesConfig.swayEnabled
+        ? (
+          (Number.isFinite(leaf.swayAmplitudeRad) ? leaf.swayAmplitudeRad : 0)
+          * Math.sin(((Number.isFinite(leaf.motionTime) ? leaf.motionTime : 0) * (Number.isFinite(leaf.swaySpeed) ? leaf.swaySpeed : 0)) + (leaf.swayPhase || 0))
+          * swayInfluence
+        )
+        : 0;
+      mainCtx.translate(leaf.x, leaf.y);
+      mainCtx.rotate(leaf.rotationRad + swayOffsetRad);
+      mainCtx.drawImage(
+        STATE.leafImage,
+        sourceRect.sx,
+        sourceRect.sy,
+        sourceRect.sw,
+        sourceRect.sh,
+        drawX,
+        drawY,
+        drawSize,
+        drawSize,
+      );
+      mainCtx.setTransform(STATE.dpr, 0, 0, STATE.dpr, 0, 0);
+    }
+
+    drawn += 1;
+  }
+
+  if (needsBake && leafCache) {
+    leafCache._committedLeavesKey = leavesConfigKey;
+  }
+
+  return { drawn, culled };
+}
+
+function isPerformanceMonitoringEnabled() {
+  return Boolean(CONFIG.performance && CONFIG.performance.enabled);
+}
+
+function getPerformanceLogIntervalMs() {
+  const config = CONFIG.performance || {};
+  const interval = Number(config.logIntervalMs);
+  if (!Number.isFinite(interval)) {
+    return 1000;
+  }
+  return Math.max(250, interval);
+}
+
+function resetPerformanceCounters() {
+  const perf = STATE.performance;
+  const now = performance.now();
+  perf.intervalStartMs = now;
+  perf.lastLogMs = now;
+  perf.intervalFrames = 0;
+  perf.intervalFrameMs = 0;
+  perf.intervalSamples = 0;
+  perf.intervalActiveBranches = 0;
+  perf.intervalCacheBuilds = 0;
+  perf.intervalCacheBuildMs = 0;
+  perf.intervalCacheReuses = 0;
+  perf.intervalLeafDrawMs = 0;
+  perf.intervalStemDrawMs = 0;
+  perf.intervalFlowerDrawMs = 0;
+  perf.intervalFlowerUpdateMs = 0;
+  perf.intervalLeavesDrawn = 0;
+  perf.intervalLeavesCulled = 0;
+  perf.intervalFlowersDrawn = 0;
+  perf.intervalFlowersCulled = 0;
+  perf.intervalBackSkippedStems = 0;
+  perf.intervalBackSkippedLeaves = 0;
+  perf.intervalBackSkippedFlowers = 0;
+  perf.intervalCacheMissReasons.invalid = 0;
+  perf.intervalCacheMissReasons.pathData = 0;
+  perf.intervalCacheMissReasons.image = 0;
+  perf.intervalCacheMissReasons.brush = 0;
+  perf.lastSummary = null;
+}
+
+function registerPerformanceCacheBuild(reason, buildMs) {
+  if (!isPerformanceMonitoringEnabled()) {
+    return;
+  }
+  const perf = STATE.performance;
+  perf.intervalCacheBuilds += 1;
+  perf.intervalCacheBuildMs += Number.isFinite(buildMs) ? Math.max(0, buildMs) : 0;
+  if (reason === 'pathData' || reason === 'image' || reason === 'brush') {
+    perf.intervalCacheMissReasons[reason] += 1;
+  } else {
+    perf.intervalCacheMissReasons.invalid += 1;
+  }
+}
+
+function registerPerformanceCacheReuse() {
+  if (!isPerformanceMonitoringEnabled()) {
+    return;
+  }
+  STATE.performance.intervalCacheReuses += 1;
+}
+
+function registerSwayPerformanceSample(sample = {}) {
+  if (!isPerformanceMonitoringEnabled()) {
+    return;
+  }
+  const perf = STATE.performance;
+  perf.intervalLeafDrawMs += Number.isFinite(sample.leafDrawMs) ? Math.max(0, sample.leafDrawMs) : 0;
+  perf.intervalStemDrawMs += Number.isFinite(sample.stemDrawMs) ? Math.max(0, sample.stemDrawMs) : 0;
+  perf.intervalFlowerDrawMs += Number.isFinite(sample.flowerDrawMs) ? Math.max(0, sample.flowerDrawMs) : 0;
+  perf.intervalFlowerUpdateMs += Number.isFinite(sample.flowerUpdateMs) ? Math.max(0, sample.flowerUpdateMs) : 0;
+  perf.intervalLeavesDrawn += Number.isFinite(sample.leavesDrawn) ? Math.max(0, sample.leavesDrawn) : 0;
+  perf.intervalLeavesCulled += Number.isFinite(sample.leavesCulled) ? Math.max(0, sample.leavesCulled) : 0;
+  perf.intervalFlowersDrawn += Number.isFinite(sample.flowersDrawn) ? Math.max(0, sample.flowersDrawn) : 0;
+  perf.intervalFlowersCulled += Number.isFinite(sample.flowersCulled) ? Math.max(0, sample.flowersCulled) : 0;
+  perf.intervalBackSkippedStems += Number.isFinite(sample.backSkippedStems)
+    ? Math.max(0, sample.backSkippedStems)
+    : 0;
+  perf.intervalBackSkippedLeaves += Number.isFinite(sample.backSkippedLeaves)
+    ? Math.max(0, sample.backSkippedLeaves)
+    : 0;
+  perf.intervalBackSkippedFlowers += Number.isFinite(sample.backSkippedFlowers)
+    ? Math.max(0, sample.backSkippedFlowers)
+    : 0;
+}
+
+function flushPerformanceFrame(frameStartMs, activeBranches) {
+  if (!isPerformanceMonitoringEnabled()) {
+    return;
+  }
+
+  const now = performance.now();
+  const perf = STATE.performance;
+  const frameMs = Math.max(0, now - frameStartMs);
+  perf.intervalFrames += 1;
+  perf.intervalFrameMs += frameMs;
+  perf.intervalActiveBranches += Math.max(0, activeBranches);
+
+  const logIntervalMs = getPerformanceLogIntervalMs();
+  if (now - perf.lastLogMs < logIntervalMs) {
+    return;
+  }
+
+  const frames = Math.max(1, perf.intervalFrames);
+  const avgFrameMs = perf.intervalFrameMs / frames;
+  const fps = avgFrameMs > 0 ? 1000 / avgFrameMs : 0;
+  const avgSamplesPerFrame = perf.intervalSamples / frames;
+  const avgActiveBranches = perf.intervalActiveBranches / frames;
+  const avgCacheBuildMs = perf.intervalCacheBuilds > 0
+    ? perf.intervalCacheBuildMs / perf.intervalCacheBuilds
+    : 0;
+  const avgLeafDrawMs = perf.intervalLeafDrawMs / frames;
+  const avgStemDrawMs = perf.intervalStemDrawMs / frames;
+  const avgFlowerDrawMs = perf.intervalFlowerDrawMs / frames;
+  const avgFlowerUpdateMs = perf.intervalFlowerUpdateMs / frames;
+
+  const summary = {
+    fps,
+    avgFrameMs,
+    avgSamplesPerFrame,
+    avgActiveBranches,
+    cacheBuilds: perf.intervalCacheBuilds,
+    cacheReuses: perf.intervalCacheReuses,
+    avgCacheBuildMs,
+    avgLeafDrawMs,
+    avgStemDrawMs,
+    avgFlowerDrawMs,
+    avgFlowerUpdateMs,
+    leavesDrawn: perf.intervalLeavesDrawn,
+    leavesCulled: perf.intervalLeavesCulled,
+    flowersDrawn: perf.intervalFlowersDrawn,
+    flowersCulled: perf.intervalFlowersCulled,
+    backSkippedStems: perf.intervalBackSkippedStems,
+    backSkippedLeaves: perf.intervalBackSkippedLeaves,
+    backSkippedFlowers: perf.intervalBackSkippedFlowers,
+    cacheMissReasons: {
+      invalid: perf.intervalCacheMissReasons.invalid,
+      pathData: perf.intervalCacheMissReasons.pathData,
+      image: perf.intervalCacheMissReasons.image,
+      brush: perf.intervalCacheMissReasons.brush,
+    },
+  };
+  perf.lastSummary = summary;
+
+  console.log(
+    '[BranchPerf]',
+    `fps=${summary.fps.toFixed(1)}`,
+    `frameMs=${summary.avgFrameMs.toFixed(2)}`,
+    `samples/frame=${summary.avgSamplesPerFrame.toFixed(0)}`,
+    `activeBranches=${summary.avgActiveBranches.toFixed(1)}`,
+    `cacheBuilds=${summary.cacheBuilds}`,
+    `cacheReuses=${summary.cacheReuses}`,
+    `cacheBuildMs=${summary.avgCacheBuildMs.toFixed(2)}`,
+    `stemMs=${summary.avgStemDrawMs.toFixed(2)}`,
+    `leafMs=${summary.avgLeafDrawMs.toFixed(2)}`,
+    `flowerUpdMs=${summary.avgFlowerUpdateMs.toFixed(2)}`,
+    `flowerDrawMs=${summary.avgFlowerDrawMs.toFixed(2)}`,
+    `leaves(d/c)=${summary.leavesDrawn}/${summary.leavesCulled}`,
+    `flowers(d/c)=${summary.flowersDrawn}/${summary.flowersCulled}`,
+    `backSkip(s/l/f)=${summary.backSkippedStems}/${summary.backSkippedLeaves}/${summary.backSkippedFlowers}`,
+    `misses=${JSON.stringify(summary.cacheMissReasons)}`,
+  );
+
+  perf.intervalStartMs = now;
+  perf.lastLogMs = now;
+  perf.intervalFrames = 0;
+  perf.intervalFrameMs = 0;
+  perf.intervalSamples = 0;
+  perf.intervalActiveBranches = 0;
+  perf.intervalCacheBuilds = 0;
+  perf.intervalCacheBuildMs = 0;
+  perf.intervalCacheReuses = 0;
+  perf.intervalLeafDrawMs = 0;
+  perf.intervalStemDrawMs = 0;
+  perf.intervalFlowerDrawMs = 0;
+  perf.intervalFlowerUpdateMs = 0;
+  perf.intervalLeavesDrawn = 0;
+  perf.intervalLeavesCulled = 0;
+  perf.intervalFlowersDrawn = 0;
+  perf.intervalFlowersCulled = 0;
+  perf.intervalBackSkippedStems = 0;
+  perf.intervalBackSkippedLeaves = 0;
+  perf.intervalBackSkippedFlowers = 0;
+  perf.intervalCacheMissReasons.invalid = 0;
+  perf.intervalCacheMissReasons.pathData = 0;
+  perf.intervalCacheMissReasons.image = 0;
+  perf.intervalCacheMissReasons.brush = 0;
+}
+
+function buildBranchStripCache(branch, brushConfig, defaultImage, flippedImage) {
+  const cache = getBranchRenderCache(branch);
+  const pathData = branch ? branch.pathData : null;
+  const activeFlippedImage = flippedImage || defaultImage;
+
+  cache.samples.length = 0;
+  cache.distances.length = 0;
+  cache.centerX.length = 0;
+  cache.centerY.length = 0;
+
+  if (!pathData || !defaultImage) {
+    cache.valid = true;
+    cache.pathDataRef = pathData;
+    cache.defaultImageRef = defaultImage;
+    cache.flippedImageRef = activeFlippedImage;
+    cache.cacheKey = getBrushCacheKey(brushConfig);
+    return cache;
+  }
+
+  const hasDirectionalMix = activeFlippedImage !== defaultImage;
+  let defaultSliceAccumulator = 0;
+
+  const brushScale = getBrushScale(brushConfig);
+  const stripRuntime = resolveBrushStripRuntimeSettings(brushConfig);
+  const stripLength = stripRuntime.stripWidth;
+  const stripStep = Math.max(0.1, stripLength - stripRuntime.repeatOverlap);
+  const widthOnPath = defaultImage.width * brushScale;
+  const tileDrawLength = defaultImage.height * brushScale;
+  const tileStep = Math.max(stripLength * 0.5, tileDrawLength + brushConfig.repeatGap);
+  const totalLength = pathData.totalLength;
+
+  const phase = positiveModulo(brushConfig.startOffset, tileStep);
+  let tileStart = -phase;
+
+  for (; tileStart < totalLength; tileStart += tileStep) {
+    let localStart = 0;
+    let localEnd = tileDrawLength;
+
+    if (brushConfig.cropPartialRepeat) {
+      localStart = Math.max(localStart, -tileStart);
+      localEnd = Math.min(localEnd, totalLength - tileStart);
+    }
+
+    if (localEnd <= localStart) {
+      continue;
+    }
+
+    for (let localAlongPath = localStart; localAlongPath < localEnd; localAlongPath += stripStep) {
+      const currentStripLength = Math.min(stripLength, localEnd - localAlongPath);
+      const distanceOnPath = tileStart + localAlongPath + currentStripLength * 0.5;
+
+      if (distanceOnPath < 0 || distanceOnPath > totalLength) {
+        continue;
+      }
+
+      const point = getPathPointAtLength(pathData, distanceOnPath);
+      const tangent = getPathTangentAtLength(pathData, distanceOnPath);
+      const tangentX = tangent.x;
+      const tangentY = tangent.y;
+      const normalX = -tangentY;
+      const normalY = tangentX;
+
+      let imageVariant = 0;
+      let sourceImage = defaultImage;
+      if (hasDirectionalMix) {
+        const horizontalAlignment = clamp(tangentX, -1, 1);
+        const defaultRatio = 0.5 + 0.5 * horizontalAlignment;
+        if (defaultRatio <= 0) {
+          sourceImage = activeFlippedImage;
+          imageVariant = 1;
+          defaultSliceAccumulator = 0;
+        } else if (defaultRatio >= 1) {
+          sourceImage = defaultImage;
+          imageVariant = 0;
+          defaultSliceAccumulator = 0;
+        } else {
+          defaultSliceAccumulator += defaultRatio;
+          if (defaultSliceAccumulator >= 1) {
+            sourceImage = defaultImage;
+            imageVariant = 0;
+            defaultSliceAccumulator -= 1;
+          } else {
+            sourceImage = activeFlippedImage;
+            imageVariant = 1;
+          }
+        }
+      }
+
+      const sourceY = localAlongPath / brushScale;
+      if (sourceY >= sourceImage.height) {
+        break;
+      }
+
+      const sourceHeight = Math.min(currentStripLength / brushScale, sourceImage.height - sourceY);
+      if (sourceHeight <= 0) {
+        continue;
+      }
+
+      const originX = point.x + normalX * brushConfig.pathOffset;
+      const originY = point.y + normalY * brushConfig.pathOffset;
+
+      cache.samples.push({
+        distanceOnPath,
+        originX,
+        originY,
+        tangentX,
+        tangentY,
+        normalX,
+        normalY,
+        sourceY,
+        sourceHeight,
+        currentStripLength,
+        widthOnPath,
+        imageVariant,
+      });
+      cache.distances.push(distanceOnPath);
+      cache.centerX.push(point.x);
+      cache.centerY.push(point.y);
+    }
+  }
+
+  cache.valid = true;
+  cache.pathDataRef = pathData;
+  cache.defaultImageRef = defaultImage;
+  cache.flippedImageRef = activeFlippedImage;
+  cache.cacheKey = getBrushCacheKey(brushConfig);
+  return cache;
+}
+
+function ensureBranchStripCache(branch, brushConfig, defaultImage, flippedImage) {
+  const cache = getBranchRenderCache(branch);
+  const activeFlippedImage = flippedImage || defaultImage;
+  const expectedBrushKey = getBrushCacheKey(brushConfig);
+  let rebuildReason = '';
+  if (!cache.valid) {
+    rebuildReason = 'invalid';
+  } else if (cache.pathDataRef !== branch.pathData) {
+    rebuildReason = 'pathData';
+  } else if (cache.defaultImageRef !== defaultImage || cache.flippedImageRef !== activeFlippedImage) {
+    rebuildReason = 'image';
+  } else if (cache.cacheKey !== expectedBrushKey) {
+    rebuildReason = 'brush';
+  }
+  const shouldRebuild = rebuildReason.length > 0;
+
+  if (shouldRebuild) {
+    const t0 = isPerformanceMonitoringEnabled() ? performance.now() : 0;
+    buildBranchStripCache(branch, brushConfig, defaultImage, activeFlippedImage);
+    const elapsed = isPerformanceMonitoringEnabled() ? (performance.now() - t0) : 0;
+    registerPerformanceCacheBuild(rebuildReason, elapsed);
+  } else {
+    registerPerformanceCacheReuse();
+  }
+  return cache;
+}
+
+function findLastDistanceIndex(distances, value) {
+  if (!Array.isArray(distances) || distances.length === 0) {
+    return -1;
+  }
+  let low = 0;
+  let high = distances.length - 1;
+  let answer = -1;
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    if (distances[mid] <= value) {
+      answer = mid;
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+  return answer;
+}
+
+function findFirstDistanceIndex(distances, value) {
+  if (!Array.isArray(distances) || distances.length === 0) {
+    return -1;
+  }
+  let low = 0;
+  let high = distances.length - 1;
+  let answer = distances.length;
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    if (distances[mid] >= value) {
+      answer = mid;
+      high = mid - 1;
+    } else {
+      low = mid + 1;
+    }
+  }
+  return answer >= distances.length ? -1 : answer;
+}
+
+function drawStripCentersFromCache(centerX, centerY, endIndexInclusive) {
+  if (!Array.isArray(centerX) || !Array.isArray(centerY) || endIndexInclusive < 0) {
+    return;
+  }
+  const count = Math.min(endIndexInclusive + 1, centerX.length, centerY.length);
+  if (count <= 0) {
+    return;
+  }
+  const step = Math.max(1, Math.floor(count / 350));
+  for (let i = 0; i < count; i += step) {
+    drawCircle(centerX[i], centerY[i], 1.3, 'rgba(255, 202, 39, 0.32)');
+  }
+}
+
+function drawBrushAlongPath(
+  branch,
+  brushConfig,
+  debugConfig,
+  defaultImage,
+  flippedImage,
+  visibleLength = null,
+  targetCtx = ctx,
+  drawOptions = null,
+) {
+  if (!branch || !branch.pathData || !defaultImage) {
+    return { drawnSamples: 0, skippedHidden: 0 };
+  }
+
+  const cache = ensureBranchStripCache(branch, brushConfig, defaultImage, flippedImage);
+  const samples = cache.samples;
+  if (!Array.isArray(samples) || samples.length === 0) {
+    return { drawnSamples: 0, skippedHidden: 0 };
+  }
+  const safeDrawOptions = drawOptions && typeof drawOptions === 'object' ? drawOptions : null;
+
+  const cutoffDistance = Number.isFinite(visibleLength)
+    ? clamp(visibleLength, 0, branch.pathData.totalLength)
+    : branch.pathData.totalLength;
+  const startDistance = safeDrawOptions && Number.isFinite(safeDrawOptions.visibleStartLength)
+    ? clamp(safeDrawOptions.visibleStartLength, 0, cutoffDistance)
+    : 0;
+  if (cutoffDistance <= 0 || cutoffDistance <= startDistance + 1e-8) {
+    return { drawnSamples: 0, skippedHidden: 0 };
+  }
+
+  const endIndexInclusive = findLastDistanceIndex(cache.distances, cutoffDistance);
+  const startIndex = findFirstDistanceIndex(cache.distances, startDistance);
+  if (endIndexInclusive < 0 || startIndex < 0 || startIndex > endIndexInclusive) {
+    return { drawnSamples: 0, skippedHidden: 0 };
+  }
+  if (isPerformanceMonitoringEnabled()) {
+    STATE.performance.intervalSamples += (endIndexInclusive - startIndex + 1);
+  }
+
+  const defaultRef = cache.defaultImageRef || defaultImage;
+  const flippedRef = cache.flippedImageRef || flippedImage || defaultImage;
+  const branchThicknessBaseScale = getBranchThicknessBaseScale(branch);
+  const taperEnabled = isBrushThicknessTaperEnabled(brushConfig);
+  const taperMinScale = taperEnabled ? getBrushThicknessMinScale(brushConfig) : 1;
+  const taperExponent = taperEnabled ? getBrushThicknessTaperExponent(brushConfig) : 1;
+  const taperMinWidth = taperEnabled ? getBrushThicknessMinWidth(brushConfig) : 0;
+  const inverseCutoffDistance = cutoffDistance > 1e-6 ? (1 / cutoffDistance) : 1e6;
+  const hiddenBand = safeDrawOptions && safeDrawOptions.hiddenBand && typeof safeDrawOptions.hiddenBand === 'object'
+    ? safeDrawOptions.hiddenBand
+    : null;
+  const skipFullyHiddenInBand = safeDrawOptions
+    && safeDrawOptions.skipFullyHiddenInBand === true
+    && hiddenBand
+    && Number.isFinite(hiddenBand.centerX)
+    && resolveHiddenBandEffectiveHalfWidthForYRange(hiddenBand, 0, STATE.viewportHeight) > 0;
+
+  if (skipFullyHiddenInBand) {
+    let fullyHidden = true;
+    for (let i = startIndex; i <= endIndexInclusive; i += 1) {
+      const sample = samples[i];
+      let normalizedDistance = clamp(sample.distanceOnPath * inverseCutoffDistance, 0, 1);
+      if (taperEnabled && taperExponent !== 1) {
+        normalizedDistance = Math.pow(normalizedDistance, taperExponent);
+      }
+      const taperedScale = taperEnabled
+        ? (1 + (taperMinScale - 1) * normalizedDistance)
+        : 1;
+      let widthOnPath = sample.widthOnPath * branchThicknessBaseScale * taperedScale;
+      if (taperMinWidth > 0) {
+        widthOnPath = Math.max(widthOnPath, taperMinWidth);
+      }
+      const xRadius = (
+        Math.abs(sample.normalX) * (widthOnPath * 0.5)
+        + Math.abs(sample.tangentX) * (sample.currentStripLength * 0.5)
+      );
+      const yRadius = (
+        Math.abs(sample.normalY) * (widthOnPath * 0.5)
+        + Math.abs(sample.tangentY) * (sample.currentStripLength * 0.5)
+      );
+      if (
+        !isAabbFullyInsideHiddenBand(
+          sample.originX - xRadius,
+          sample.originX + xRadius,
+          hiddenBand,
+          sample.originY - yRadius,
+          sample.originY + yRadius,
+        )
+      ) {
+        fullyHidden = false;
+        break;
+      }
+    }
+    if (fullyHidden) {
+      return { drawnSamples: 0, skippedHidden: 1 };
+    }
+  }
+
+  const _dpr = STATE.dpr;
+  let drawnSamples = 0;
+  for (let i = startIndex; i <= endIndexInclusive; i += 1) {
+    const sample = samples[i];
+    const sourceImage = sample.imageVariant === 1 ? flippedRef : defaultRef;
+    let normalizedDistance = clamp(sample.distanceOnPath * inverseCutoffDistance, 0, 1);
+    if (taperEnabled && taperExponent !== 1) {
+      normalizedDistance = Math.pow(normalizedDistance, taperExponent);
+    }
+    const taperedScale = taperEnabled
+      ? (1 + (taperMinScale - 1) * normalizedDistance)
+      : 1;
+    let widthOnPath = sample.widthOnPath * branchThicknessBaseScale * taperedScale;
+    if (taperMinWidth > 0) {
+      widthOnPath = Math.max(widthOnPath, taperMinWidth);
+    }
+    if (widthOnPath <= 1e-6) {
+      continue;
+    }
+
+    targetCtx.setTransform(
+      sample.normalX * _dpr,
+      sample.normalY * _dpr,
+      sample.tangentX * _dpr,
+      sample.tangentY * _dpr,
+      sample.originX * _dpr,
+      sample.originY * _dpr,
+    );
+
+    targetCtx.drawImage(
+      sourceImage,
+      0,
+      sample.sourceY,
+      sourceImage.width,
+      sample.sourceHeight,
+      -widthOnPath * 0.5,
+      -sample.currentStripLength * 0.5,
+      widthOnPath,
+      sample.currentStripLength,
+    );
+
+    if (debugConfig.enabled && debugConfig.showStripBounds) {
+      targetCtx.strokeStyle = 'rgba(255, 215, 0, 0.65)';
+      targetCtx.lineWidth = 1;
+      targetCtx.strokeRect(
+        -widthOnPath * 0.5,
+        -sample.currentStripLength * 0.5,
+        widthOnPath,
+        sample.currentStripLength,
+      );
+    }
+
+    drawnSamples += 1;
+  }
+  targetCtx.setTransform(STATE.dpr, 0, 0, STATE.dpr, 0, 0);
+
+  if (debugConfig.enabled && debugConfig.showStripCenters) {
+    drawStripCentersFromCache(cache.centerX, cache.centerY, endIndexInclusive);
+  }
+  return { drawnSamples, skippedHidden: 0 };
+}
+
+const DISABLED_DEBUG_CONFIG = {
+  enabled: false,
+  showStripBounds: false,
+  showStripCenters: false,
+};
+const FRAME_JUMP_KEYS = ['1', '2', '3', '4', '5', '6'];
+const FRAME_JUMP_KEY_SET = new Set(FRAME_JUMP_KEYS);
+const _renderSceneBranchById = new Map();
+const _renderSceneBranchVisibleLengthById = new Map();
+const _renderSceneBranchEndpointVisibleById = new Map();
+const _growthEndpointPool = [];
+const _growthEndpointResult = [];
+
+// =========================
+// 13) Animation Lifecycle and Timing
+// =========================
+function sanitizeAnimationSpeedMode(mode, fallback = 'duration') {
+  if (mode === 'duration' || mode === 'rate') {
+    return mode;
+  }
+  if (fallback === 'duration' || fallback === 'rate') {
+    return fallback;
+  }
+  return 'duration';
+}
+
+function sanitizeAnimationGrowthEaseMode(mode, fallback = 'linear') {
+  if (mode === 'linear' || mode === 'easeIn' || mode === 'easeOut' || mode === 'easeInOut') {
+    return mode;
+  }
+  if (fallback === 'linear' || fallback === 'easeIn' || fallback === 'easeOut' || fallback === 'easeInOut') {
+    return fallback;
+  }
+  return 'linear';
+}
+
+function sanitizeBranchGrowthMode(mode, fallback = 'simultaneous') {
+  if (mode === 'simultaneous' || mode === 'linearBySeedY') {
+    return mode;
+  }
+  if (fallback === 'simultaneous' || fallback === 'linearBySeedY') {
+    return fallback;
+  }
+  return 'simultaneous';
+}
+
+function sanitizeBranchGrowthSweepDirection(value, fallback = 'down') {
+  if (value === 'down' || value === 'topToBottom') {
+    return 'down';
+  }
+  if (value === 'up' || value === 'bottomToTop') {
+    return 'up';
+  }
+  if (fallback === 'down' || fallback === 'topToBottom') {
+    return 'down';
+  }
+  if (fallback === 'up' || fallback === 'bottomToTop') {
+    return 'up';
+  }
+  return 'down';
+}
+
+function sanitizeOverlayPromotionGrowthOnMode(value, fallback = 'matchGrowthOff') {
+  if (value === 'matchGrowthOff' || value === 'firstExitCutover') {
+    return value;
+  }
+  if (value === 'firstExitSolver') {
+    return 'firstExitCutover';
+  }
+  if (fallback === 'matchGrowthOff' || fallback === 'firstExitCutover') {
+    return fallback;
+  }
+  if (fallback === 'firstExitSolver') {
+    return 'firstExitCutover';
+  }
+  return 'matchGrowthOff';
+}
+
+function sanitizeFrameJumpBindingValue(value, fallback = null) {
+  if (value === null) {
+    return null;
+  }
+  if (value === undefined) {
+    return fallback;
+  }
+  if (typeof value === 'string' && value.trim().length === 0) {
+    return null;
+  }
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return fallback;
+  }
+  return Math.max(0, Math.floor(numeric));
+}
+
+function sanitizeFrameJumpHotkeysOptions(rawValue, fallbackValue = null) {
+  const safeFallback = isPlainObjectLiteral(fallbackValue) ? fallbackValue : {};
+  const safeValue = isPlainObjectLiteral(rawValue) ? rawValue : {};
+  const fallbackBindings = isPlainObjectLiteral(safeFallback.bindings) ? safeFallback.bindings : {};
+  const valueBindings = isPlainObjectLiteral(safeValue.bindings) ? safeValue.bindings : null;
+
+  const timelineFpsRaw = (
+    safeValue.timelineFps !== undefined
+      ? Number(safeValue.timelineFps)
+      : Number(safeFallback.timelineFps)
+  );
+  const timelineFps = Number.isFinite(timelineFpsRaw) && timelineFpsRaw > 0
+    ? timelineFpsRaw
+    : 24;
+
+  const bindings = {};
+  for (let i = 0; i < FRAME_JUMP_KEYS.length; i += 1) {
+    const key = FRAME_JUMP_KEYS[i];
+    const hasValueBinding = Boolean(
+      valueBindings
+      && Object.prototype.hasOwnProperty.call(valueBindings, key)
+    );
+    const fallbackBinding = sanitizeFrameJumpBindingValue(fallbackBindings[key], null);
+    bindings[key] = sanitizeFrameJumpBindingValue(
+      hasValueBinding ? valueBindings[key] : undefined,
+      fallbackBinding,
+    );
+  }
+
+  return {
+    enabled: safeValue.enabled !== undefined
+      ? safeValue.enabled !== false
+      : safeFallback.enabled !== false,
+    timelineFps,
+    bindings,
+  };
+}
+
+function resolveFrameJumpHotkeysConfig() {
+  const topLevelConfig = isPlainObjectLiteral(CONFIG.frameJumpHotkeys)
+    ? CONFIG.frameJumpHotkeys
+    : null;
+  return sanitizeFrameJumpHotkeysOptions(topLevelConfig, null);
+}
+
+function applyFrameJumpHotkeysOptions(nextOptions) {
+  if (!isPlainObjectLiteral(nextOptions)) {
+    return;
+  }
+  CONFIG.frameJumpHotkeys = sanitizeFrameJumpHotkeysOptions(
+    nextOptions,
+    CONFIG.frameJumpHotkeys,
+  );
+}
+
+function sanitizeSwipeSectionTransitionTimingMode(value, fallback = 'matchFrameDelta') {
+  if (value === 'matchFrameDelta' || value === 'fixedDuration' || value === 'instant') {
+    return value;
+  }
+  if (fallback === 'matchFrameDelta' || fallback === 'fixedDuration' || fallback === 'instant') {
+    return fallback;
+  }
+  return 'matchFrameDelta';
+}
+
+function sanitizeSwipeSectionRapidMode(value, fallback = 'ignore') {
+  if (value === 'ignore' || value === 'retarget') {
+    return value;
+  }
+  if (fallback === 'ignore' || fallback === 'retarget') {
+    return fallback;
+  }
+  return 'ignore';
+}
+
+function sanitizeSwipeSectionOverlayTransitionMode(value, fallback = 'fade') {
+  if (value === 'fade' || value === 'none') {
+    return value;
+  }
+  if (fallback === 'fade' || fallback === 'none') {
+    return fallback;
+  }
+  return 'fade';
+}
+
+function resolveSwipeSectionsFallbackOverlayPath() {
+  const centerOverlayConfig = isPlainObjectLiteral(CONFIG.centerOverlayImage)
+    ? CONFIG.centerOverlayImage
+    : {};
+  if (
+    typeof centerOverlayConfig.spritePath === 'string'
+    && centerOverlayConfig.spritePath.trim().length > 0
+  ) {
+    return centerOverlayConfig.spritePath.trim();
+  }
+  return './test_page.png';
+}
+
+function sanitizeRsvpResponseValue(value, fallback = null) {
+  if (value === 'yes' || value === 'no') {
+    return value;
+  }
+  if (fallback === 'yes' || fallback === 'no' || fallback === null) {
+    return fallback;
+  }
+  return null;
+}
+
+function sanitizeRsvpTextAlign(value, fallback = 'left') {
+  if (value === 'left' || value === 'center' || value === 'right' || value === 'start' || value === 'end') {
+    return value;
+  }
+  if (fallback === 'left' || fallback === 'center' || fallback === 'right' || fallback === 'start' || fallback === 'end') {
+    return fallback;
+  }
+  return 'left';
+}
+
+function resolveSwipeSectionsRsvpConfig(
+  rsvpCandidate,
+  sections = [],
+) {
+  const safeConfig = isPlainObjectLiteral(rsvpCandidate) ? rsvpCandidate : {};
+  const nameFieldRaw = isPlainObjectLiteral(safeConfig.nameField) ? safeConfig.nameField : {};
+  const buttonsRaw = isPlainObjectLiteral(safeConfig.buttons) ? safeConfig.buttons : {};
+  const yesButtonRaw = isPlainObjectLiteral(buttonsRaw.yes) ? buttonsRaw.yes : {};
+  const noButtonRaw = isPlainObjectLiteral(buttonsRaw.no) ? buttonsRaw.no : {};
+  const confirmButtonRaw = isPlainObjectLiteral(buttonsRaw.confirm) ? buttonsRaw.confirm : {};
+  const confirmAppsScriptRaw = isPlainObjectLiteral(confirmButtonRaw.appsScript) ? confirmButtonRaw.appsScript : {};
+  const animationRaw = isPlainObjectLiteral(buttonsRaw.animation) ? buttonsRaw.animation : {};
+  const initialStateRaw = isPlainObjectLiteral(safeConfig.initialState) ? safeConfig.initialState : {};
+  const debugRaw = isPlainObjectLiteral(safeConfig.debug) ? safeConfig.debug : {};
+  const fallbackSectionId = (
+    sections[2]
+    && typeof sections[2].id === 'string'
+    && sections[2].id.trim().length > 0
+  )
+    ? sections[2].id.trim()
+    : (
+      sections[0]
+      && typeof sections[0].id === 'string'
+      && sections[0].id.trim().length > 0
+        ? sections[0].id.trim()
+        : 'section-3'
+    );
+  const requestedSectionId = (
+    typeof safeConfig.sectionId === 'string'
+    && safeConfig.sectionId.trim().length > 0
+  )
+    ? safeConfig.sectionId.trim()
+    : fallbackSectionId;
+  const hasSectionId = sections.some((section) => section && section.id === requestedSectionId);
+  const sectionId = hasSectionId ? requestedSectionId : fallbackSectionId;
+  const fontSourcePath = normalizeHostedAssetPath(
+    typeof nameFieldRaw.fontSourcePath === 'string' ? nameFieldRaw.fontSourcePath.trim() : '',
+  );
+  return {
+    enabled: safeConfig.enabled === true,
+    sectionId,
+    nameField: {
+      offsetXVideoHeightRatio: Number.isFinite(Number(nameFieldRaw.offsetXVideoHeightRatio))
+        ? Number(nameFieldRaw.offsetXVideoHeightRatio)
+        : 0,
+      offsetYVideoHeightRatio: Number.isFinite(Number(nameFieldRaw.offsetYVideoHeightRatio))
+        ? Number(nameFieldRaw.offsetYVideoHeightRatio)
+        : 0,
+      widthVideoHeightRatio: Number.isFinite(Number(nameFieldRaw.widthVideoHeightRatio))
+        ? Math.max(0, Number(nameFieldRaw.widthVideoHeightRatio))
+        : 0.34,
+      heightVideoHeightRatio: Number.isFinite(Number(nameFieldRaw.heightVideoHeightRatio))
+        ? Math.max(0, Number(nameFieldRaw.heightVideoHeightRatio))
+        : 0.06,
+      fontFamily: (
+        typeof nameFieldRaw.fontFamily === 'string'
+        && nameFieldRaw.fontFamily.trim().length > 0
+      )
+        ? nameFieldRaw.fontFamily.trim()
+        : '"Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, "Times New Roman", serif',
+      fontSourcePath: (
+        typeof fontSourcePath === 'string'
+        && fontSourcePath.trim().length > 0
+      )
+        ? fontSourcePath.trim()
+        : '',
+      fontWeight: (
+        typeof nameFieldRaw.fontWeight === 'string'
+        || Number.isFinite(Number(nameFieldRaw.fontWeight))
+      )
+        ? nameFieldRaw.fontWeight
+        : 500,
+      fontStyle: (
+        typeof nameFieldRaw.fontStyle === 'string'
+        && nameFieldRaw.fontStyle.trim().length > 0
+      )
+        ? nameFieldRaw.fontStyle.trim()
+        : 'normal',
+      fontSizeVideoHeightRatio: Number.isFinite(Number(nameFieldRaw.fontSizeVideoHeightRatio))
+        ? Math.max(0, Number(nameFieldRaw.fontSizeVideoHeightRatio))
+        : 0.028,
+      textColor: (
+        typeof nameFieldRaw.textColor === 'string'
+        && nameFieldRaw.textColor.trim().length > 0
+      )
+        ? nameFieldRaw.textColor.trim()
+        : '#101010',
+      textAlign: sanitizeRsvpTextAlign(nameFieldRaw.textAlign, 'center'),
+      maxLength: Number.isFinite(Number(nameFieldRaw.maxLength))
+        ? clamp(Math.floor(Number(nameFieldRaw.maxLength)), 1, 512)
+        : 120,
+      autoFitEnabled: nameFieldRaw.autoFitEnabled !== false,
+      autoFitMinFontSizeRatio: clamp(
+        Number.isFinite(Number(nameFieldRaw.autoFitMinFontSizeRatio))
+          ? Number(nameFieldRaw.autoFitMinFontSizeRatio)
+          : 0.62,
+        0.05,
+        1,
+      ),
+      autoFitStepPx: Number.isFinite(Number(nameFieldRaw.autoFitStepPx))
+        ? Math.max(0.1, Number(nameFieldRaw.autoFitStepPx))
+        : 0.5,
+      autoFitHorizontalPaddingPx: Number.isFinite(Number(nameFieldRaw.autoFitHorizontalPaddingPx))
+        ? Math.max(0, Number(nameFieldRaw.autoFitHorizontalPaddingPx))
+        : 4,
+    },
+    buttons: {
+      spritePath: (
+        typeof buttonsRaw.spritePath === 'string'
+        && buttonsRaw.spritePath.trim().length > 0
+      )
+        ? buttonsRaw.spritePath.trim()
+        : '',
+      spriteCellWidth: Number.isFinite(Number(buttonsRaw.spriteCellWidth))
+        ? Math.max(1, Number(buttonsRaw.spriteCellWidth))
+        : 44,
+      spriteCellHeight: Number.isFinite(Number(buttonsRaw.spriteCellHeight))
+        ? Math.max(1, Number(buttonsRaw.spriteCellHeight))
+        : 44,
+      spriteScale: Number.isFinite(Number(buttonsRaw.spriteScale))
+        ? Math.max(0.01, Number(buttonsRaw.spriteScale))
+        : 1,
+      spriteCols: Number.isFinite(Number(buttonsRaw.spriteCols))
+        ? Math.max(2, Math.floor(Number(buttonsRaw.spriteCols)))
+        : 2,
+      spriteRows: Number.isFinite(Number(buttonsRaw.spriteRows))
+        ? Math.max(2, Math.floor(Number(buttonsRaw.spriteRows)))
+        : 2,
+      frameMap: {
+        yesRow: Number.isFinite(Number(buttonsRaw.yesRow))
+          ? Math.max(0, Math.floor(Number(buttonsRaw.yesRow)))
+          : 0,
+        noRow: Number.isFinite(Number(buttonsRaw.noRow))
+          ? Math.max(0, Math.floor(Number(buttonsRaw.noRow)))
+          : 1,
+        unselectedCol: Number.isFinite(Number(buttonsRaw.unselectedCol))
+          ? Math.max(0, Math.floor(Number(buttonsRaw.unselectedCol)))
+          : 0,
+        selectedCol: Number.isFinite(Number(buttonsRaw.selectedCol))
+          ? Math.max(0, Math.floor(Number(buttonsRaw.selectedCol)))
+          : 1,
+      },
+      yes: {
+        offsetXVideoHeightRatio: Number.isFinite(Number(yesButtonRaw.offsetXVideoHeightRatio))
+          ? Number(yesButtonRaw.offsetXVideoHeightRatio)
+          : -0.095,
+        offsetYVideoHeightRatio: Number.isFinite(Number(yesButtonRaw.offsetYVideoHeightRatio))
+          ? Number(yesButtonRaw.offsetYVideoHeightRatio)
+          : 0.152,
+        widthVideoHeightRatio: Number.isFinite(Number(yesButtonRaw.widthVideoHeightRatio))
+          ? Math.max(0, Number(yesButtonRaw.widthVideoHeightRatio))
+          : 0.11,
+        heightVideoHeightRatio: Number.isFinite(Number(yesButtonRaw.heightVideoHeightRatio))
+          ? Math.max(0, Number(yesButtonRaw.heightVideoHeightRatio))
+          : 0.11,
+      },
+      no: {
+        offsetXVideoHeightRatio: Number.isFinite(Number(noButtonRaw.offsetXVideoHeightRatio))
+          ? Number(noButtonRaw.offsetXVideoHeightRatio)
+          : 0.095,
+        offsetYVideoHeightRatio: Number.isFinite(Number(noButtonRaw.offsetYVideoHeightRatio))
+          ? Number(noButtonRaw.offsetYVideoHeightRatio)
+          : 0.152,
+        widthVideoHeightRatio: Number.isFinite(Number(noButtonRaw.widthVideoHeightRatio))
+          ? Math.max(0, Number(noButtonRaw.widthVideoHeightRatio))
+          : 0.11,
+        heightVideoHeightRatio: Number.isFinite(Number(noButtonRaw.heightVideoHeightRatio))
+          ? Math.max(0, Number(noButtonRaw.heightVideoHeightRatio))
+          : 0.11,
+      },
+      confirm: {
+        enabled: confirmButtonRaw.enabled !== false,
+        offsetXVideoHeightRatio: Number.isFinite(Number(confirmButtonRaw.offsetXVideoHeightRatio))
+          ? Number(confirmButtonRaw.offsetXVideoHeightRatio)
+          : 0,
+        offsetYVideoHeightRatio: Number.isFinite(Number(confirmButtonRaw.offsetYVideoHeightRatio))
+          ? Number(confirmButtonRaw.offsetYVideoHeightRatio)
+          : 0.25,
+        widthVideoHeightRatio: Number.isFinite(Number(confirmButtonRaw.widthVideoHeightRatio))
+          ? Math.max(0, Number(confirmButtonRaw.widthVideoHeightRatio))
+          : 0.14,
+        heightVideoHeightRatio: Number.isFinite(Number(confirmButtonRaw.heightVideoHeightRatio))
+          ? Math.max(0, Number(confirmButtonRaw.heightVideoHeightRatio))
+          : 0.07,
+        spritePath: (
+          typeof confirmButtonRaw.spritePath === 'string'
+          && confirmButtonRaw.spritePath.trim().length > 0
+        )
+          ? confirmButtonRaw.spritePath.trim()
+          : '',
+        spriteCellWidth: Number.isFinite(Number(confirmButtonRaw.spriteCellWidth))
+          ? Math.max(1, Number(confirmButtonRaw.spriteCellWidth))
+          : 88,
+        spriteCellHeight: Number.isFinite(Number(confirmButtonRaw.spriteCellHeight))
+          ? Math.max(1, Number(confirmButtonRaw.spriteCellHeight))
+          : 44,
+        spriteScale: Number.isFinite(Number(confirmButtonRaw.spriteScale))
+          ? Math.max(0.01, Number(confirmButtonRaw.spriteScale))
+          : 1,
+        spriteCols: Number.isFinite(Number(confirmButtonRaw.spriteCols))
+          ? Math.max(1, Math.floor(Number(confirmButtonRaw.spriteCols)))
+          : 1,
+        spriteRows: Number.isFinite(Number(confirmButtonRaw.spriteRows))
+          ? Math.max(1, Math.floor(Number(confirmButtonRaw.spriteRows)))
+          : 2,
+        frameMap: {
+          unselectedRow: Number.isFinite(Number(confirmButtonRaw.unselectedRow))
+            ? Math.max(0, Math.floor(Number(confirmButtonRaw.unselectedRow)))
+            : 0,
+          selectedRow: Number.isFinite(Number(confirmButtonRaw.selectedRow))
+            ? Math.max(0, Math.floor(Number(confirmButtonRaw.selectedRow)))
+            : 1,
+          col: Number.isFinite(Number(confirmButtonRaw.col))
+            ? Math.max(0, Math.floor(Number(confirmButtonRaw.col)))
+            : 0,
+        },
+        appsScript: {
+          enabled: confirmAppsScriptRaw.enabled !== false,
+          webAppUrl: (
+            typeof confirmAppsScriptRaw.webAppUrl === 'string'
+            && confirmAppsScriptRaw.webAppUrl.trim().length > 0
+          )
+            ? confirmAppsScriptRaw.webAppUrl.trim()
+            : '',
+          mode: (
+            typeof confirmAppsScriptRaw.mode === 'string'
+            && (
+              confirmAppsScriptRaw.mode.trim() === 'cors'
+              || confirmAppsScriptRaw.mode.trim() === 'no-cors'
+              || confirmAppsScriptRaw.mode.trim() === 'same-origin'
+              || confirmAppsScriptRaw.mode.trim() === 'navigate'
+            )
+          )
+            ? confirmAppsScriptRaw.mode.trim()
+            : 'no-cors',
+          method: (
+            typeof confirmAppsScriptRaw.method === 'string'
+            && confirmAppsScriptRaw.method.trim().length > 0
+          )
+            ? confirmAppsScriptRaw.method.trim().toUpperCase()
+            : 'POST',
+          headers: isPlainObjectLiteral(confirmAppsScriptRaw.headers)
+            ? confirmAppsScriptRaw.headers
+            : { 'Content-Type': 'application/json' },
+          payload: isPlainObjectLiteral(confirmAppsScriptRaw.payload)
+            ? confirmAppsScriptRaw.payload
+            : {},
+        },
+        onSubmit: typeof confirmButtonRaw.onSubmit === 'function' ? confirmButtonRaw.onSubmit : null,
+        submitUrl: (
+          typeof confirmButtonRaw.submitUrl === 'string'
+          && confirmButtonRaw.submitUrl.trim().length > 0
+        )
+          ? confirmButtonRaw.submitUrl.trim()
+          : '',
+        submitMethod: (
+          typeof confirmButtonRaw.submitMethod === 'string'
+          && confirmButtonRaw.submitMethod.trim().length > 0
+        )
+          ? confirmButtonRaw.submitMethod.trim()
+          : 'POST',
+        submitHeaders: isPlainObjectLiteral(confirmButtonRaw.submitHeaders)
+          ? confirmButtonRaw.submitHeaders
+          : { 'Content-Type': 'application/json' },
+        submitPayload: isPlainObjectLiteral(confirmButtonRaw.submitPayload)
+          ? confirmButtonRaw.submitPayload
+          : {},
+      },
+      animation: {
+        hoverScale: Number.isFinite(Number(animationRaw.hoverScale))
+          ? Math.max(0.01, Number(animationRaw.hoverScale))
+          : 1.06,
+        selectedScale: Number.isFinite(Number(animationRaw.selectedScale))
+          ? Math.max(0.01, Number(animationRaw.selectedScale))
+          : 1.14,
+        transitionDurationMs: Number.isFinite(Number(animationRaw.transitionDurationMs))
+          ? Math.max(0, Number(animationRaw.transitionDurationMs))
+          : 180,
+        transitionEasing: (
+          typeof animationRaw.transitionEasing === 'string'
+          && animationRaw.transitionEasing.trim().length > 0
+        )
+          ? animationRaw.transitionEasing.trim()
+          : 'cubic-bezier(0.16, 1, 0.3, 1)',
+      },
+    },
+    initialState: {
+      name: typeof initialStateRaw.name === 'string' ? initialStateRaw.name : '',
+      response: sanitizeRsvpResponseValue(initialStateRaw.response, null),
+    },
+    debug: {
+      enabled: debugRaw.enabled === true,
+      showNameFieldRect: debugRaw.showNameFieldRect !== false,
+      showButtonRects: debugRaw.showButtonRects !== false,
+      showConfirmButtonRect: debugRaw.showConfirmButtonRect !== false,
+      strokeColor: (
+        typeof debugRaw.strokeColor === 'string'
+        && debugRaw.strokeColor.trim().length > 0
+      )
+        ? debugRaw.strokeColor.trim()
+        : 'rgba(255, 120, 120, 0.95)',
+      lineWidthPx: Number.isFinite(Number(debugRaw.lineWidthPx))
+        ? Math.max(1, Number(debugRaw.lineWidthPx))
+        : 2,
+    },
+  };
+}
+
+function resolveSwipeSectionsConfig(configCandidate = CONFIG.swipeSections) {
+  const safeConfig = isPlainObjectLiteral(configCandidate) ? configCandidate : {};
+  const gateConfig = resolveHeroPlaybackGateConfig(CONFIG.heroPlaybackGate);
+  const fallbackFrame = Number.isFinite(Number(gateConfig.postButtonPauseFrame))
+    ? Math.max(0, Math.floor(Number(gateConfig.postButtonPauseFrame)))
+    : 0;
+  const fallbackOverlayPath = resolveSwipeSectionsFallbackOverlayPath();
+  const pagesRaw = Array.isArray(safeConfig.pages) ? safeConfig.pages : [];
+  const pages = [];
+  for (let i = 0; i < pagesRaw.length; i += 1) {
+    const pagePath = normalizeCenterOverlayImagePath(pagesRaw[i]);
+    if (pagePath.length > 0) {
+      pages.push(pagePath);
+    }
+  }
+  if (pages.length <= 0) {
+    pages.push(fallbackOverlayPath);
+  }
+
+  const resolvePageIndexFromPath = (path) => {
+    const normalizedPath = normalizeCenterOverlayImagePath(path);
+    if (normalizedPath.length <= 0) {
+      return 1;
+    }
+    const existingIndex = pages.findIndex((candidate) => candidate === normalizedPath);
+    if (existingIndex >= 0) {
+      return existingIndex + 1;
+    }
+    pages.push(normalizedPath);
+    return pages.length;
+  };
+
+  const sectionsRaw = Array.isArray(safeConfig.sections) ? safeConfig.sections : [];
+  const sections = [];
+  const resolveSwipeSectionButtonConfig = (buttonCandidate) => {
+    const buttonRaw = isPlainObjectLiteral(buttonCandidate) ? buttonCandidate : null;
+    if (!buttonRaw) {
+      return null;
+    }
+    const animationRaw = isPlainObjectLiteral(buttonRaw.animation) ? buttonRaw.animation : {};
+    const debugRaw = isPlainObjectLiteral(buttonRaw.debug) ? buttonRaw.debug : {};
+    const normalizedPngSrc = (
+      typeof buttonRaw.pngSrc === 'string'
+      && buttonRaw.pngSrc.trim().length > 0
+    )
+      ? normalizeCenterOverlayImagePath(buttonRaw.pngSrc.trim())
+      : '';
+    const normalizedLink = (
+      typeof buttonRaw.link === 'string'
+      && buttonRaw.link.trim().length > 0
+    )
+      ? buttonRaw.link.trim()
+      : '';
+    return {
+      enabled: buttonRaw.enabled === true,
+      text: (
+        typeof buttonRaw.text === 'string'
+        && buttonRaw.text.trim().length > 0
+      )
+        ? buttonRaw.text.trim()
+        : 'View Location',
+      link: normalizedLink,
+      pngSrc: normalizedPngSrc,
+      pngFit: (
+        typeof buttonRaw.pngFit === 'string'
+        && buttonRaw.pngFit.trim().length > 0
+      )
+        ? buttonRaw.pngFit.trim()
+        : 'contain',
+      pngPadding: (
+        typeof buttonRaw.pngPadding === 'string'
+        && buttonRaw.pngPadding.trim().length > 0
+      )
+        ? buttonRaw.pngPadding.trim()
+        : '0',
+      offsetXVideoHeightRatio: Number.isFinite(Number(buttonRaw.offsetXVideoHeightRatio))
+        ? Number(buttonRaw.offsetXVideoHeightRatio)
+        : 0,
+      offsetYVideoHeightRatio: Number.isFinite(Number(buttonRaw.offsetYVideoHeightRatio))
+        ? Number(buttonRaw.offsetYVideoHeightRatio)
+        : 0,
+      widthVideoHeightRatio: Number.isFinite(Number(buttonRaw.widthVideoHeightRatio))
+        ? Math.max(0, Number(buttonRaw.widthVideoHeightRatio))
+        : 0,
+      heightVideoHeightRatio: Number.isFinite(Number(buttonRaw.heightVideoHeightRatio))
+        ? Math.max(0, Number(buttonRaw.heightVideoHeightRatio))
+        : 0,
+      backgroundColor: (
+        typeof buttonRaw.backgroundColor === 'string'
+        && buttonRaw.backgroundColor.trim().length > 0
+      )
+        ? buttonRaw.backgroundColor.trim()
+        : 'rgba(255, 255, 255, 0.9)',
+      textColor: (
+        typeof buttonRaw.textColor === 'string'
+        && buttonRaw.textColor.trim().length > 0
+      )
+        ? buttonRaw.textColor.trim()
+        : '#1f1b17',
+      fontFamily: (
+        typeof buttonRaw.fontFamily === 'string'
+        && buttonRaw.fontFamily.trim().length > 0
+      )
+        ? buttonRaw.fontFamily.trim()
+        : 'inherit',
+      fontSize: (
+        typeof buttonRaw.fontSize === 'string'
+        && buttonRaw.fontSize.trim().length > 0
+      )
+        ? buttonRaw.fontSize.trim()
+        : 'inherit',
+      fontWeight: (
+        buttonRaw.fontWeight !== undefined
+        && buttonRaw.fontWeight !== null
+      )
+        ? buttonRaw.fontWeight
+        : 500,
+      borderRadius: (
+        typeof buttonRaw.borderRadius === 'string'
+        && buttonRaw.borderRadius.trim().length > 0
+      )
+        ? buttonRaw.borderRadius.trim()
+        : '4px',
+      padding: (
+        typeof buttonRaw.padding === 'string'
+        && buttonRaw.padding.trim().length > 0
+      )
+        ? buttonRaw.padding.trim()
+        : '8px 16px',
+      animation: {
+        hoverScale: Number.isFinite(Number(animationRaw.hoverScale))
+          ? Math.max(0.01, Number(animationRaw.hoverScale))
+          : 1.08,
+        transitionDurationMs: Number.isFinite(Number(animationRaw.transitionDurationMs))
+          ? Math.max(0, Number(animationRaw.transitionDurationMs))
+          : 150,
+        transitionEasing: (
+          typeof animationRaw.transitionEasing === 'string'
+          && animationRaw.transitionEasing.trim().length > 0
+        )
+          ? animationRaw.transitionEasing.trim()
+          : 'cubic-bezier(0.16, 1, 0.3, 1)',
+      },
+      debug: {
+        enabled: debugRaw.enabled === true,
+        outlineStyle: (
+          typeof debugRaw.outlineStyle === 'string'
+          && debugRaw.outlineStyle.trim().length > 0
+        )
+          ? debugRaw.outlineStyle.trim()
+          : '2px dashed rgba(255, 20, 20, 0.9)',
+        outlineOffset: (
+          typeof debugRaw.outlineOffset === 'string'
+          && debugRaw.outlineOffset.trim().length > 0
+        )
+          ? debugRaw.outlineOffset.trim()
+          : '3px',
+      },
+    };
+  };
+  for (let i = 0; i < sectionsRaw.length; i += 1) {
+    const rawEntry = isPlainObjectLiteral(sectionsRaw[i]) ? sectionsRaw[i] : {};
+    const fallbackSectionFrame = sections.length > 0
+      ? sections[sections.length - 1].frame
+      : fallbackFrame;
+    const frameRaw = Number(rawEntry.frame);
+    const frame = Number.isFinite(frameRaw)
+      ? Math.max(0, Math.floor(frameRaw))
+      : fallbackSectionFrame;
+    const id = (
+      typeof rawEntry.id === 'string'
+      && rawEntry.id.trim().length > 0
+    )
+      ? rawEntry.id.trim()
+      : `section-${sections.length + 1}`;
+    const explicitPageIndexRaw = Number(
+      rawEntry.pageIndex !== undefined
+        ? rawEntry.pageIndex
+        : rawEntry.centerOverlayPageIndex
+    );
+    let centerOverlayPageIndex = Number.isFinite(explicitPageIndexRaw)
+      ? Math.floor(explicitPageIndexRaw)
+      : 0;
+    if (centerOverlayPageIndex <= 0) {
+      const explicitPath = (
+        typeof rawEntry.centerOverlayImagePath === 'string'
+        && rawEntry.centerOverlayImagePath.trim().length > 0
+      )
+        ? rawEntry.centerOverlayImagePath.trim()
+        : '';
+      centerOverlayPageIndex = resolvePageIndexFromPath(explicitPath || pages[0] || fallbackOverlayPath);
+    }
+    centerOverlayPageIndex = clamp(centerOverlayPageIndex, 1, pages.length);
+    const centerOverlayImagePath = pages[centerOverlayPageIndex - 1] || fallbackOverlayPath;
+    const centerOverlayOffsetYVideoHeightRatioRaw = Number(rawEntry.centerOverlayOffsetYVideoHeightRatio);
+    const centerOverlayOffsetYVideoHeightRatio = Number.isFinite(centerOverlayOffsetYVideoHeightRatioRaw)
+      ? centerOverlayOffsetYVideoHeightRatioRaw
+      : null;
+    const button = resolveSwipeSectionButtonConfig(rawEntry.button);
+    sections.push({
+      id,
+      frame,
+      centerOverlayPageIndex,
+      centerOverlayImagePath,
+      centerOverlayOffsetYVideoHeightRatio,
+      button,
+    });
+  }
+  if (sections.length <= 0) {
+    sections.push({
+      id: 'section-1',
+      frame: fallbackFrame,
+      centerOverlayPageIndex: 1,
+      centerOverlayImagePath: pages[0] || fallbackOverlayPath,
+      centerOverlayOffsetYVideoHeightRatio: null,
+      button: null,
+    });
+  }
+
+  const inputConfig = isPlainObjectLiteral(safeConfig.input) ? safeConfig.input : {};
+  const transitionConfig = isPlainObjectLiteral(safeConfig.transition) ? safeConfig.transition : {};
+  const overlayTransitionConfig = isPlainObjectLiteral(safeConfig.overlayTransition)
+    ? safeConfig.overlayTransition
+    : {};
+  const initialSectionIndexRaw = Number(safeConfig.initialSectionIndex);
+  const initialSectionIndex = Number.isFinite(initialSectionIndexRaw)
+    ? clamp(Math.floor(initialSectionIndexRaw), 0, sections.length - 1)
+    : 0;
+
+  return {
+    enabled: safeConfig.enabled === true,
+    initialSectionIndex,
+    pages,
+    sections,
+    input: {
+      wheelEnabled: inputConfig.wheelEnabled !== false,
+      touchEnabled: inputConfig.touchEnabled !== false,
+      wheelDeltaThresholdPx: Number.isFinite(Number(inputConfig.wheelDeltaThresholdPx))
+        ? Math.max(1, Number(inputConfig.wheelDeltaThresholdPx))
+        : 95,
+      wheelCooldownMs: Number.isFinite(Number(inputConfig.wheelCooldownMs))
+        ? Math.max(0, Number(inputConfig.wheelCooldownMs))
+        : 0,
+      wheelGestureQuietWindowMs: Number.isFinite(Number(inputConfig.wheelGestureQuietWindowMs))
+        ? Math.max(0, Number(inputConfig.wheelGestureQuietWindowMs))
+        : 80,
+      wheelGestureResetDeltaPx: Number.isFinite(Number(inputConfig.wheelGestureResetDeltaPx))
+        ? Math.max(0, Number(inputConfig.wheelGestureResetDeltaPx))
+        : 12,
+      wheelDirectionResetEnabled: inputConfig.wheelDirectionResetEnabled !== false,
+      touchSwipeThresholdPx: Number.isFinite(Number(inputConfig.touchSwipeThresholdPx))
+        ? Math.max(1, Number(inputConfig.touchSwipeThresholdPx))
+        : 42,
+      touchMinFlickVelocityPxPerMs: Number.isFinite(Number(inputConfig.touchMinFlickVelocityPxPerMs))
+        ? Math.max(0, Number(inputConfig.touchMinFlickVelocityPxPerMs))
+        : 0.62,
+      touchAxisLockRatio: Number.isFinite(Number(inputConfig.touchAxisLockRatio))
+        ? Math.max(0.01, Number(inputConfig.touchAxisLockRatio))
+        : 1.2,
+      touchPreventDefault: inputConfig.touchPreventDefault !== false,
+      touchCancelOnMultiTouch: inputConfig.touchCancelOnMultiTouch !== false,
+      touchRequireOverlayWrapBandStart: inputConfig.touchRequireOverlayWrapBandStart !== false,
+      touchFallbackToFullscreenWhenOverlayWrapDisabled: (
+        inputConfig.touchFallbackToFullscreenWhenOverlayWrapDisabled !== false
+      ),
+    },
+    transition: {
+      timingMode: sanitizeSwipeSectionTransitionTimingMode(
+        transitionConfig.timingMode,
+        'matchFrameDelta',
+      ),
+      speedMultiplier: Number.isFinite(Number(transitionConfig.speedMultiplier))
+        ? Math.max(0.01, Number(transitionConfig.speedMultiplier))
+        : 1.15,
+      fixedDurationMs: Number.isFinite(Number(transitionConfig.fixedDurationMs))
+        ? Math.max(0, Number(transitionConfig.fixedDurationMs))
+        : 520,
+      minDurationMs: Number.isFinite(Number(transitionConfig.minDurationMs))
+        ? Math.max(0, Number(transitionConfig.minDurationMs))
+        : 220,
+      maxDurationMs: Number.isFinite(Number(transitionConfig.maxDurationMs))
+        ? Math.max(0, Number(transitionConfig.maxDurationMs))
+        : 900,
+      rapidSwipeMode: sanitizeSwipeSectionRapidMode(transitionConfig.rapidSwipeMode, 'ignore'),
+    },
+    overlayTransition: {
+      mode: sanitizeSwipeSectionOverlayTransitionMode(overlayTransitionConfig.mode, 'fade'),
+      fadeOutDurationMs: Number.isFinite(Number(overlayTransitionConfig.fadeOutDurationMs))
+        ? Math.max(0, Number(overlayTransitionConfig.fadeOutDurationMs))
+        : 170,
+      fadeInDurationMs: Number.isFinite(Number(overlayTransitionConfig.fadeInDurationMs))
+        ? Math.max(0, Number(overlayTransitionConfig.fadeInDurationMs))
+        : 230,
+      swapNearTargetProgress: clamp(
+        Number.isFinite(Number(overlayTransitionConfig.swapNearTargetProgress))
+          ? Number(overlayTransitionConfig.swapNearTargetProgress)
+          : 0.85,
+        0,
+        1,
+      ),
+    },
+    rsvp: resolveSwipeSectionsRsvpConfig(safeConfig.rsvp, sections),
+    scrollHint: resolveSwipeSectionsScrollHintConfig(safeConfig.scrollHint),
+    section1Label: resolveSwipeSectionsSection1LabelConfig(safeConfig.section1Label),
+  };
+}
+
+function resolveSwipeSectionsSection1LabelConfig(configCandidate = {}) {
+  const safeConfig = isPlainObjectLiteral(configCandidate) ? configCandidate : {};
+  return {
+    enabled: safeConfig.enabled !== false,
+    sectionId: (typeof safeConfig.sectionId === 'string' && safeConfig.sectionId.trim().length > 0)
+      ? safeConfig.sectionId.trim()
+      : 'section-1',
+    offsetXVideoHeightRatio: Number.isFinite(Number(safeConfig.offsetXVideoHeightRatio))
+      ? Number(safeConfig.offsetXVideoHeightRatio)
+      : 0,
+    offsetYVideoHeightRatio: Number.isFinite(Number(safeConfig.offsetYVideoHeightRatio))
+      ? Number(safeConfig.offsetYVideoHeightRatio)
+      : -0.32,
+    widthVideoHeightRatio: Number.isFinite(Number(safeConfig.widthVideoHeightRatio)) && Number(safeConfig.widthVideoHeightRatio) > 0
+      ? Number(safeConfig.widthVideoHeightRatio)
+      : 0.55,
+    fontFamily: (typeof safeConfig.fontFamily === 'string' && safeConfig.fontFamily.trim().length > 0)
+      ? safeConfig.fontFamily.trim()
+      : 'serif',
+    fontSourcePath: normalizeHostedAssetPath(
+      typeof safeConfig.fontSourcePath === 'string' ? safeConfig.fontSourcePath.trim() : '',
+    ),
+    fontWeight: Number.isFinite(Number(safeConfig.fontWeight)) ? Number(safeConfig.fontWeight) : 400,
+    fontStyle: (typeof safeConfig.fontStyle === 'string' && safeConfig.fontStyle.trim().length > 0)
+      ? safeConfig.fontStyle.trim()
+      : 'normal',
+    fontSizeVideoHeightRatio: Number.isFinite(Number(safeConfig.fontSizeVideoHeightRatio)) && Number(safeConfig.fontSizeVideoHeightRatio) > 0
+      ? Number(safeConfig.fontSizeVideoHeightRatio)
+      : 0.055,
+    textColor: (typeof safeConfig.textColor === 'string' && safeConfig.textColor.trim().length > 0)
+      ? safeConfig.textColor.trim()
+      : '#1f1b17',
+    textAlign: (typeof safeConfig.textAlign === 'string' && safeConfig.textAlign.trim().length > 0)
+      ? safeConfig.textAlign.trim()
+      : 'center',
+    lineHeight: Number.isFinite(Number(safeConfig.lineHeight)) && Number(safeConfig.lineHeight) > 0
+      ? Number(safeConfig.lineHeight)
+      : 1.45,
+  };
+}
+
+function resolveSwipeSectionsScrollHintConfig(configCandidate = {}) {
+  const safeConfig = isPlainObjectLiteral(configCandidate) ? configCandidate : {};
+  const visibleSectionIds = Array.isArray(safeConfig.visibleSectionIds)
+    ? safeConfig.visibleSectionIds.filter((value) => typeof value === 'string' && value.trim().length > 0).map((value) => value.trim())
+    : ['section-1', 'section-2', 'section-3'];
+
+  return {
+    enabled: safeConfig.enabled !== false,
+    spritePath: normalizeCenterOverlayImagePath(
+      typeof safeConfig.spritePath === 'string' && safeConfig.spritePath.trim().length > 0
+        ? safeConfig.spritePath.trim()
+        : './scroll_4_more.png',
+    ),
+    widthVideoHeightRatio: Number.isFinite(Number(safeConfig.widthVideoHeightRatio)) && Number(safeConfig.widthVideoHeightRatio) > 0
+      ? Number(safeConfig.widthVideoHeightRatio)
+      : 0,
+    maxWidthPx: Number.isFinite(Number(safeConfig.maxWidthPx))
+      ? Math.max(0, Number(safeConfig.maxWidthPx))
+      : 48,
+    scale: Number.isFinite(Number(safeConfig.scale))
+      ? Math.max(0, Number(safeConfig.scale))
+      : 1,
+    offsetXVideoHeightRatio: Number.isFinite(Number(safeConfig.offsetXVideoHeightRatio))
+      ? Number(safeConfig.offsetXVideoHeightRatio)
+      : 0,
+    offsetYVideoHeightRatio: Number.isFinite(Number(safeConfig.offsetYVideoHeightRatio))
+      ? Number(safeConfig.offsetYVideoHeightRatio)
+      : 0.04,
+    bottomMarginPx: Number.isFinite(Number(safeConfig.bottomMarginPx))
+      ? Math.max(0, Number(safeConfig.bottomMarginPx))
+      : 10,
+    jumpDelayMs: Number.isFinite(Number(safeConfig.jumpDelayMs))
+      ? Math.max(0, Number(safeConfig.jumpDelayMs))
+      : 700,
+    jumpDistancePx: Number.isFinite(Number(safeConfig.jumpDistancePx))
+      ? Math.max(0, Number(safeConfig.jumpDistancePx))
+      : 10,
+    jumpDurationMs: Number.isFinite(Number(safeConfig.jumpDurationMs))
+      ? Math.max(1, Number(safeConfig.jumpDurationMs))
+      : 250,
+    visibleSectionIds: visibleSectionIds.length > 0
+      ? visibleSectionIds
+      : ['section-1', 'section-2', 'section-3'],
+    debug: isPlainObjectLiteral(safeConfig.debug) ? safeConfig.debug : {},
+  };
+}
+
+function cancelSwipeSectionsScrollHintPendingJump() {
+  const scrollHintState = STATE && STATE.swipeSections ? STATE.swipeSections.scrollHint : null;
+  if (!scrollHintState) {
+    return;
+  }
+  if (Number.isFinite(Number(scrollHintState.pendingJumpTimerId))) {
+    clearTimeout(scrollHintState.pendingJumpTimerId);
+  }
+  scrollHintState.pendingJumpTimerId = null;
+}
+
+function triggerSwipeSectionsScrollHintJump(scrollHintConfig) {
+  if (!scrollHintConfig || scrollHintConfig.enabled !== true) {
+    return;
+  }
+  const scrollHintState = STATE && STATE.swipeSections ? STATE.swipeSections.scrollHint : null;
+  if (!scrollHintState) {
+    return;
+  }
+  scrollHintState.jumpAnimation = {
+    startMs: performance.now(),
+    durationMs: scrollHintConfig.jumpDurationMs,
+    distancePx: scrollHintConfig.jumpDistancePx,
+  };
+  renderScene({ skipAutoStart: true });
+}
+
+function scheduleSwipeSectionsScrollHintJump(scrollHintConfig) {
+  if (!scrollHintConfig || scrollHintConfig.enabled !== true) {
+    return;
+  }
+  cancelSwipeSectionsScrollHintPendingJump();
+  const scrollHintState = STATE && STATE.swipeSections ? STATE.swipeSections.scrollHint : null;
+  if (!scrollHintState || scrollHintConfig.jumpDelayMs <= 0) {
+    return;
+  }
+  scrollHintState.pendingJumpTimerId = window.setTimeout(() => {
+    scrollHintState.pendingJumpTimerId = null;
+    triggerSwipeSectionsScrollHintJump(scrollHintConfig);
+  }, scrollHintConfig.jumpDelayMs);
+}
+
+function handleSwipeSectionsScrollHintOnActiveSectionChange(section, sectionIndex, swipeConfig) {
+  if (!section || !swipeConfig || !swipeConfig.scrollHint || swipeConfig.scrollHint.enabled !== true) {
+    cancelSwipeSectionsScrollHintPendingJump();
+    return;
+  }
+  const scrollHintConfig = swipeConfig.scrollHint;
+  const sectionId = typeof section.id === 'string' ? section.id : '';
+  const isVisible = scrollHintConfig.visibleSectionIds.indexOf(sectionId) >= 0;
+  const scrollHintState = STATE && STATE.swipeSections ? STATE.swipeSections.scrollHint : null;
+  if (!scrollHintState) {
+    return;
+  }
+  if (!isVisible) {
+    cancelSwipeSectionsScrollHintPendingJump();
+    scrollHintState.currentSectionId = '';
+    return;
+  }
+
+  if (scrollHintState.currentSectionId !== sectionId) {
+    scrollHintState.currentSectionId = sectionId;
+    if (sectionId === 'section-1' && scrollHintState.section1InitialJumpTriggered !== true) {
+      triggerSwipeSectionsScrollHintJump(scrollHintConfig);
+      scrollHintState.section1InitialJumpTriggered = true;
+    }
+    scheduleSwipeSectionsScrollHintJump(scrollHintConfig);
+  }
+}
+
+function syncSwipeSectionsScrollHintLayer(nowMs = performance.now()) {
+  const scrollHintConfig = resolveSwipeSectionsConfig().scrollHint;
+  const scrollHintState = STATE && STATE.swipeSections && STATE.swipeSections.scrollHint ? STATE.swipeSections.scrollHint : null;
+  if (!scrollHintConfig || scrollHintConfig.enabled !== true) {
+    if (scrollHintState) scrollHintState.visibleSinceMs = 0;
+    swipeSectionsScrollHintLayer.style.display = 'none';
+    swipeSectionsScrollHintDebugRect.style.display = 'none';
+    return;
+  }
+  const heroPlaybackGateConfig = resolveHeroPlaybackGateConfig();
+  const currentFrame = getCurrentHeroVideoFrame(heroPlaybackGateConfig);
+  const postButtonPauseFrame = heroPlaybackGateConfig && Number.isFinite(heroPlaybackGateConfig.postButtonPauseFrame)
+    ? heroPlaybackGateConfig.postButtonPauseFrame
+    : 273;
+  if (currentFrame < postButtonPauseFrame) {
+    if (scrollHintState) scrollHintState.visibleSinceMs = 0;
+    swipeSectionsScrollHintLayer.style.display = 'none';
+    swipeSectionsScrollHintDebugRect.style.display = 'none';
+    return;
+  }
+  const swipeState = STATE && STATE.swipeSections ? STATE.swipeSections : null;
+  const swipeConfig = resolveSwipeSectionsConfig();
+  const activeSectionIndex = (
+    swipeState
+    && Number.isFinite(swipeState.activeSectionIndex)
+    && swipeState.activeSectionIndex >= 0
+    && swipeState.activeSectionIndex < swipeConfig.sections.length
+  )
+    ? swipeState.activeSectionIndex
+    : findClosestSwipeSectionIndexToFrame(getCurrentHeroVideoFrame(resolveHeroPlaybackGateConfig()), swipeConfig);
+  const activeSection = (
+    activeSectionIndex >= 0
+    && activeSectionIndex < swipeConfig.sections.length
+  )
+    ? swipeConfig.sections[activeSectionIndex]
+    : null;
+  if (!activeSection || scrollHintConfig.visibleSectionIds.indexOf(activeSection.id) < 0) {
+    if (scrollHintState) scrollHintState.visibleSinceMs = 0;
+    swipeSectionsScrollHintLayer.style.display = 'none';
+    swipeSectionsScrollHintDebugRect.style.display = 'none';
+    return;
+  }
+
+
+
+  const spritePath = normalizeCenterOverlayImagePath(scrollHintConfig.spritePath);
+  if (spritePath.length <= 0) {
+    swipeSectionsScrollHintLayer.style.display = 'none';
+    swipeSectionsScrollHintDebugRect.style.display = 'none';
+    return;
+  }
+  const preloadEntry = getCenterOverlayImagePreloadEntry(spritePath);
+  if (!preloadEntry || preloadEntry.status !== 'loaded' || !preloadEntry.image) {
+    ensureCenterOverlayImagePreload(spritePath).catch(() => {});
+    swipeSectionsScrollHintLayer.style.display = 'none';
+    swipeSectionsScrollHintDebugRect.style.display = 'none';
+    return;
+  }
+  if (swipeSectionsScrollHintLayer.dataset.scrollHintPath !== spritePath || swipeSectionsScrollHintLayer.src !== preloadEntry.image.src) {
+    swipeSectionsScrollHintLayer.src = preloadEntry.image.src;
+    swipeSectionsScrollHintLayer.dataset.scrollHintPath = spritePath;
+  }
+
+  const videoRect = getHeroVideoRenderedRect();
+  const viewportWidth = Number.isFinite(STATE.viewportWidth) && STATE.viewportWidth > 0
+    ? STATE.viewportWidth
+    : (Number.isFinite(window.innerWidth) ? window.innerWidth : 0);
+  const centerX = videoRect && Number.isFinite(videoRect.left) && Number.isFinite(videoRect.width)
+    ? videoRect.left + (videoRect.width * 0.5) + (scrollHintConfig.offsetXVideoHeightRatio * (Number.isFinite(videoRect.height) ? videoRect.height : 0))
+    : viewportWidth * 0.5;
+  const videoHeight = videoRect && Number.isFinite(videoRect.height) ? videoRect.height : 0;
+  const videoBottom = videoRect && Number.isFinite(videoRect.top) && Number.isFinite(videoRect.height)
+    ? videoRect.top + videoRect.height
+    : (Number.isFinite(STATE.viewportHeight) && STATE.viewportHeight > 0 ? STATE.viewportHeight : (Number.isFinite(window.innerHeight) ? window.innerHeight : 0));
+  const extraOffsetY = videoHeight * scrollHintConfig.offsetYVideoHeightRatio;
+
+  let jumpOffsetPx = 0;
+  if (swipeState && swipeState.scrollHint && swipeState.scrollHint.jumpAnimation) {
+    const animation = swipeState.scrollHint.jumpAnimation;
+    const elapsedMs = Math.max(0, nowMs - Number(animation.startMs));
+    const progress = animation.durationMs > 1e-6
+      ? clamp(elapsedMs / animation.durationMs, 0, 1)
+      : 1;
+    if (progress < 1) {
+      jumpOffsetPx = Math.sin(progress * Math.PI) * Number(animation.distancePx);
+    } else {
+      swipeState.scrollHint.jumpAnimation = null;
+    }
+  }
+
+  const widthPx = Number.isFinite(scrollHintConfig.widthVideoHeightRatio) && scrollHintConfig.widthVideoHeightRatio > 0
+    ? videoHeight * scrollHintConfig.widthVideoHeightRatio
+    : Math.max(0, Number(scrollHintConfig.maxWidthPx) || 48);
+  const scale = scrollHintConfig.scale;
+  const scaledWidthPx = widthPx * scale;
+  const naturalHeightPx = preloadEntry.image.naturalHeight || 0;
+  const naturalWidthPx = preloadEntry.image.naturalWidth || 0;
+  const aspectRatio = naturalWidthPx > 0 ? naturalHeightPx / naturalWidthPx : 1;
+  const scaledHeightPx = scaledWidthPx * aspectRatio;
+
+  swipeSectionsScrollHintLayer.style.left = `${centerX}px`;
+  swipeSectionsScrollHintLayer.style.top = `${videoBottom - extraOffsetY - jumpOffsetPx}px`;
+  swipeSectionsScrollHintLayer.style.bottom = '';
+  swipeSectionsScrollHintLayer.style.transform = `translateX(-50%) translateY(-100%) scale(${scale})`;
+  swipeSectionsScrollHintLayer.style.transformOrigin = 'top center';
+  swipeSectionsScrollHintLayer.style.width = `${widthPx}px`;
+  swipeSectionsScrollHintLayer.style.height = 'auto';
+  swipeSectionsScrollHintLayer.style.display = 'block';
+
+  const overlayConfig = resolveCenterOverlayImageConfig();
+  const opacityMultiplier = clamp(Number(swipeState ? swipeState.overlayOpacityMultiplier : 1), 0, 1);
+  if (scrollHintState) {
+    if (scrollHintState.visibleSinceMs <= 0) {
+      scrollHintState.visibleSinceMs = Number.isFinite(nowMs) ? nowMs : performance.now();
+    }
+  }
+  let opacity = overlayConfig.maxOpacity;
+  if (overlayConfig.fadeInEnabled && overlayConfig.fadeInDurationSec > 1e-6 && scrollHintState) {
+    const fadeElapsedSec = Math.max(0, (nowMs - scrollHintState.visibleSinceMs) / 1000);
+    opacity = overlayConfig.maxOpacity * clamp(fadeElapsedSec / overlayConfig.fadeInDurationSec, 0, 1);
+  }
+  opacity *= opacityMultiplier;
+
+  swipeSectionsScrollHintLayer.style.opacity = String(opacity);
+  swipeSectionsScrollHintLayer.style.visibility = opacity > 1e-6 ? 'visible' : 'hidden';
+  swipeSectionsScrollHintLayer.style.pointerEvents = 'none';
+
+  // Debug rect
+  const debugEnabled = scrollHintConfig.debug && scrollHintConfig.debug.enabled === true;
+  if (debugEnabled) {
+    swipeSectionsScrollHintDebugRect.style.left = `${centerX}px`;
+    swipeSectionsScrollHintDebugRect.style.top = `${videoBottom - extraOffsetY - jumpOffsetPx - scaledHeightPx}px`;
+    swipeSectionsScrollHintDebugRect.style.bottom = '';
+    swipeSectionsScrollHintDebugRect.style.transform = `translateX(-50%)`;
+    swipeSectionsScrollHintDebugRect.style.width = `${scaledWidthPx}px`;
+    swipeSectionsScrollHintDebugRect.style.height = `${scaledHeightPx}px`;
+    swipeSectionsScrollHintDebugRect.style.display = 'block';
+    swipeSectionsScrollHintDebugRect.style.opacity = '0.5';
+    swipeSectionsScrollHintDebugRect.style.visibility = 'visible';
+    swipeSectionsScrollHintDebugRect.style.pointerEvents = 'none';
+    swipeSectionsScrollHintDebugRect.style.zIndex = '9999';
+    swipeSectionsScrollHintDebugRect.style.backgroundColor = 'rgba(255, 0, 0, 0.5)';
+    swipeSectionsScrollHintDebugRect.style.border = '1px solid red';
+  } else {
+    swipeSectionsScrollHintDebugRect.style.display = 'none';
+  }
+}
+
+function isEditableEventTarget(target) {
+  if (!target || typeof target !== 'object') {
+    return false;
+  }
+  const element = target instanceof Element
+    ? target
+    : (target.parentElement instanceof Element ? target.parentElement : null);
+  if (!element) {
+    return false;
+  }
+  if (element.isContentEditable === true) {
+    return true;
+  }
+  const editableAncestor = element.closest('input, textarea, select');
+  return Boolean(editableAncestor);
+}
+
+function isRsvpControlEventTarget(target) {
+  if (!target || typeof target !== 'object') {
+    return false;
+  }
+  const element = target instanceof Element
+    ? target
+    : (target.parentElement instanceof Element ? target.parentElement : null);
+  if (!element) {
+    return false;
+  }
+  return Boolean(element.closest('#rsvpLayer [data-rsvp-control], #rsvpLayer input, #rsvpLayer button'));
+}
+
+function evaluateAnimationGrowthEaseT(t, easeMode, easePower) {
+  const clampedT = clamp(Number.isFinite(t) ? t : 0, 0, 1);
+  const power = Number.isFinite(easePower) ? Math.max(0.01, easePower) : 2;
+  if (easeMode === 'linear') {
+    return clampedT;
+  }
+  if (easeMode === 'easeIn') {
+    return Math.pow(clampedT, power);
+  }
+  if (easeMode === 'easeInOut') {
+    if (clampedT <= 0.5) {
+      return 0.5 * Math.pow(clampedT * 2, power);
+    }
+    return 1 - (0.5 * Math.pow((1 - clampedT) * 2, power));
+  }
+  return 1 - Math.pow(1 - clampedT, power);
+}
+
+function resolveAnimationEasedElapsedSec(rawElapsedSec, totalTimeSec) {
+  const safeElapsed = Number.isFinite(rawElapsedSec) ? Math.max(0, rawElapsedSec) : 0;
+  const safeTotal = Number.isFinite(totalTimeSec) ? Math.max(0, totalTimeSec) : 0;
+  if (safeTotal <= 1e-8) {
+    return safeElapsed;
+  }
+  const easeMode = sanitizeAnimationGrowthEaseMode(
+    CONFIG.branchGrowth && CONFIG.branchGrowth.growthEase,
+    'linear',
+  );
+  const easePower = Number(CONFIG.branchGrowth && CONFIG.branchGrowth.growthEasePower);
+  const t = clamp(safeElapsed / safeTotal, 0, 1);
+  const easedT = evaluateAnimationGrowthEaseT(t, easeMode, easePower);
+  return easedT * safeTotal;
+}
+
+function refreshBranchThicknessBaseScales() {
+  if (!STATE.branchGarden || !Array.isArray(STATE.branchGarden.branches)) {
+    return;
+  }
+
+  const branches = STATE.branchGarden.branches;
+  const branchById = new Map();
+  for (let i = 0; i < branches.length; i += 1) {
+    const branch = branches[i];
+    if (branch && Number.isFinite(branch.id)) {
+      branchById.set(branch.id, branch);
+    }
+  }
+
+  for (let i = 0; i < branches.length; i += 1) {
+    const branch = branches[i];
+    if (!branch) {
+      continue;
+    }
+    if (!Number.isFinite(branch.parentId)) {
+      branch.thicknessBaseScale = getBranchThicknessBaseScale(branch);
+      continue;
+    }
+
+    const parent = branchById.get(branch.parentId);
+    if (!parent || !parent.pathData) {
+      branch.thicknessBaseScale = getBranchThicknessBaseScale(branch);
+      continue;
+    }
+
+    const parentBaseScale = getBranchThicknessBaseScale(parent);
+    const parentLength = Number.isFinite(parent.pathData.totalLength)
+      ? Math.max(0, parent.pathData.totalLength)
+      : 0;
+    const spawnDistance = Number.isFinite(branch.spawnDistanceOnParent)
+      ? clamp(branch.spawnDistanceOnParent, 0, parentLength)
+      : 0;
+    branch.thicknessBaseScale = Math.max(
+      0.01,
+      parentBaseScale * getThicknessTaperFactorAtDistance(spawnDistance, parentLength, CONFIG.brush),
+    );
+  }
+}
+
+function prewarmBranchFilterTextures(brushConfig = CONFIG.brush) {
+  if (!STATE.stemImage) {
+    return;
+  }
+
+  const globalHueDeg = getBrushGlobalHueDeg(brushConfig);
+  const globalBrightness = getBrushGlobalBrightness(brushConfig);
+  const baseFlippedImage = STATE.stemImageFlippedX || STATE.stemImage;
+
+  if (!isBranchFilterRandomizationEnabled(brushConfig)) {
+    getPrecomputedFilteredTexture(STATE.stemImage, globalHueDeg, globalBrightness);
+    getPrecomputedFilteredTexture(baseFlippedImage, globalHueDeg, globalBrightness);
+    return;
+  }
+
+  const variants = buildRandomBranchFilterVariants(brushConfig);
+  for (let i = 0; i < variants.length; i += 1) {
+    const variant = variants[i];
+    const hueDeg = globalHueDeg + variant.hueDeg;
+    const brightness = Math.max(0, globalBrightness * variant.brightness);
+    getPrecomputedFilteredTexture(STATE.stemImage, hueDeg, brightness);
+    getPrecomputedFilteredTexture(baseFlippedImage, hueDeg, brightness);
+  }
+}
+
+function refreshBranchFilterVariations() {
+  if (!STATE.branchGarden || !Array.isArray(STATE.branchGarden.branches)) {
+    prewarmBranchFilterTextures(CONFIG.brush);
+    return;
+  }
+
+  const brushConfig = CONFIG.brush || {};
+  const branches = STATE.branchGarden.branches;
+  if (!isBranchFilterRandomizationEnabled(brushConfig)) {
+    for (let i = 0; i < branches.length; i += 1) {
+      const branch = branches[i];
+      if (!branch) {
+        continue;
+      }
+      branch.filterVariantIndex = -1;
+      branch.filterHueDeg = 0;
+      branch.filterBrightness = 1;
+      assignBranchStemTextures(branch, brushConfig);
+    }
+    prewarmBranchFilterTextures(brushConfig);
+    return;
+  }
+
+  const variants = buildRandomBranchFilterVariants(brushConfig);
+  const variantCount = variants.length;
+  const assignmentMode = getBrushRandomFilterAssignmentMode(brushConfig);
+  const branchById = new Map();
+  for (let i = 0; i < branches.length; i += 1) {
+    const branch = branches[i];
+    if (branch && Number.isFinite(branch.id)) {
+      branchById.set(branch.id, branch);
+    }
+  }
+
+  for (let i = 0; i < branches.length; i += 1) {
+    const branch = branches[i];
+    if (!branch) {
+      continue;
+    }
+
+    let variantIndex = 0;
+    if (assignmentMode === 'inheritParent' && Number.isFinite(branch.parentId)) {
+      const parent = branchById.get(branch.parentId);
+      if (parent && Number.isFinite(parent.filterVariantIndex) && parent.filterVariantIndex >= 0) {
+        variantIndex = parent.filterVariantIndex % variantCount;
+      } else {
+        const fallbackToken = getBranchStableToken(branch, i);
+        variantIndex = positiveModulo(hashSeed(`${fallbackToken}|branch-filter-variant`), variantCount);
+      }
+    } else {
+      const stableToken = getBranchStableToken(branch, i);
+      variantIndex = positiveModulo(hashSeed(`${stableToken}|branch-filter-variant`), variantCount);
+    }
+
+    const variant = variants[variantIndex];
+    branch.filterVariantIndex = variantIndex;
+    branch.filterHueDeg = variant ? variant.hueDeg : 0;
+    branch.filterBrightness = variant ? variant.brightness : 1;
+    assignBranchStemTextures(branch, brushConfig);
+  }
+
+  prewarmBranchFilterTextures(brushConfig);
+}
+
+function resolveAnimationRatePxPerSec() {
+  const animationConfig = CONFIG.branchGrowth || {};
+  const animationState = STATE.branchGrowth || {};
+  const speedMode = sanitizeAnimationSpeedMode(animationConfig.speedMode, 'duration');
+
+  if (speedMode === 'rate') {
+    const pxPerSec = Number(animationConfig.pixelsPerSecond);
+    return Number.isFinite(pxPerSec) ? Math.max(0, pxPerSec) : 0;
+  }
+
+  const durationSec = Number(animationConfig.totalDurationSec);
+  const safeDuration = Number.isFinite(durationSec) ? Math.max(0.001, durationSec) : 0.001;
+  const criticalDistance = Number.isFinite(animationState.criticalPathDistance)
+    ? Math.max(0, animationState.criticalPathDistance)
+    : 0;
+  if (criticalDistance <= 0) {
+    return 0;
+  }
+  return criticalDistance / safeDuration;
+}
+
+function refreshBranchAnimationMetrics() {
+  const animationState = STATE.branchGrowth;
+  const branches = STATE.branchGarden && Array.isArray(STATE.branchGarden.branches)
+    ? STATE.branchGarden.branches
+    : [];
+
+  if (branches.length === 0) {
+    animationState.criticalPathDistance = 0;
+    animationState.globalRatePxPerSec = 0;
+    animationState.maxCompletionSec = 0;
+    return;
+  }
+
+  const growthConfig = isPlainObjectLiteral(CONFIG.branchGrowth) ? CONFIG.branchGrowth : {};
+  const growthMode = sanitizeBranchGrowthMode(growthConfig.mode, 'simultaneous');
+  const sweepDirection = sanitizeBranchGrowthSweepDirection(growthConfig.linearSweepDirection, 'down');
+  const linearSweepDurationSecRaw = Number(growthConfig.linearSweepDurationSec);
+  const linearSweepDurationSec = Number.isFinite(linearSweepDurationSecRaw)
+    ? Math.max(0, linearSweepDurationSecRaw)
+    : 0;
+
+  const byId = new Map();
+  for (let i = 0; i < branches.length; i += 1) {
+    const branch = branches[i];
+    branch.pathLength = branch.pathData && Number.isFinite(branch.pathData.totalLength)
+      ? Math.max(0, branch.pathData.totalLength)
+      : 0;
+    branch.startDistanceMetric = 0;
+    branch.sweepStartDelaySec = 0;
+    branch.rootBranchId = null;
+    byId.set(branch.id, branch);
+  }
+
+  const ordered = branches.slice().sort((a, b) => {
+    const depthA = Number.isFinite(a.depth) ? a.depth : 0;
+    const depthB = Number.isFinite(b.depth) ? b.depth : 0;
+    if (depthA !== depthB) {
+      return depthA - depthB;
+    }
+    const idA = Number.isFinite(a.id) ? a.id : 0;
+    const idB = Number.isFinite(b.id) ? b.id : 0;
+    return idA - idB;
+  });
+
+  const rootDelayById = new Map();
+  if (growthMode === 'linearBySeedY' && linearSweepDurationSec > 1e-8) {
+    const rootBranches = [];
+    for (let i = 0; i < branches.length; i += 1) {
+      const branch = branches[i];
+      if (branch && !Number.isFinite(branch.parentId)) {
+        rootBranches.push(branch);
+      }
+    }
+    if (rootBranches.length > 0) {
+      let minY = Number.POSITIVE_INFINITY;
+      let maxY = Number.NEGATIVE_INFINITY;
+      for (let i = 0; i < rootBranches.length; i += 1) {
+        const y = Number(rootBranches[i] && rootBranches[i].seed && rootBranches[i].seed.y);
+        if (!Number.isFinite(y)) {
+          continue;
+        }
+        minY = Math.min(minY, y);
+        maxY = Math.max(maxY, y);
+      }
+      const span = (
+        Number.isFinite(minY)
+        && Number.isFinite(maxY)
+      )
+        ? Math.max(0, maxY - minY)
+        : 0;
+      for (let i = 0; i < rootBranches.length; i += 1) {
+        const root = rootBranches[i];
+        if (!root || !Number.isFinite(root.id)) {
+          continue;
+        }
+        const y = Number(root.seed && root.seed.y);
+        const normalized = (
+          span > 1e-8
+          && Number.isFinite(y)
+        )
+          ? (
+            sweepDirection === 'up'
+              ? clamp((maxY - y) / span, 0, 1)
+              : clamp((y - minY) / span, 0, 1)
+          )
+          : 0;
+        rootDelayById.set(root.id, normalized * linearSweepDurationSec);
+      }
+    }
+  }
+
+  let criticalPathDistance = 0;
+  for (let i = 0; i < ordered.length; i += 1) {
+    const branch = ordered[i];
+    let startDistanceMetric = 0;
+    let rootBranchId = Number.isFinite(branch.id) ? branch.id : null;
+    if (Number.isFinite(branch.parentId)) {
+      const parent = byId.get(branch.parentId);
+      if (parent) {
+        const parentStart = Number.isFinite(parent.startDistanceMetric) ? parent.startDistanceMetric : 0;
+        const parentLength = Number.isFinite(parent.pathLength) ? parent.pathLength : 0;
+        const spawnDistance = Number.isFinite(branch.spawnDistanceOnParent)
+          ? clamp(branch.spawnDistanceOnParent, 0, parentLength)
+          : 0;
+        startDistanceMetric = parentStart + spawnDistance;
+        rootBranchId = Number.isFinite(parent.rootBranchId) ? parent.rootBranchId : parent.id;
+      }
+    }
+    branch.startDistanceMetric = startDistanceMetric;
+    branch.rootBranchId = rootBranchId;
+    if (Number.isFinite(rootBranchId)) {
+      branch.sweepStartDelaySec = Number.isFinite(rootDelayById.get(rootBranchId))
+        ? Math.max(0, rootDelayById.get(rootBranchId))
+        : 0;
+    } else {
+      branch.sweepStartDelaySec = 0;
+    }
+    criticalPathDistance = Math.max(criticalPathDistance, startDistanceMetric + branch.pathLength);
+  }
+
+  animationState.criticalPathDistance = criticalPathDistance;
+  animationState.globalRatePxPerSec = resolveAnimationRatePxPerSec();
+  const ratePxPerSec = Number.isFinite(animationState.globalRatePxPerSec)
+    ? Math.max(0, animationState.globalRatePxPerSec)
+    : 0;
+  if (ratePxPerSec <= 1e-8) {
+    animationState.maxCompletionSec = 0;
+    return;
+  }
+  let maxCompletionSec = 0;
+  for (let i = 0; i < branches.length; i += 1) {
+    const branch = branches[i];
+    const sweepStartDelaySec = Number.isFinite(branch && branch.sweepStartDelaySec)
+      ? Math.max(0, branch.sweepStartDelaySec)
+      : 0;
+    const startDistanceMetric = Number.isFinite(branch && branch.startDistanceMetric)
+      ? Math.max(0, branch.startDistanceMetric)
+      : 0;
+    const branchLength = Number.isFinite(branch && branch.pathLength)
+      ? Math.max(0, branch.pathLength)
+      : 0;
+    const completionSec = sweepStartDelaySec + ((startDistanceMetric + branchLength) / ratePxPerSec);
+    if (completionSec > maxCompletionSec) {
+      maxCompletionSec = completionSec;
+    }
+  }
+  animationState.maxCompletionSec = maxCompletionSec;
+}
+
+function getAnimationTotalTimeSec() {
+  const animationState = STATE.branchGrowth;
+  const explicitCompletionSec = Number.isFinite(animationState.maxCompletionSec)
+    ? Math.max(0, animationState.maxCompletionSec)
+    : 0;
+  if (explicitCompletionSec > 0) {
+    return explicitCompletionSec;
+  }
+  const criticalPathDistance = Number.isFinite(animationState.criticalPathDistance)
+    ? Math.max(0, animationState.criticalPathDistance)
+    : 0;
+  const ratePxPerSec = Number.isFinite(animationState.globalRatePxPerSec)
+    ? Math.max(0, animationState.globalRatePxPerSec)
+    : 0;
+  if (criticalPathDistance <= 0 || ratePxPerSec <= 0) {
+    return 0;
+  }
+  return criticalPathDistance / ratePxPerSec;
+}
+
+function getBranchVisibleLengthAtElapsed(branch, elapsedSec, precomputedTotalTimeSec, precomputedEasedElapsedSec) {
+  if (!branch) {
+    return 0;
+  }
+
+  const animationState = STATE.branchGrowth;
+  const ratePxPerSec = Number.isFinite(animationState.globalRatePxPerSec)
+    ? Math.max(0, animationState.globalRatePxPerSec)
+    : 0;
+  const branchLength = Number.isFinite(branch.pathLength)
+    ? Math.max(0, branch.pathLength)
+    : (branch.pathData && Number.isFinite(branch.pathData.totalLength)
+      ? Math.max(0, branch.pathData.totalLength)
+      : 0);
+  const startDistanceMetric = Number.isFinite(branch.startDistanceMetric)
+    ? Math.max(0, branch.startDistanceMetric)
+    : 0;
+  const totalTimeSec = Number.isFinite(precomputedTotalTimeSec)
+    ? precomputedTotalTimeSec
+    : getAnimationTotalTimeSec();
+  const elapsed = Number.isFinite(precomputedEasedElapsedSec)
+    ? precomputedEasedElapsedSec
+    : resolveAnimationEasedElapsedSec(
+        Number.isFinite(elapsedSec) ? Math.max(0, elapsedSec) : 0,
+        totalTimeSec,
+      );
+  const sweepStartDelaySec = Number.isFinite(branch.sweepStartDelaySec)
+    ? Math.max(0, branch.sweepStartDelaySec)
+    : 0;
+  const elapsedAfterSweep = Math.max(0, elapsed - sweepStartDelaySec);
+
+  const visible = elapsedAfterSweep * ratePxPerSec - startDistanceMetric;
+  return clamp(visible, 0, branchLength);
+}
+
+function getOverlayPromotionKey(branch) {
+  if (branch && Number.isFinite(branch.id)) {
+    return String(branch.id);
+  }
+  return getBranchRenderId(branch);
+}
+
+function getOverlayPromotionEntry(branch) {
+  const key = getOverlayPromotionKey(branch);
+  let entry = STATE.overlayWrapPromotion.get(key);
+  if (!entry) {
+    entry = {
+      promoted: false,
+      promotionCutoverDistanceOnPath: null,
+    };
+    STATE.overlayWrapPromotion.set(key, entry);
+  }
+  return entry;
+}
+
+function updateOverlayPromotionFromTipExit(branch, visibleLength, hiddenBand) {
+  const entry = getOverlayPromotionEntry(branch);
+  if (!entry || entry.promoted === true) {
+    return entry;
+  }
+  if (!branch || !branch.pathData || !hiddenBand) {
+    return entry;
+  }
+  const branchLength = Number.isFinite(branch.pathData.totalLength)
+    ? Math.max(0, branch.pathData.totalLength)
+    : 0;
+  if (branchLength <= 1e-8) {
+    return entry;
+  }
+  const tipDistance = clamp(
+    Number.isFinite(visibleLength) ? visibleLength : 0,
+    0,
+    branchLength,
+  );
+  if (tipDistance <= 1e-8) {
+    return entry;
+  }
+  const tipPoint = getPathPointAtLength(branch.pathData, tipDistance);
+  if (!tipPoint || !Number.isFinite(tipPoint.x)) {
+    return entry;
+  }
+  const tipBounds = resolveOverlayHiddenBandBoundsAtY(hiddenBand, tipPoint.y);
+  if (!tipBounds) {
+    return entry;
+  }
+  if (tipPoint.x <= tipBounds.leftX || tipPoint.x >= tipBounds.rightX) {
+    entry.promoted = true;
+    entry.promotionCutoverDistanceOnPath = tipDistance;
+  }
+  return entry;
+}
+
+function resolveOverlayPromotionGrowthOnMode() {
+  const growthConfig = isPlainObjectLiteral(CONFIG.branchGrowth) ? CONFIG.branchGrowth : {};
+  return sanitizeOverlayPromotionGrowthOnMode(
+    growthConfig.overlayPromotionGrowthOnMode,
+    'matchGrowthOff',
+  );
+}
+
+function isPointInsideOverlayHiddenBand(point, hiddenBand) {
+  if (!point || !hiddenBand || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+    return false;
+  }
+  const bounds = resolveOverlayHiddenBandBoundsAtY(hiddenBand, point.y);
+  if (!bounds) {
+    return false;
+  }
+  // Keep boundary semantics aligned with the existing tip-exit promotion logic.
+  return point.x > bounds.leftX && point.x < bounds.rightX;
+}
+
+function findOverlayFirstExitCutoverDistance(pathData, hiddenBand) {
+  if (
+    !pathData
+    || !Array.isArray(pathData.segments)
+    || pathData.segments.length === 0
+    || !hiddenBand
+  ) {
+    return null;
+  }
+  const totalLength = Number.isFinite(pathData.totalLength)
+    ? Math.max(0, pathData.totalLength)
+    : 0;
+  if (totalLength <= 1e-8) {
+    return null;
+  }
+
+  const pointAtSegmentT = (segment, t) => ({
+    x: segment.start.x + segment.dx * t,
+    y: segment.start.y + segment.dy * t,
+  });
+
+  const firstSegment = pathData.segments[0];
+  if (!firstSegment || !firstSegment.start) {
+    return null;
+  }
+  if (!isPointInsideOverlayHiddenBand(firstSegment.start, hiddenBand)) {
+    return 0;
+  }
+
+  const switchY = Number.isFinite(hiddenBand.switchY) ? hiddenBand.switchY : null;
+  let distanceBefore = 0;
+
+  for (let i = 0; i < pathData.segments.length; i += 1) {
+    const segment = pathData.segments[i];
+    if (!segment || !segment.start) {
+      continue;
+    }
+
+    const segmentLength = Number.isFinite(segment.length)
+      ? Math.max(0, segment.length)
+      : 0;
+    if (segmentLength <= 1e-8) {
+      continue;
+    }
+
+    const segmentEnd = {
+      x: segment.start.x + segment.dx,
+      y: segment.start.y + segment.dy,
+    };
+    const intervalStops = [0, 1];
+    if (Number.isFinite(switchY)) {
+      const dy = segmentEnd.y - segment.start.y;
+      if (Math.abs(dy) > 1e-8) {
+        const splitT = (switchY - segment.start.y) / dy;
+        if (splitT > 1e-8 && splitT < 1 - 1e-8) {
+          intervalStops.push(splitT);
+        }
+      }
+    }
+    intervalStops.sort((a, b) => a - b);
+
+    for (let j = 0; j < intervalStops.length - 1; j += 1) {
+      const t0 = intervalStops[j];
+      const t1 = intervalStops[j + 1];
+      const startPoint = pointAtSegmentT(segment, t0);
+      if (!isPointInsideOverlayHiddenBand(startPoint, hiddenBand)) {
+        return clamp(distanceBefore + t0 * segmentLength, 0, totalLength);
+      }
+
+      const endPoint = pointAtSegmentT(segment, t1);
+      if (isPointInsideOverlayHiddenBand(endPoint, hiddenBand)) {
+        continue;
+      }
+
+      let low = t0;
+      let high = t1;
+      for (let iter = 0; iter < 20; iter += 1) {
+        const mid = (low + high) * 0.5;
+        const midPoint = pointAtSegmentT(segment, mid);
+        if (isPointInsideOverlayHiddenBand(midPoint, hiddenBand)) {
+          low = mid;
+        } else {
+          high = mid;
+        }
+      }
+      return clamp(distanceBefore + high * segmentLength, 0, totalLength);
+    }
+
+    distanceBefore += segmentLength;
+  }
+
+  return totalLength;
+}
+
+function updateOverlayPromotionForGrowthOn(branch, visibleLength, hiddenBand) {
+  const growthOnMode = resolveOverlayPromotionGrowthOnMode();
+  if (growthOnMode === 'matchGrowthOff') {
+    const branchLength = Number.isFinite(branch && branch.pathData && branch.pathData.totalLength)
+      ? Math.max(0, branch.pathData.totalLength)
+      : 0;
+    // Intentional: make growth-ON match growth-OFF by evaluating promotion at full tip distance.
+    return updateOverlayPromotionFromTipExit(branch, branchLength, hiddenBand);
+  }
+
+  const entry = getOverlayPromotionEntry(branch);
+  if (!entry || entry.promoted === true) {
+    return entry;
+  }
+  if (!branch || !branch.pathData || !hiddenBand) {
+    return entry;
+  }
+  const branchLength = Number.isFinite(branch.pathData.totalLength)
+    ? Math.max(0, branch.pathData.totalLength)
+    : 0;
+  if (branchLength <= 1e-8) {
+    return entry;
+  }
+  const finalTipPoint = getPathPointAtLength(branch.pathData, branchLength);
+  if (!finalTipPoint || !Number.isFinite(finalTipPoint.x)) {
+    return entry;
+  }
+  if (isPointInsideOverlayHiddenBand(finalTipPoint, hiddenBand)) {
+    return entry;
+  }
+
+  const firstExitCutover = findOverlayFirstExitCutoverDistance(branch.pathData, hiddenBand);
+  // Intentional: final-tip classification, then deterministic first-exit cutover on the full path.
+  entry.promoted = true;
+  entry.promotionCutoverDistanceOnPath = clamp(
+    Number.isFinite(firstExitCutover) ? firstExitCutover : branchLength,
+    0,
+    branchLength,
+  );
+  return entry;
+}
+
+function resolveOverlayRenderRanges(branch, visibleLength, promotionEntry) {
+  const branchLength = Number.isFinite(branch && branch.pathData && branch.pathData.totalLength)
+    ? Math.max(0, branch.pathData.totalLength)
+    : 0;
+  const endLength = clamp(Number.isFinite(visibleLength) ? visibleLength : 0, 0, branchLength);
+  if (endLength <= 1e-8) {
+    return {
+      backStart: 0,
+      backEnd: 0,
+      frontStart: 0,
+      frontEnd: 0,
+    };
+  }
+  if (!promotionEntry || promotionEntry.promoted !== true) {
+    return {
+      backStart: 0,
+      backEnd: endLength,
+      frontStart: endLength,
+      frontEnd: endLength,
+    };
+  }
+  const cutover = clamp(
+    Number.isFinite(promotionEntry.promotionCutoverDistanceOnPath)
+      ? promotionEntry.promotionCutoverDistanceOnPath
+      : endLength,
+    0,
+    endLength,
+  );
+  return {
+    backStart: 0,
+    backEnd: cutover,
+    frontStart: cutover,
+    frontEnd: endLength,
+  };
+}
+
+function scheduleBranchAnimationFrame() {
+  const animationState = STATE.branchGrowth;
+  if (!animationState.running || animationState.rafId !== null) {
+    return;
+  }
+  animationState.rafId = requestAnimationFrame(stepBranchAnimationFrame);
+}
+
+function stopBranchAnimation(options = {}) {
+  const { keepElapsed = false } = options;
+  const animationState = STATE.branchGrowth;
+  if (animationState.rafId !== null) {
+    cancelAnimationFrame(animationState.rafId);
+    animationState.rafId = null;
+  }
+  animationState.running = false;
+  animationState.startTimeMs = 0;
+  if (!keepElapsed) {
+    animationState.elapsedSec = 0;
+  }
+  resetFlowerGrowthRuntimeState({ clearSignature: false, clearOpenLatch: true });
+}
+
+function stepAnimationFrame(deltaTimeSec = 1 / 30) {
+  // Only activate on export page (detected by export button presence)
+  if (typeof document === 'undefined' || !document.getElementById('startExportBtn')) {
+    return null;
+  }
+  
+  const animationState = STATE.branchGrowth;
+  if (!animationState) {
+    return null;
+  }
+  
+  // Stop automatic RAF loop if running
+  if (animationState.rafId !== null) {
+    cancelAnimationFrame(animationState.rafId);
+    animationState.rafId = null;
+  }
+  animationState.running = false;
+  
+  // Manually advance time
+  animationState.elapsedSec = Math.max(0, (animationState.elapsedSec || 0) + deltaTimeSec);
+  
+  // Sync flower sweep timing with animation time (for export)
+  // This prevents the flower sweep from using wall-clock time during frame-by-frame capture
+  const flowerGrowth = STATE.flowerGrowth;
+  if (flowerGrowth && flowerGrowth.openTriggered === true && flowerGrowth.openSweepCompleted === false) {
+    // Manually advance flower sweep elapsed time
+    flowerGrowth.openSweepElapsedSec = Math.max(0, (flowerGrowth.openSweepElapsedSec || 0) + deltaTimeSec);
+    // Update last tick to prevent wall-clock deltas from being added
+    flowerGrowth.openSweepLastTickMs = performance.now();
+  }
+  
+  // Render at this specific time
+  renderScene({ skipAutoStart: true });
+  
+  // Return current elapsed time
+  return animationState.elapsedSec;
+}
+
+function startBranchAnimation(options = {}) {
+  const { restart = true } = options;
+  if (!STATE.branchGarden) {
+    return;
+  }
+
+  const animationState = STATE.branchGrowth;
+  if (restart) {
+    animationState.elapsedSec = 0;
+    invalidateCompletedBranchLayer();
+    resetOverlayWrapPromotionState();
+    resetFlowerGrowthRuntimeState({ clearSignature: true });
+  }
+
+  refreshBranchAnimationMetrics();
+  const totalTimeSec = getAnimationTotalTimeSec();
+  if (totalTimeSec <= 0) {
+    animationState.running = false;
+    animationState.startTimeMs = 0;
+    renderScene({ skipAutoStart: true });
+    return;
+  }
+
+  if (animationState.rafId !== null) {
+    cancelAnimationFrame(animationState.rafId);
+    animationState.rafId = null;
+  }
+  cancelFlowerInteractionFrame();
+  animationState.running = true;
+  animationState.startTimeMs = performance.now() - animationState.elapsedSec * 1000;
+  renderScene({ skipAutoStart: true });
+  scheduleBranchAnimationFrame();
+}
+
+function pauseBranchAnimation() {
+  const animationState = STATE.branchGrowth;
+  if (!animationState.running) {
+    return;
+  }
+  if (animationState.rafId !== null) {
+    cancelAnimationFrame(animationState.rafId);
+    animationState.rafId = null;
+  }
+  animationState.running = false;
+  animationState.startTimeMs = 0;
+  renderScene({ skipAutoStart: true });
+}
+
+function resumeBranchAnimation() {
+  const animationState = STATE.branchGrowth;
+  if (animationState.running) {
+    return;
+  }
+  refreshBranchAnimationMetrics();
+  const totalTimeSec = getAnimationTotalTimeSec();
+  if (totalTimeSec <= 0) {
+    renderScene({ skipAutoStart: true });
+    return;
+  }
+  cancelFlowerInteractionFrame();
+  animationState.running = true;
+  animationState.startTimeMs = performance.now() - animationState.elapsedSec * 1000;
+  renderScene({ skipAutoStart: true });
+  scheduleBranchAnimationFrame();
+}
+
+function restartBranchAnimation() {
+  STATE.branchGrowth.elapsedSec = 0;
+  startBranchAnimation({ restart: true });
+}
+
+function stepBranchAnimationFrame(timestampMs) {
+  const animationState = STATE.branchGrowth;
+  animationState.rafId = null;
+
+  if (!animationState.running) {
+    return;
+  }
+
+  if (!Number.isFinite(animationState.startTimeMs) || animationState.startTimeMs <= 0) {
+    animationState.startTimeMs = timestampMs;
+  }
+  animationState.elapsedSec = Math.max(0, (timestampMs - animationState.startTimeMs) / 1000);
+
+  const totalTimeSec = getAnimationTotalTimeSec();
+  if (animationState.elapsedSec >= totalTimeSec) {
+    animationState.elapsedSec = totalTimeSec;
+    animationState.running = false;
+    animationState.startTimeMs = 0;
+    animationState.lastGrowthRenderMs = 0;
+    renderScene({ skipAutoStart: true, timestampMs });
+    return;
+  }
+
+  const growthFpsCap = Number.isFinite(CONFIG.branchGrowth.growthFpsCap)
+    ? CONFIG.branchGrowth.growthFpsCap
+    : 0;
+  if (growthFpsCap > 0) {
+    const minFrameMs = 1000 / growthFpsCap;
+    const lastRender = Number.isFinite(animationState.lastGrowthRenderMs)
+      ? animationState.lastGrowthRenderMs
+      : 0;
+    if (lastRender > 0 && (timestampMs - lastRender) < minFrameMs - 0.5) {
+      scheduleBranchAnimationFrame();
+      return;
+    }
+  }
+
+  animationState.lastGrowthRenderMs = timestampMs;
+  renderScene({ skipAutoStart: true, timestampMs });
+  scheduleBranchAnimationFrame();
+}
+
+function onBranchStructureChanged() {
+  if (STATE.branchGarden && typeof STATE.branchGarden.applyPriorityZonePruning === 'function') {
+    STATE.branchGarden.applyPriorityZonePruning();
+  }
+  resetFlowerGrowthRuntimeState({ clearSignature: true });
+  refreshBranchEndpointsAndFlowerSystem();
+  refreshBranchThicknessBaseScales();
+  refreshBranchFilterVariations();
+  invalidateAllBranchStripCaches();
+  invalidateCompletedBranchLayer();
+  resetOverlayWrapPromotionState();
+  refreshBranchAnimationMetrics();
+  if (!CONFIG.branchGrowth.enabled) {
+    stopBranchAnimation({ keepElapsed: false });
+    return;
+  }
+
+  const heroGateEnabled = resolveHeroPlaybackGateConfig().enabled === true;
+  if (CONFIG.branchGrowth.autoStart && !heroGateEnabled && !isHeroPlaybackGrowthStartBlocked()) {
+    restartBranchAnimation();
+    return;
+  }
+
+  const animationState = STATE.branchGrowth;
+  if (animationState.running) {
+    animationState.startTimeMs = performance.now() - animationState.elapsedSec * 1000;
+    renderScene({ skipAutoStart: true });
+    scheduleBranchAnimationFrame();
+    return;
+  }
+
+  animationState.elapsedSec = 0;
+  renderScene({ skipAutoStart: true });
+}
+
+// =========================
+// 14) Scene Render
+// =========================
+function resizeCanvasToViewport() {
+  if (isViewportPinchZoomActive()) {
+    viewportPinchZoomWasActive = true;
+    schedulePostZoomLayoutResync({ reason: 'resizeCanvasToViewport:pinch-active' });
+    return;
+  }
+  const resizeStartMs = performance.now();
+  syncIOSFixedViewportWorkaroundFlag();
+  syncVisualViewportOffsets();
+  syncSafariTopTintShim();
+  STATE.dpr = resolveEffectiveRenderDpr();
+  const viewportSize = resolveViewportSizeForRendering();
+  STATE.viewportWidth = viewportSize.width;
+  STATE.viewportHeight = viewportSize.height;
+
+  if (document && document.documentElement && document.documentElement.style) {
+    document.documentElement.style.setProperty('--app-viewport-width', `${STATE.viewportWidth}px`);
+    document.documentElement.style.setProperty('--app-viewport-height', `${STATE.viewportHeight}px`);
+  }
+
+  canvas.width = Math.floor(STATE.viewportWidth * STATE.dpr);
+  canvas.height = Math.floor(STATE.viewportHeight * STATE.dpr);
+
+  ctx.setTransform(STATE.dpr, 0, 0, STATE.dpr, 0, 0);
+  if (frontCanvas && frontCtx) {
+    frontCanvas.width = Math.floor(STATE.viewportWidth * STATE.dpr);
+    frontCanvas.height = Math.floor(STATE.viewportHeight * STATE.dpr);
+    frontCtx.setTransform(STATE.dpr, 0, 0, STATE.dpr, 0, 0);
+  }
+  if (flowersBackCanvas) {
+    flowersBackCanvas.width = Math.floor(STATE.viewportWidth * STATE.dpr);
+    flowersBackCanvas.height = Math.floor(STATE.viewportHeight * STATE.dpr);
+  }
+  if (flowersFrontCanvas) {
+    flowersFrontCanvas.width = Math.floor(STATE.viewportWidth * STATE.dpr);
+    flowersFrontCanvas.height = Math.floor(STATE.viewportHeight * STATE.dpr);
+  }
+  
+  viewportDebugLog(
+    'resizeCanvasToViewport',
+    `mode=${STATE.viewportLayoutMode}`,
+    `viewport=${STATE.viewportWidth}x${STATE.viewportHeight}`,
+    `dpr=${STATE.dpr.toFixed(2)}`,
+    `duration=${(performance.now() - resizeStartMs).toFixed(2)}ms`,
+  );
+}
+
+let largeViewportProbeElement = null;
+
+function ensureLargeViewportProbeElement() {
+  if (largeViewportProbeElement) {
+    return largeViewportProbeElement;
+  }
+  if (!document || !document.body) {
+    return null;
+  }
+  const probe = document.createElement('div');
+  probe.setAttribute('aria-hidden', 'true');
+  probe.style.position = 'absolute';
+  probe.style.left = '0';
+  probe.style.top = '0';
+  probe.style.width = '100vw';
+  probe.style.height = '100vh';
+  if (typeof CSS !== 'undefined' && CSS && typeof CSS.supports === 'function') {
+    if (CSS.supports('width', '100lvw')) {
+      probe.style.width = '100lvw';
+    }
+    if (CSS.supports('height', '100lvh')) {
+      probe.style.height = '100lvh';
+    }
+  }
+  probe.style.pointerEvents = 'none';
+  probe.style.opacity = '0';
+  probe.style.visibility = 'hidden';
+  probe.style.zIndex = '-2147483648';
+  document.body.appendChild(probe);
+  largeViewportProbeElement = probe;
+  return largeViewportProbeElement;
+}
+
+function isViewportPinchZoomActive() {
+  const visualViewport = window && window.visualViewport ? window.visualViewport : null;
+  if (!visualViewport) {
+    return false;
+  }
+  const scale = Number(visualViewport.scale);
+  if (!Number.isFinite(scale)) {
+    return false;
+  }
+  return Math.abs(scale - 1) > VIEWPORT_PINCH_ZOOM_SCALE_EPSILON;
+}
+
+function isPostZoomViewportRecoveryActive() {
+  return postZoomViewportRecoveryActive === true;
+}
+
+function isTextInputFocused() {
+  const active = document && document.activeElement ? document.activeElement : null;
+  if (!active) {
+    return false;
+  }
+  const tag = typeof active.tagName === 'string' ? active.tagName.toLowerCase() : '';
+  const isInput = tag === 'input' || tag === 'textarea';
+  const isContentEditable = active.contentEditable === 'true' || active.isContentEditable === true;
+  return isInput || isContentEditable;
+}
+
+function getViewportLayoutSignature() {
+  const bodyMode = document && document.body
+    ? String(document.body.getAttribute('data-viewport-layout-mode') || '').trim()
+    : '';
+  const mode = sanitizeViewportLayoutMode(
+    bodyMode || STATE.viewportLayoutMode,
+    VIEWPORT_LAYOUT_MODE_LEGACY,
+  );
+  const width = Math.max(0, Math.round(Number(window.innerWidth) || 0));
+  const height = Math.max(0, Math.round(Number(window.innerHeight) || 0));
+  const dpr = Math.round((Number(window.devicePixelRatio) || 1) * 100) / 100;
+  const orientation = width >= height ? 'landscape' : 'portrait';
+  return `${mode}|${width}x${height}|dpr:${dpr}|${orientation}`;
+}
+
+function recordAppliedViewportLayoutSignature(signature = '') {
+  const normalized = typeof signature === 'string' && signature.length > 0
+    ? signature
+    : getViewportLayoutSignature();
+  lastAppliedStableViewportLayoutSignature = normalized;
+}
+
+function runCoalescedViewportResync(reason = 'unspecified') {
+  if (isViewportPinchZoomActive()) {
+    viewportPinchZoomWasActive = true;
+    postZoomViewportRecoveryActive = true;
+    schedulePostZoomLayoutResync({ reason: `${reason}:pinch-active` });
+    return false;
+  }
+  if (isTextInputFocused()) {
+    schedulePostZoomLayoutResync({ reason: `${reason}:input-focused`, delayMs: 300 });
+    return false;
+  }
+
+  postZoomViewportRecoveryActive = true;
+  const resyncStartMs = performance.now();
+  const phaseAStartMs = performance.now();
+  syncIOSFixedViewportWorkaroundFlag();
+  syncVisualViewportOffsets();
+  syncSafariTopTintShim();
+  const phaseAElapsedMs = performance.now() - phaseAStartMs;
+
+  const nextSignature = getViewportLayoutSignature();
+  const hasStableChange = nextSignature !== lastAppliedStableViewportLayoutSignature;
+  if (!hasStableChange) {
+    postZoomViewportRecoveryActive = false;
+    viewportPinchZoomWasActive = false;
+    viewportDebugLog(
+      'resync-skip',
+      `reason=${reason}`,
+      `signature=${nextSignature}`,
+      `phaseA=${phaseAElapsedMs.toFixed(2)}ms`,
+      `total=${(performance.now() - resyncStartMs).toFixed(2)}ms`,
+    );
+    return false;
+  }
+
+  postZoomViewportRecoveryActive = false;
+  const heavyStartMs = performance.now();
+  const applied = applyViewportLayoutMode(STATE.viewportLayoutMode, { forceRerender: true });
+  const heavyElapsedMs = performance.now() - heavyStartMs;
+  if (applied) {
+    recordAppliedViewportLayoutSignature(nextSignature);
+  }
+  viewportPinchZoomWasActive = false;
+  viewportDebugLog(
+    'resync-apply',
+    `reason=${reason}`,
+    `signature=${nextSignature}`,
+    `applied=${applied === true}`,
+    `phaseA=${phaseAElapsedMs.toFixed(2)}ms`,
+    `heavy=${heavyElapsedMs.toFixed(2)}ms`,
+    `total=${(performance.now() - resyncStartMs).toFixed(2)}ms`,
+  );
+  return applied === true;
+}
+
+function clearViewportPostZoomResyncTimer() {
+  if (viewportPostZoomResyncTimer !== null) {
+    clearTimeout(viewportPostZoomResyncTimer);
+    viewportPostZoomResyncTimer = null;
+  }
+}
+
+function schedulePostZoomLayoutResync(options = null) {
+  if (!window || typeof window.setTimeout !== 'function') {
+    return;
+  }
+  const safeOptions = options && typeof options === 'object' ? options : {};
+  clearViewportPostZoomResyncTimer();
+  const overrideDelay = Number(safeOptions.delayMs);
+  const delayMs = Number.isFinite(overrideDelay) && overrideDelay >= 0
+    ? Math.floor(overrideDelay)
+    : (isLikelySafariOnIOS()
+    ? IOS_SAFARI_RUBBER_BAND_RESYNC_DELAY_MS
+    : VIEWPORT_POST_ZOOM_RESYNC_DELAY_MS);
+  postZoomViewportRecoveryActive = true;
+  const reason = typeof safeOptions.reason === 'string' && safeOptions.reason.length > 0
+    ? safeOptions.reason
+    : 'post-zoom';
+  viewportDebugLog('resync-scheduled', `reason=${reason}`, `delay=${delayMs}ms`);
+  viewportPostZoomResyncTimer = window.setTimeout(() => {
+    viewportPostZoomResyncTimer = null;
+    if (isViewportPinchZoomActive()) {
+      viewportPinchZoomWasActive = true;
+      postZoomViewportRecoveryActive = false;
+      viewportDebugLog('resync-deferred', `reason=${reason}`, 'still-pinch-active=1');
+      return;
+    }
+    runCoalescedViewportResync(`timer:${reason}`);
+  }, delayMs);
+}
+
+if (typeof window !== 'undefined') {
+  window.__zeinaShouldDeferViewportHeavyResize = function __zeinaShouldDeferViewportHeavyResize() {
+    return isViewportPinchZoomActive() || isPostZoomViewportRecoveryActive();
+  };
+  window.__zeinaViewportDebugLog = function __zeinaViewportDebugLog(...parts) {
+    viewportDebugLog(...parts);
+  };
+}
+
+function getStableViewportHeightForLayout(visualViewportHeight, fallbackHeight) {
+  const safeFallbackHeight = Number.isFinite(fallbackHeight)
+    ? Math.max(0, fallbackHeight)
+    : 0;
+  const safeVisualViewportHeight = Number.isFinite(visualViewportHeight)
+    ? Math.max(0, visualViewportHeight)
+    : 0;
+  const shouldGuardForUnstableScale = isViewportPinchZoomActive();
+  if (safeVisualViewportHeight > 0 && !shouldGuardForUnstableScale) {
+    return safeVisualViewportHeight;
+  }
+  return safeFallbackHeight;
+}
+
+/**
+ * Returns the CSS-computed value of --app-viewport-height in pixels.
+ * This is used as a minimum floor for RELATIVE_166 mode to prevent JavaScript
+ * from calculating a smaller height than what CSS has already established.
+ */
+function getCSSMinViewportHeight() {
+  const root = document && document.documentElement ? document.documentElement : null;
+  if (!root || typeof window === 'undefined' || !window.getComputedStyle) {
+    return 0;
+  }
+  try {
+    const computedStyle = window.getComputedStyle(root);
+    const heightValue = computedStyle.getPropertyValue('--app-viewport-height').trim();
+    if (!heightValue) {
+      return 0;
+    }
+    // Handle calc() expressions - parse the computed value
+    // getComputedStyle should return the resolved pixel value, but fallback to parsing
+    const numericMatch = heightValue.match(/^([\d.]+)px$/);
+    if (numericMatch) {
+      const px = parseFloat(numericMatch[1]);
+      return Number.isFinite(px) && px > 0 ? px : 0;
+    }
+    // If getComputedStyle returns the raw calc() expression, we need to measure
+    if (heightValue.includes('calc') || heightValue.includes('var') || heightValue.includes('vh')) {
+      // Create a temporary element to measure the computed height
+      const temp = document.createElement('div');
+      temp.style.position = 'absolute';
+      temp.style.left = '0';
+      temp.style.top = '0';
+      temp.style.width = '1px';
+      temp.style.height = heightValue;
+      temp.style.pointerEvents = 'none';
+      temp.style.opacity = '0';
+      temp.style.zIndex = '-2147483648';
+      document.body.appendChild(temp);
+      const rect = temp.getBoundingClientRect();
+      const measuredHeight = Number.isFinite(rect.height) && rect.height > 0 ? rect.height : 0;
+      document.body.removeChild(temp);
+      return measuredHeight;
+    }
+  } catch (e) {
+    // Silently fail and return 0 to let the normal calculation proceed
+  }
+  return 0;
+}
+
+function resolveViewportSizeForRendering() {
+  const layoutMode = sanitizeViewportLayoutMode(STATE.viewportLayoutMode, VIEWPORT_LAYOUT_MODE_LEGACY);
+  const safeInnerWidth = Number.isFinite(window.innerWidth) ? Math.max(0, window.innerWidth) : 0;
+  const safeInnerHeight = Number.isFinite(window.innerHeight) ? Math.max(0, window.innerHeight) : 0;
+  const root = document && document.documentElement ? document.documentElement : null;
+  const safeClientWidth = root && Number.isFinite(root.clientWidth) ? Math.max(0, root.clientWidth) : 0;
+  const safeClientHeight = root && Number.isFinite(root.clientHeight) ? Math.max(0, root.clientHeight) : 0;
+  const vv = window && window.visualViewport ? window.visualViewport : null;
+  const safeVisualViewportWidth = vv && Number.isFinite(Number(vv.width))
+    ? Math.max(0, Number(vv.width))
+    : 0;
+  const safeVisualViewportHeightRaw = vv && Number.isFinite(Number(vv.height))
+    ? Math.max(0, Number(vv.height))
+    : 0;
+  const safeVisualViewportHeight = getStableViewportHeightForLayout(
+    safeVisualViewportHeightRaw,
+    Math.max(safeInnerHeight, safeClientHeight),
+  );
+
+  // Legacy is the baseline path used outside iOS Safari.
+  // Resolve it from the dynamic viewport (dvh-like) so browser UI changes are respected.
+  if (layoutMode === VIEWPORT_LAYOUT_MODE_LEGACY) {
+    const dynamicWidth = safeVisualViewportWidth > 0
+      ? safeVisualViewportWidth
+      : Math.max(safeInnerWidth, safeClientWidth);
+    const dynamicHeight = safeVisualViewportHeight > 0
+      ? safeVisualViewportHeight
+      : Math.max(safeInnerHeight, safeClientHeight);
+    return {
+      width: dynamicWidth > 0 ? dynamicWidth : safeInnerWidth,
+      height: dynamicHeight > 0 ? dynamicHeight : safeInnerHeight,
+    };
+  }
+
+  // Dynamic mode follows the visual viewport (dvh-like behavior).
+  // Cover mode intentionally does not; it fills the large viewport and can render under browser UI.
+  if (
+    STATE.useIOSFixedViewportWorkaround
+    && layoutMode === VIEWPORT_LAYOUT_MODE_DYNAMIC
+    && safeVisualViewportWidth > 0
+    && safeVisualViewportHeight > 0
+  ) {
+    return {
+      width: safeVisualViewportWidth,
+      height: safeVisualViewportHeight,
+    };
+  }
+
+  let probeWidth = 0;
+  let probeHeight = 0;
+  const probe = ensureLargeViewportProbeElement();
+  if (probe && typeof probe.getBoundingClientRect === 'function') {
+    const rect = probe.getBoundingClientRect();
+    if (rect) {
+      if (Number.isFinite(rect.width)) {
+        probeWidth = Math.max(0, rect.width);
+      }
+      if (Number.isFinite(rect.height)) {
+        probeHeight = Math.max(0, rect.height);
+      }
+    }
+  }
+
+  const width = Math.max(safeInnerWidth, safeClientWidth, probeWidth);
+  const height = Math.max(safeInnerHeight, safeClientHeight, probeHeight);
+  const resolvedWidth = width > 0 ? width : safeInnerWidth;
+  let resolvedHeight = height > 0 ? height : safeInnerHeight;
+  const layoutOverdrawConfig = resolveViewportLayoutOverdrawConfig(layoutMode);
+
+  // For RELATIVE_166 mode, ensure we never shrink below the CSS-established minimum.
+  // The CSS default is `calc(100vh + 55px)` which ensures content overdraws iOS Safari's bottom bar.
+  // JavaScript calculation can be wrong during initial load due to unreliable probe measurements.
+  // This fix reads the CSS-computed value and uses it as a floor to prevent the intermittent overdraw failure.
+  if (layoutMode === VIEWPORT_LAYOUT_MODE_RELATIVE_166) {
+    const cssMinHeight = getCSSMinViewportHeight();
+    if (cssMinHeight > 0 && resolvedHeight < cssMinHeight) {
+      viewportDebugLog(
+        'resolveViewportSizeForRendering',
+        `relative166-floor-applied: ${resolvedHeight}px → ${cssMinHeight}px`,
+      );
+      resolvedHeight = cssMinHeight;
+    }
+  }
+
+  if (layoutOverdrawConfig.extraHeightPx > 0) {
+    return {
+      width: resolvedWidth,
+      height: Math.max(resolvedHeight, resolvedHeight + layoutOverdrawConfig.extraHeightPx),
+    };
+  }
+  return {
+    width: resolvedWidth,
+    height: resolvedHeight,
+  };
+}
+
+function syncIOSFixedViewportWorkaroundFlag() {
+  const mode = sanitizeViewportLayoutMode(STATE.viewportLayoutMode, VIEWPORT_LAYOUT_MODE_LEGACY);
+  const layoutOverdrawConfig = resolveViewportLayoutOverdrawConfig(mode);
+  const useWorkaround = (
+    layoutOverdrawConfig.topPx > 0
+    || layoutOverdrawConfig.extraHeightPx > 0
+    || (isLikelyIOS26OrLater() && mode !== VIEWPORT_LAYOUT_MODE_LEGACY)
+  );
+  STATE.useIOSFixedViewportWorkaround = useWorkaround;
+  const root = document && document.documentElement ? document.documentElement : null;
+  if (document && document.body) {
+    if (document.body.classList) {
+      document.body.classList.toggle('ios26-fixed-workaround', useWorkaround);
+    }
+    document.body.setAttribute('data-viewport-layout-mode', mode);
+  }
+  if (root && typeof root.setAttribute === 'function') {
+    root.setAttribute('data-viewport-layout-mode', mode);
+  }
+}
+
+function syncVisualViewportOffsets() {
+  if (isViewportPinchZoomActive()) {
+    viewportPinchZoomWasActive = true;
+    schedulePostZoomLayoutResync({ reason: 'syncVisualViewportOffsets:pinch-active' });
+    return;
+  }
+  const offsetStartMs = performance.now();
+  let offsetLeft = 0;
+  let offsetTop = 0;
+  if (
+    STATE.useIOSFixedViewportWorkaround
+    && STATE.viewportLayoutMode === VIEWPORT_LAYOUT_MODE_DYNAMIC
+    && window
+    && window.visualViewport
+  ) {
+    const vv = window.visualViewport;
+    const vvLeft = Number(vv.offsetLeft);
+    const vvTop = Number(vv.offsetTop);
+    if (Number.isFinite(vvLeft)) {
+      offsetLeft = vvLeft;
+    }
+    if (Number.isFinite(vvTop)) {
+      offsetTop = vvTop;
+    }
+  }
+  const layoutOverdrawConfig = resolveViewportLayoutOverdrawConfig(STATE.viewportLayoutMode);
+  if (layoutOverdrawConfig.topPx > 0) {
+    offsetTop = -layoutOverdrawConfig.topPx;
+  }
+
+  STATE.viewportOffsetLeftPx = offsetLeft;
+  STATE.viewportOffsetTopPx = offsetTop;
+  if (document && document.documentElement && document.documentElement.style) {
+    document.documentElement.style.setProperty('--app-viewport-offset-left', `${offsetLeft}px`);
+    document.documentElement.style.setProperty('--app-viewport-offset-top', `${offsetTop}px`);
+  }
+  viewportDebugLog(
+    'syncVisualViewportOffsets',
+    `left=${offsetLeft.toFixed(2)}`,
+    `top=${offsetTop.toFixed(2)}`,
+    `duration=${(performance.now() - offsetStartMs).toFixed(2)}ms`,
+  );
+}
+
+function ensureScrollStageLayoutStructure() {
+  if (!document || !document.body) {
+    return;
+  }
+  const body = document.body;
+  let stage = document.getElementById(VIEWPORT_LAYOUT_SCROLL_STAGE_ID);
+
+  if (STATE.viewportLayoutMode !== VIEWPORT_LAYOUT_MODE_SCROLL_STAGE) {
+    if (stage && stage.parentNode === body) {
+      while (stage.firstChild) {
+        body.insertBefore(stage.firstChild, stage);
+      }
+      stage.remove();
+    }
+    return;
+  }
+
+  if (!stage) {
+    stage = document.createElement('div');
+    stage.id = VIEWPORT_LAYOUT_SCROLL_STAGE_ID;
+  }
+
+  const loadingScreenElement = document.getElementById('loadingScreen');
+  if (stage.parentNode !== body) {
+    if (loadingScreenElement && loadingScreenElement.parentNode === body) {
+      body.insertBefore(stage, loadingScreenElement.nextSibling);
+    } else {
+      body.insertBefore(stage, body.firstChild);
+    }
+  }
+
+  const mainElement = document.querySelector('main');
+  if (mainElement && !mainElement.id) {
+    mainElement.id = 'app';
+  }
+
+  const orderedStageChildren = [
+    canvas,
+    flowersBackCanvas,
+    wash1Layer,
+    wash2Layer,
+    video,
+    centerOverlayImageLayer,
+    centerOverlayImageLayerAlt,
+    swipeSectionsScrollHintWrapperLayer,
+    rsvpLayer,
+    section1LabelLayer,
+    frontCanvas,
+    flowersFrontCanvas,
+    mainElement,
+  ];
+  for (let i = 0; i < orderedStageChildren.length; i += 1) {
+    const node = orderedStageChildren[i];
+    if (!node || typeof node.nodeType !== 'number') {
+      continue;
+    }
+    stage.appendChild(node);
+  }
+}
+
+function ensureRootBackgroundLayoutStructure() {
+  if (!document || !document.body) {
+    return;
+  }
+  if (STATE.viewportLayoutMode !== VIEWPORT_LAYOUT_MODE_ROOT_BG) {
+    return;
+  }
+  const body = document.body;
+  const mainElement = document.querySelector('main');
+  if (mainElement && !mainElement.id) {
+    mainElement.id = 'app';
+  }
+
+  const orderedLayers = [
+    canvas,
+    flowersBackCanvas,
+    wash1Layer,
+    wash2Layer,
+    video,
+    centerOverlayImageLayer,
+    centerOverlayImageLayerAlt,
+    swipeSectionsScrollHintWrapperLayer,
+    rsvpLayer,
+    section1LabelLayer,
+    frontCanvas,
+    flowersFrontCanvas,
+  ];
+  let anchor = body.firstChild;
+  for (let i = 0; i < orderedLayers.length; i += 1) {
+    const layer = orderedLayers[i];
+    if (!layer || typeof layer.nodeType !== 'number') {
+      continue;
+    }
+    if (layer.parentNode !== body) {
+      body.appendChild(layer);
+    }
+    body.insertBefore(layer, anchor);
+    anchor = layer.nextSibling;
+  }
+}
+
+function applyViewportScrollNudgeIfNeeded() {
+  if (STATE.viewportLayoutMode !== VIEWPORT_LAYOUT_MODE_SCROLL_STAGE) {
+    return;
+  }
+  if (!shouldEnableViewportScrollNudge()) {
+    return;
+  }
+  if (viewportScrollNudgeApplied) {
+    return;
+  }
+  viewportScrollNudgeApplied = true;
+  requestAnimationFrame(() => {
+    if (!window || typeof window.scrollTo !== 'function') {
+      return;
+    }
+    window.scrollTo(0, 1);
+    requestAnimationFrame(() => {
+      window.scrollTo(0, 1);
+    });
+  });
+}
+
+function applyBodyFixedLayoutModeIfNeeded() {
+  if (!document || !document.body) {
+    return;
+  }
+  const body = document.body;
+
+  if (STATE.viewportLayoutMode !== VIEWPORT_LAYOUT_MODE_BODY_FIXED) {
+    if (viewportBodyFixedStylesApplied && viewportBodyFixedOriginalInlineStyles) {
+      body.style.position = viewportBodyFixedOriginalInlineStyles.position;
+      body.style.inset = viewportBodyFixedOriginalInlineStyles.inset;
+      body.style.width = viewportBodyFixedOriginalInlineStyles.width;
+      body.style.height = viewportBodyFixedOriginalInlineStyles.height;
+      body.style.overflow = viewportBodyFixedOriginalInlineStyles.overflow;
+    }
+    viewportBodyFixedOriginalInlineStyles = null;
+    viewportBodyFixedStylesApplied = false;
+    return;
+  }
+
+  if (!viewportBodyFixedStylesApplied) {
+    viewportBodyFixedOriginalInlineStyles = {
+      position: body.style.position,
+      inset: body.style.inset,
+      width: body.style.width,
+      height: body.style.height,
+      overflow: body.style.overflow,
+    };
+    viewportBodyFixedStylesApplied = true;
+  }
+
+  if (isLikelyIOSDevice()) {
+    body.style.position = 'fixed';
+    body.style.inset = '0';
+    body.style.width = '100%';
+    body.style.height = '100vh';
+    if (typeof CSS !== 'undefined' && CSS && typeof CSS.supports === 'function' && CSS.supports('height', '100lvh')) {
+      body.style.height = '100lvh';
+    }
+    body.style.overflow = 'hidden';
+    return;
+  }
+
+  body.style.position = '';
+  body.style.inset = '';
+  body.style.width = '';
+  body.style.height = '';
+  body.style.overflow = 'hidden';
+}
+
+function getNextViewportLayoutMode(currentMode) {
+  const mode = sanitizeViewportLayoutMode(currentMode, VIEWPORT_LAYOUT_MODE_COVER);
+  if (mode === VIEWPORT_LAYOUT_MODE_COVER) {
+    return VIEWPORT_LAYOUT_MODE_DYNAMIC;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_DYNAMIC) {
+    return VIEWPORT_LAYOUT_MODE_LEGACY;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_LEGACY) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_112;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_112) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_ADJUSTABLE;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_ADJUSTABLE) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_116;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_116) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_120;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_120) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_124;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_124) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_140;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_140) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_160;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_160) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_180;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_180) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_190;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_190) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_20;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_20) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_40;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_40) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_60;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_60) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_80;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_80) {
+    return VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_120;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_RELATIVE_BIAS_UP_120) {
+    return VIEWPORT_LAYOUT_MODE_ROOT_BG;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_ROOT_BG) {
+    return VIEWPORT_LAYOUT_MODE_SCROLL_STAGE;
+  }
+  if (mode === VIEWPORT_LAYOUT_MODE_SCROLL_STAGE) {
+    return VIEWPORT_LAYOUT_MODE_BODY_FIXED;
+  }
+  return VIEWPORT_LAYOUT_MODE_COVER;
+}
+
+function updateViewportLayoutDebugToggleButtonLabel() {
+  if (!viewportLayoutDebugToggleButton) {
+    return;
+  }
+  const mode = sanitizeViewportLayoutMode(STATE.viewportLayoutMode, VIEWPORT_LAYOUT_MODE_COVER);
+  viewportLayoutDebugToggleButton.textContent = `viewport: ${mode}`;
+}
+
+function updateViewportRelativeAdjustableControlsLabel() {
+  if (!viewportRelativeAdjustableControls) {
+    return;
+  }
+  const valueLabel = viewportRelativeAdjustableControls.querySelector('[data-role="value"]');
+  if (!valueLabel) {
+    return;
+  }
+  const normalizedValue = sanitizeViewportRelativeAdjustableValue(
+    STATE.viewportRelativeAdjustableValue,
+    VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_DEFAULT_VALUE,
+  );
+  STATE.viewportRelativeAdjustableValue = normalizedValue;
+  valueLabel.textContent = `relative: ${normalizedValue}`;
+}
+
+function updateViewportRelativeAdjustableControlsVisibility() {
+  if (!viewportRelativeAdjustableControls) {
+    return;
+  }
+  const mode = sanitizeViewportLayoutMode(STATE.viewportLayoutMode, VIEWPORT_LAYOUT_MODE_COVER);
+  viewportRelativeAdjustableControls.style.display = mode === VIEWPORT_LAYOUT_MODE_RELATIVE_ADJUSTABLE
+    ? 'flex'
+    : 'none';
+}
+
+function adjustViewportRelativeAdjustableValue(delta) {
+  const safeDelta = Number.isFinite(Number(delta)) ? Math.floor(Number(delta)) : 0;
+  if (safeDelta === 0) {
+    return;
+  }
+  const currentValue = sanitizeViewportRelativeAdjustableValue(
+    STATE.viewportRelativeAdjustableValue,
+    VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_DEFAULT_VALUE,
+  );
+  const nextValue = sanitizeViewportRelativeAdjustableValue(
+    currentValue + safeDelta,
+    currentValue,
+  );
+  if (nextValue === currentValue) {
+    updateViewportRelativeAdjustableControlsLabel();
+    return;
+  }
+  STATE.viewportRelativeAdjustableValue = nextValue;
+  updateViewportRelativeAdjustableControlsLabel();
+  applyViewportLayoutMode(STATE.viewportLayoutMode, { forceRerender: true });
+}
+
+function shouldEnableViewportRelativeAdjustableControls() {
+  const mode = sanitizeViewportLayoutMode(STATE.viewportLayoutMode, VIEWPORT_LAYOUT_MODE_COVER);
+  return mode === VIEWPORT_LAYOUT_MODE_RELATIVE_ADJUSTABLE;
+}
+
+function ensureViewportRelativeAdjustableControls() {
+  if (!shouldEnableViewportRelativeAdjustableControls()) {
+    const existing = document && typeof document.getElementById === 'function'
+      ? document.getElementById(VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_CONTROLS_ID)
+      : null;
+    if (existing && existing.parentNode) {
+      existing.parentNode.removeChild(existing);
+    }
+    viewportRelativeAdjustableControls = null;
+    return;
+  }
+  if (!document || !document.body) {
+    return;
+  }
+  let controls = document.getElementById(VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_CONTROLS_ID);
+  if (!controls) {
+    controls = document.createElement('div');
+    controls.id = VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_CONTROLS_ID;
+    controls.setAttribute('aria-label', 'Relative viewport adjustable controls');
+
+    const minusButton = document.createElement('button');
+    minusButton.type = 'button';
+    minusButton.setAttribute('data-role', 'minus');
+    minusButton.textContent = '−';
+    minusButton.title = 'Decrease relative mode value by 1px';
+    minusButton.addEventListener('click', () => {
+      adjustViewportRelativeAdjustableValue(-VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_STEP);
+    });
+
+    const valueLabel = document.createElement('span');
+    valueLabel.setAttribute('data-role', 'value');
+    valueLabel.textContent = `relative: ${VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_DEFAULT_VALUE}`;
+
+    const plusButton = document.createElement('button');
+    plusButton.type = 'button';
+    plusButton.setAttribute('data-role', 'plus');
+    plusButton.textContent = '+';
+    plusButton.title = 'Increase relative mode value by 1px';
+    plusButton.addEventListener('click', () => {
+      adjustViewportRelativeAdjustableValue(VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_STEP);
+    });
+
+    controls.appendChild(minusButton);
+    controls.appendChild(valueLabel);
+    controls.appendChild(plusButton);
+    document.body.appendChild(controls);
+  }
+  viewportRelativeAdjustableControls = controls;
+  updateViewportRelativeAdjustableControlsLabel();
+  updateViewportRelativeAdjustableControlsVisibility();
+}
+
+function applyViewportLayoutMode(mode, options = {}) {
+  const safeOptions = options && typeof options === 'object' ? options : {};
+  const applyStartMs = performance.now();
+  const nextMode = sanitizeViewportLayoutMode(
+    mode,
+    sanitizeViewportLayoutMode(STATE.viewportLayoutMode, VIEWPORT_LAYOUT_MODE_COVER),
+  );
+  const changed = nextMode !== STATE.viewportLayoutMode;
+  STATE.viewportLayoutMode = nextMode;
+  if (nextMode !== VIEWPORT_LAYOUT_MODE_RELATIVE_166) {
+    clearIOSRelative166ViewportStabilizationSchedule();
+  }
+  if (changed) {
+    viewportScrollNudgeApplied = false;
+  }
+  updateViewportLayoutDebugToggleButtonLabel();
+  ensureViewportRelativeAdjustableControls();
+  syncSafariTopTintShim();
+
+  if (isViewportPinchZoomActive()) {
+    viewportPinchZoomWasActive = true;
+    schedulePostZoomLayoutResync({ reason: 'applyViewportLayoutMode:pinch-active' });
+    return false;
+  }
+
+  if (!changed && safeOptions.forceRerender !== true) {
+    viewportDebugLog(
+      'applyViewportLayoutMode-skip',
+      `mode=${nextMode}`,
+      `changed=0`,
+      `force=${safeOptions.forceRerender === true ? 1 : 0}`,
+      `duration=${(performance.now() - applyStartMs).toFixed(2)}ms`,
+    );
+    return false;
+  }
+
+  ensureScrollStageLayoutStructure();
+  ensureRootBackgroundLayoutStructure();
+  applyBodyFixedLayoutModeIfNeeded();
+  const previousFloralScale = Number.isFinite(STATE.lastFloralResponsiveScaleFactor)
+    ? STATE.lastFloralResponsiveScaleFactor
+    : null;
+  resizeCanvasToViewport();
+  refreshHeroVideoReferenceRect();
+  applyHeroVideoWiggleAnchor(resolveHeroPlaybackGateConfig());
+  if (STATE.flowerSystem && typeof STATE.flowerSystem.setPixiSurfaces === 'function') {
+    STATE.flowerSystem.setPixiSurfaces({
+      backCanvas: flowersBackCanvas,
+      frontCanvas: flowersFrontCanvas,
+    });
+  }
+  invalidateCompletedBranchLayer();
+  resetOverlayWrapPromotionState();
+  const nextFloralScale = resolveFloralResponsiveScaleFactor();
+  if (previousFloralScale === null || Math.abs(nextFloralScale - previousFloralScale) > 1e-6) {
+    refreshBranchEndpointsAndFlowerSystem();
+  }
+  renderScene({ skipAutoStart: true });
+  applyViewportScrollNudgeIfNeeded();
+  recordAppliedViewportLayoutSignature();
+  viewportDebugLog(
+    'applyViewportLayoutMode',
+    `mode=${nextMode}`,
+    `changed=${changed ? 1 : 0}`,
+    `force=${safeOptions.forceRerender === true ? 1 : 0}`,
+    `duration=${(performance.now() - applyStartMs).toFixed(2)}ms`,
+  );
+  return true;
+}
+
+function isIOSRelative166ViewportModeActive() {
+  if (!isLikelySafariOnIOS()) {
+    return false;
+  }
+  const stateMode = sanitizeViewportLayoutMode(STATE.viewportLayoutMode, '');
+  if (stateMode === VIEWPORT_LAYOUT_MODE_RELATIVE_166) {
+    return true;
+  }
+  if (!document || !document.body) {
+    return false;
+  }
+  const bodyMode = sanitizeViewportLayoutMode(
+    String(document.body.getAttribute('data-viewport-layout-mode') || '').trim(),
+    '',
+  );
+  return bodyMode === VIEWPORT_LAYOUT_MODE_RELATIVE_166;
+}
+
+function clearIOSRelative166ViewportStabilizationSchedule() {
+  if (iosRelative166StabilizationRafId !== null) {
+    cancelAnimationFrame(iosRelative166StabilizationRafId);
+    iosRelative166StabilizationRafId = null;
+  }
+  if (iosRelative166StabilizationNestedRafId !== null) {
+    cancelAnimationFrame(iosRelative166StabilizationNestedRafId);
+    iosRelative166StabilizationNestedRafId = null;
+  }
+  while (iosRelative166StabilizationTimeoutIds.length > 0) {
+    const timerId = iosRelative166StabilizationTimeoutIds.pop();
+    if (timerId !== null && timerId !== undefined) {
+      clearTimeout(timerId);
+    }
+  }
+}
+
+function rerunIOSRelative166ViewportLayout() {
+  if (!isIOSRelative166ViewportModeActive()) {
+    return false;
+  }
+  if (isViewportPinchZoomActive()) {
+    viewportPinchZoomWasActive = true;
+    schedulePostZoomLayoutResync({ reason: 'rerunIOSRelative166:pinch-active' });
+    return false;
+  }
+  return runCoalescedViewportResync('rerunIOSRelative166');
+}
+
+function scheduleIOSRelative166ViewportStabilization() {
+  if (!isIOSRelative166ViewportModeActive()) {
+    clearIOSRelative166ViewportStabilizationSchedule();
+    return;
+  }
+  clearIOSRelative166ViewportStabilizationSchedule();
+  const rerun = () => {
+    if (isViewportPinchZoomActive()) {
+      viewportPinchZoomWasActive = true;
+      schedulePostZoomLayoutResync({ reason: 'scheduleIOSRelative166:pinch-active' });
+      return;
+    }
+    runCoalescedViewportResync('scheduleIOSRelative166');
+  };
+  iosRelative166StabilizationRafId = requestAnimationFrame(() => {
+    iosRelative166StabilizationRafId = null;
+    iosRelative166StabilizationNestedRafId = requestAnimationFrame(() => {
+      iosRelative166StabilizationNestedRafId = null;
+      rerun();
+    });
+  });
+  iosRelative166StabilizationTimeoutIds.push(window.setTimeout(rerun, 120));
+  iosRelative166StabilizationTimeoutIds.push(window.setTimeout(rerun, 350));
+  iosRelative166StabilizationTimeoutIds.push(window.setTimeout(rerun, 700));
+}
+
+function ensureViewportLayoutDebugToggleButton() {
+  if (!shouldEnableViewportLayoutDebugToggle()) {
+    return;
+  }
+  if (!document || !document.body) {
+    return;
+  }
+  let button = document.getElementById(VIEWPORT_LAYOUT_MODE_DEBUG_BUTTON_ID);
+  if (!button) {
+    button = document.createElement('button');
+    button.type = 'button';
+    button.id = VIEWPORT_LAYOUT_MODE_DEBUG_BUTTON_ID;
+    button.title = 'Switch viewport layout mode (cover/dynamic/legacy/relative112/relativeAdjustable/relative116/relative120/relative124/relative140/relative160/relative180/relative190/relativeBiasUp20/relativeBiasUp40/relativeBiasUp60/relativeBiasUp80/relativeBiasUp120/rootbg/scrollstage/bodyfixed)';
+    button.addEventListener('click', () => {
+      const nextMode = getNextViewportLayoutMode(STATE.viewportLayoutMode);
+      applyViewportLayoutMode(nextMode, { forceRerender: true });
+    });
+    document.body.appendChild(button);
+  }
+  viewportLayoutDebugToggleButton = button;
+  updateViewportLayoutDebugToggleButtonLabel();
+  ensureViewportRelativeAdjustableControls();
+}
+
+function setupVisualViewportHandlers() {
+  if (visualViewportHandlersInstalled) {
+    return;
+  }
+  if (!window || !window.visualViewport || typeof window.visualViewport.addEventListener !== 'function') {
+    return;
+  }
+  const onVisualViewportChanged = () => {
+    if (isViewportPinchZoomActive()) {
+      viewportPinchZoomWasActive = true;
+      schedulePostZoomLayoutResync({ reason: 'visualViewport:pinch-active' });
+      return;
+    }
+    if (viewportPinchZoomWasActive) {
+      schedulePostZoomLayoutResync({ reason: 'visualViewport:post-pinch' });
+      return;
+    }
+    if (isTextInputFocused()) {
+      schedulePostZoomLayoutResync({ reason: 'visualViewport:input-focused', delayMs: 300 });
+      return;
+    }
+    if (isIOSRelative166ViewportModeActive()) {
+      if (iosRelative166VisualViewportRerenderQueued) {
+        return;
+      }
+      iosRelative166VisualViewportRerenderQueued = true;
+      requestAnimationFrame(() => {
+        iosRelative166VisualViewportRerenderQueued = false;
+        schedulePostZoomLayoutResync({ delayMs: 0, reason: 'visualViewport:relative166' });
+      });
+      return;
+    }
+    runCoalescedViewportResync('visualViewport:generic');
+  };
+  window.visualViewport.addEventListener('resize', onVisualViewportChanged);
+  window.visualViewport.addEventListener('scroll', onVisualViewportChanged);
+  visualViewportHandlersInstalled = true;
+}
+
+function renderBranch(branch, renderOptions = {}) {
+  if (!branch.pathData) {
+    return { backSkippedStems: 0, backSkippedLeaves: 0 };
+  }
+
+  const visibleEndLength = Number.isFinite(renderOptions.visibleLength)
+    ? Math.max(0, renderOptions.visibleLength)
+    : null;
+  const visibleStartLength = Number.isFinite(renderOptions.visibleStartLength)
+    ? Math.max(0, renderOptions.visibleStartLength)
+    : 0;
+  if (visibleEndLength !== null && visibleEndLength <= visibleStartLength + 1e-8) {
+    return { backSkippedStems: 0, backSkippedLeaves: 0 };
+  }
+
+  const targetCtx = renderOptions.targetCtx || ctx;
+  const leavesConfig = renderOptions.leavesConfig || resolveLeavesConfig(CONFIG.leaves || {});
+  const branchIndex = Number.isFinite(renderOptions.branchIndex) ? renderOptions.branchIndex : 0;
+  const nowMs = Number.isFinite(renderOptions.nowMs) ? renderOptions.nowMs : performance.now();
+  const perfStats = renderOptions.perfStats || null;
+  const hiddenBand = renderOptions.hiddenBand && typeof renderOptions.hiddenBand === 'object'
+    ? renderOptions.hiddenBand
+    : null;
+  const skipFullyHiddenInBand = renderOptions.skipFullyHiddenInBand === true;
+  const hiddenSpriteCullInnerPaddingPx = Number.isFinite(Number(renderOptions.hiddenSpriteCullInnerPaddingPx))
+    ? Math.max(0, Number(renderOptions.hiddenSpriteCullInnerPaddingPx))
+    : 0;
+  const hiddenSpriteCullRadiusScale = Number.isFinite(Number(renderOptions.hiddenSpriteCullRadiusScale))
+    ? clamp(Number(renderOptions.hiddenSpriteCullRadiusScale), 0.05, 1)
+    : 1;
+  const hiddenSpriteCullDebug = (
+    renderOptions.hiddenSpriteCullDebug
+    && typeof renderOptions.hiddenSpriteCullDebug === 'object'
+  )
+    ? renderOptions.hiddenSpriteCullDebug
+    : null;
+  const hiddenSpriteCullDebugBudget = (
+    renderOptions.hiddenSpriteCullDebugBudget
+    && typeof renderOptions.hiddenSpriteCullDebugBudget === 'object'
+  )
+    ? renderOptions.hiddenSpriteCullDebugBudget
+    : null;
+  const hiddenBands = Array.isArray(renderOptions.hiddenBands) ? renderOptions.hiddenBands : (hiddenBand ? [hiddenBand] : []);
+  const branchTextures = renderOptions.branchTextures || getBranchStemTextures(branch, CONFIG.brush);
+  if (!branchTextures || !branchTextures.defaultImage) {
+    return { backSkippedStems: 0, backSkippedLeaves: 0 };
+  }
+
+  const stemStartMs = (perfStats && isPerformanceMonitoringEnabled()) ? performance.now() : 0;
+  const stemStats = drawBrushAlongPath(
+    branch,
+    CONFIG.brush,
+    CONFIG.debug,
+    branchTextures.defaultImage,
+    branchTextures.flippedImage,
+    visibleEndLength,
+    targetCtx,
+    {
+      visibleStartLength,
+      hiddenBand,
+      skipFullyHiddenInBand,
+    },
+  );
+  if (perfStats && stemStartMs > 0) {
+    perfStats.stemDrawMs += Math.max(0, performance.now() - stemStartMs);
+  }
+  const leafStartMs = (perfStats && isPerformanceMonitoringEnabled()) ? performance.now() : 0;
+  const leafStats = drawBranchLeaves(branch, leavesConfig, {
+    visibleLength: visibleEndLength,
+    visibleStartLength,
+    targetCtx,
+    branchIndex,
+    nowMs,
+    hiddenBand,
+    hiddenBands,
+    skipFullyHiddenInBand,
+    hiddenSpriteCullInnerPaddingPx,
+    hiddenSpriteCullRadiusScale,
+    hiddenSpriteCullDebug,
+    hiddenSpriteCullDebugBudget,
+  });
+  if (perfStats) {
+    if (leafStartMs > 0) {
+      perfStats.leafDrawMs += Math.max(0, performance.now() - leafStartMs);
+    }
+    perfStats.leavesDrawn += Number.isFinite(leafStats && leafStats.drawn) ? leafStats.drawn : 0;
+    perfStats.leavesCulled += Number.isFinite(leafStats && leafStats.culled) ? leafStats.culled : 0;
+    perfStats.backSkippedStems += Number.isFinite(stemStats && stemStats.skippedHidden)
+      ? stemStats.skippedHidden
+      : 0;
+    perfStats.backSkippedLeaves += Number.isFinite(leafStats && leafStats.skippedHidden)
+      ? leafStats.skippedHidden
+      : 0;
+  }
+
+  if (CONFIG.debug.enabled && CONFIG.debug.showPathOutline) {
+    drawPathOutline(branch.pathData);
+  }
+
+  if (CONFIG.debug.enabled && (CONFIG.debug.showTangents || CONFIG.debug.showNormals)) {
+    drawPathVectors(branch.pathData);
+  }
+
+  if (CONFIG.debug.enabled && CONFIG.debug.showControlPoints) {
+    drawControlPoints(branch.controlPoints);
+  }
+
+  if (CONFIG.debug.enabled && CONFIG.debug.showControlCurve) {
+    drawControlCurve(branch.controlPoints);
+  }
+  return {
+    backSkippedStems: Number.isFinite(stemStats && stemStats.skippedHidden)
+      ? stemStats.skippedHidden
+      : 0,
+    backSkippedLeaves: Number.isFinite(leafStats && leafStats.skippedHidden)
+      ? leafStats.skippedHidden
+      : 0,
+  };
+}
+
+function drawOverlayBranchRangeWithStemCache(options = {}) {
+  const branch = options.branch || null;
+  const branchRenderId = typeof options.branchRenderId === 'string' ? options.branchRenderId : '';
+  const branchTextures = options.branchTextures || null;
+  const leavesConfig = options.leavesConfig || resolveLeavesConfig(CONFIG.leaves || {});
+  const branchIndex = Number.isFinite(options.branchIndex) ? options.branchIndex : 0;
+  const targetCtx = options.targetCtx || null;
+  const cacheLayer = options.cacheLayer || null;
+  const rangeStart = Number.isFinite(options.rangeStart) ? Math.max(0, options.rangeStart) : 0;
+  const rangeEnd = Number.isFinite(options.rangeEnd) ? Math.max(0, options.rangeEnd) : 0;
+  const nowMs = Number.isFinite(options.nowMs) ? options.nowMs : performance.now();
+  const perfStats = options.perfStats || null;
+  const hiddenBand = options.hiddenBand && typeof options.hiddenBand === 'object' ? options.hiddenBand : null;
+  const skipFullyHiddenInBand = options.skipFullyHiddenInBand === true;
+  const hiddenSpriteCullInnerPaddingPx = Number.isFinite(Number(options.hiddenSpriteCullInnerPaddingPx))
+    ? Math.max(0, Number(options.hiddenSpriteCullInnerPaddingPx))
+    : 0;
+  const hiddenSpriteCullRadiusScale = Number.isFinite(Number(options.hiddenSpriteCullRadiusScale))
+    ? clamp(Number(options.hiddenSpriteCullRadiusScale), 0.05, 1)
+    : 1;
+  const hiddenSpriteCullDebug = (
+    options.hiddenSpriteCullDebug
+    && typeof options.hiddenSpriteCullDebug === 'object'
+  )
+    ? options.hiddenSpriteCullDebug
+    : null;
+  const hiddenSpriteCullDebugBudget = (
+    options.hiddenSpriteCullDebugBudget
+    && typeof options.hiddenSpriteCullDebugBudget === 'object'
+  )
+    ? options.hiddenSpriteCullDebugBudget
+    : null;
+  const hiddenBands = Array.isArray(options.hiddenBands) ? options.hiddenBands : (hiddenBand ? [hiddenBand] : []);
+  if (!branch || !branch.pathData || !branchTextures || !branchTextures.defaultImage || !targetCtx) {
+    return;
+  }
+  if (rangeEnd <= rangeStart + 1e-8) {
+    return;
+  }
+
+  const supportsRangeCache = Boolean(
+    cacheLayer
+    && cacheLayer.ctx
+    && cacheLayer.committedStemEndByBranchId instanceof Map
+    && branchRenderId.length > 0,
+  );
+
+  let stemSkippedHidden = 0;
+  if (supportsRangeCache) {
+    const committedMap = cacheLayer.committedStemEndByBranchId;
+    const previousCommittedRaw = committedMap.get(branchRenderId);
+    const previousCommitted = Number.isFinite(previousCommittedRaw)
+      ? clamp(previousCommittedRaw, rangeStart, rangeEnd)
+      : rangeStart;
+    const missingStart = Math.max(rangeStart, previousCommitted);
+    if (rangeEnd > missingStart + 1e-8) {
+      const stemStartMs = (perfStats && isPerformanceMonitoringEnabled()) ? performance.now() : 0;
+      drawBrushAlongPath(
+        branch,
+        CONFIG.brush,
+        DISABLED_DEBUG_CONFIG,
+        branchTextures.defaultImage,
+        branchTextures.flippedImage,
+        rangeEnd,
+        cacheLayer.ctx,
+        {
+          visibleStartLength: missingStart,
+          hiddenBand,
+          skipFullyHiddenInBand,
+        },
+      );
+      const targetStemStats = drawBrushAlongPath(
+        branch,
+        CONFIG.brush,
+        DISABLED_DEBUG_CONFIG,
+        branchTextures.defaultImage,
+        branchTextures.flippedImage,
+        rangeEnd,
+        targetCtx,
+        {
+          visibleStartLength: missingStart,
+          hiddenBand,
+          skipFullyHiddenInBand,
+        },
+      );
+      if (perfStats && stemStartMs > 0) {
+        perfStats.stemDrawMs += Math.max(0, performance.now() - stemStartMs);
+      }
+      stemSkippedHidden += Number.isFinite(targetStemStats && targetStemStats.skippedHidden)
+        ? targetStemStats.skippedHidden
+        : 0;
+      committedMap.set(branchRenderId, rangeEnd);
+      cacheLayer.committedBranchIds.add(branchRenderId);
+    }
+  } else {
+    const stemStartMs = (perfStats && isPerformanceMonitoringEnabled()) ? performance.now() : 0;
+    const targetStemStats = drawBrushAlongPath(
+      branch,
+      CONFIG.brush,
+      DISABLED_DEBUG_CONFIG,
+      branchTextures.defaultImage,
+      branchTextures.flippedImage,
+      rangeEnd,
+      targetCtx,
+      {
+        visibleStartLength: rangeStart,
+        hiddenBand,
+        skipFullyHiddenInBand,
+      },
+    );
+    if (perfStats && stemStartMs > 0) {
+      perfStats.stemDrawMs += Math.max(0, performance.now() - stemStartMs);
+    }
+    stemSkippedHidden += Number.isFinite(targetStemStats && targetStemStats.skippedHidden)
+      ? targetStemStats.skippedHidden
+      : 0;
+  }
+
+  const leafStartMs = (perfStats && isPerformanceMonitoringEnabled()) ? performance.now() : 0;
+  const leafStats = drawBranchLeaves(branch, leavesConfig, {
+    visibleLength: rangeEnd,
+    visibleStartLength: rangeStart,
+    targetCtx,
+    branchIndex,
+    nowMs,
+    hiddenBand,
+    hiddenBands,
+    skipFullyHiddenInBand,
+    hiddenSpriteCullInnerPaddingPx,
+    hiddenSpriteCullRadiusScale,
+    hiddenSpriteCullDebug,
+    hiddenSpriteCullDebugBudget,
+  });
+  if (perfStats) {
+    if (leafStartMs > 0) {
+      perfStats.leafDrawMs += Math.max(0, performance.now() - leafStartMs);
+    }
+    perfStats.leavesDrawn += Number.isFinite(leafStats && leafStats.drawn) ? leafStats.drawn : 0;
+    perfStats.leavesCulled += Number.isFinite(leafStats && leafStats.culled) ? leafStats.culled : 0;
+    perfStats.backSkippedStems += stemSkippedHidden;
+    perfStats.backSkippedLeaves += Number.isFinite(leafStats && leafStats.skippedHidden)
+      ? leafStats.skippedHidden
+      : 0;
+  }
+}
+
+function renderScene(options = {}) {
+  if (!STATE.branchGarden || !STATE.stemImage) {
+    cancelFlowerInteractionFrame();
+    return;
+  }
+  if (syncGlobalFoliageScaleIfNeeded()) {
+    return;
+  }
+
+  const perfEnabled = isPerformanceMonitoringEnabled();
+  const frameStartMs = perfEnabled ? performance.now() : 0;
+  const skipAutoStart = options.skipAutoStart === true;
+  const heroPlaybackGateConfig = resolveHeroPlaybackGateConfig();
+  const heroPlaybackFrame = getCurrentHeroVideoFrame(heroPlaybackGateConfig);
+  const overlayNowMs = performance.now();
+  syncCenterOverlayImageLayer(overlayNowMs, heroPlaybackFrame);
+  syncRsvpLayer(overlayNowMs);
+  syncSection2ButtonLayer(overlayNowMs);
+  syncSection1LabelLayer(overlayNowMs);
+  syncWash1Layer(heroPlaybackFrame);
+  syncWash2Layer(heroPlaybackFrame);
+  if (enforceHeroPlaybackGatePauseFrames(heroPlaybackFrame, heroPlaybackGateConfig, { rerenderOnPause: false })) {
+    return;
+  }
+  const growthBlockedByHeroGate = isHeroPlaybackGrowthStartBlocked(heroPlaybackGateConfig);
+
+  if (CONFIG.branchGrowth.enabled && !skipAutoStart && !growthBlockedByHeroGate) {
+    if (!STATE.branchGrowth.running && STATE.branchGrowth.elapsedSec <= 1e-8 && CONFIG.branchGrowth.autoStart) {
+      startBranchAnimation({ restart: true });
+      return;
+    }
+  }
+
+  if (!CONFIG.branchGrowth.enabled && (STATE.branchGrowth.running || STATE.branchGrowth.rafId !== null || STATE.branchGrowth.elapsedSec > 0)) {
+    stopBranchAnimation({ keepElapsed: false });
+  }
+  if (growthBlockedByHeroGate && (STATE.branchGrowth.running || STATE.branchGrowth.rafId !== null || STATE.branchGrowth.elapsedSec > 0)) {
+    stopBranchAnimation({ keepElapsed: false });
+  }
+
+  const useAnimation = CONFIG.branchGrowth.enabled;
+  const elapsedSec = growthBlockedByHeroGate ? 0 : STATE.branchGrowth.elapsedSec;
+  const overlayWrapConfig = resolveOverlayWrapConfig();
+  const overlayWrapActive = isOverlayWrapActive(overlayWrapConfig, useAnimation)
+    && Boolean(frontCanvas && frontCtx);
+  const hiddenBand = overlayWrapActive ? getOverlayHiddenBand(overlayWrapConfig) : null;
+  const _renderSceneMotionConfig = isPlainObjectLiteral(CONFIG.motion) ? CONFIG.motion : {};
+  const viewportSideCullEnabled = _renderSceneMotionConfig.flowerSpriteViewportCullingEnabled !== false;
+  const viewportSideCullPaddingPx = Number.isFinite(_renderSceneMotionConfig.flowerSpriteViewportCullPaddingPx)
+    ? _renderSceneMotionConfig.flowerSpriteViewportCullPaddingPx
+    : 0;
+  const viewportSideBands = viewportSideCullEnabled
+    ? buildViewportSideBands(STATE.viewportWidth, viewportSideCullPaddingPx)
+    : null;
+  const hiddenBands = [
+    ...(hiddenBand ? [hiddenBand] : []),
+    ...(viewportSideBands ? [viewportSideBands.leftBand, viewportSideBands.rightBand] : []),
+  ];
+  const hiddenSpriteCullDebug = (overlayWrapActive && overlayWrapConfig.debugHiddenSpriteCullCirclesEnabled === true)
+    ? {
+      enabled: true,
+      mode: overlayWrapConfig.debugHiddenSpriteCullCirclesMode,
+      maxPerFrame: overlayWrapConfig.debugHiddenSpriteCullCirclesMaxPerFrame,
+      strokeVisible: overlayWrapConfig.debugHiddenSpriteCullCircleStrokeVisible,
+      strokeCulled: overlayWrapConfig.debugHiddenSpriteCullCircleStrokeCulled,
+      lineWidth: overlayWrapConfig.debugHiddenSpriteCullCircleLineWidth,
+    }
+    : null;
+  const hiddenSpriteCullDebugBudget = hiddenSpriteCullDebug ? { drawnCount: 0 } : null;
+  const canUseCompletedLayer = (
+    true
+    && CONFIG.branchGrowth.useOffscreenLayerCache !== false
+    && CONFIG.debug.enabled !== true
+  );
+  const useSingleCompletedLayer = canUseCompletedLayer && overlayWrapActive !== true;
+  const useDualCompletedLayer = canUseCompletedLayer && overlayWrapActive === true && Boolean(frontCtx);
+  const leavesConfig = resolveLeavesConfig(CONFIG.leaves || {});
+  const renderTimestampMs = Number.isFinite(options.timestampMs)
+    ? options.timestampMs
+    : performance.now();
+  const perfStats = {
+    stemDrawMs: 0,
+    leafDrawMs: 0,
+    flowerUpdateMs: 0,
+    flowerDrawMs: 0,
+    leavesDrawn: 0,
+    leavesCulled: 0,
+    flowersDrawn: 0,
+    flowersCulled: 0,
+    backSkippedStems: 0,
+    backSkippedLeaves: 0,
+    backSkippedFlowers: 0,
+  };
+  const animationTotalTimeSec = useAnimation ? getAnimationTotalTimeSec() : 0;
+  const easedElapsedSec = useAnimation
+    ? resolveAnimationEasedElapsedSec(elapsedSec, animationTotalTimeSec)
+    : 0;
+  const leafGrowthTailSec = (
+    useAnimation
+    && leavesConfig
+    && leavesConfig.growthEnabled === true
+    && Number.isFinite(leavesConfig.growthDurationSec)
+  )
+    ? Math.max(0, leavesConfig.growthDurationSec)
+    : 0;
+  const fullGrowthTimeSec = animationTotalTimeSec + leafGrowthTailSec;
+  const branchesFullyGrown = !useAnimation
+    || animationTotalTimeSec <= 0
+    || elapsedSec >= fullGrowthTimeSec - 1e-6;
+
+  ctx.setTransform(STATE.dpr, 0, 0, STATE.dpr, 0, 0);
+  drawBackground();
+  if (frontCanvas && frontCtx) {
+    frontCtx.setTransform(STATE.dpr, 0, 0, STATE.dpr, 0, 0);
+    frontCtx.clearRect(0, 0, STATE.viewportWidth, STATE.viewportHeight);
+  }
+
+  let completedLayer = null;
+  let completedLayerBack = null;
+  let completedLayerFront = null;
+  const viewportSideBandKey = viewportSideBands
+    ? `${STATE.viewportWidth}:${viewportSideCullPaddingPx}`
+    : '';
+  if (useSingleCompletedLayer) {
+    completedLayer = ensureCompletedBranchLayer('single');
+    if (
+      completedLayer.leavesConfigKey !== leavesConfig.cacheKey
+      || completedLayer.viewportSideBandKey !== viewportSideBandKey
+    ) {
+      invalidateCompletedBranchLayer('single');
+      completedLayer = ensureCompletedBranchLayer('single');
+    }
+    completedLayer.leavesConfigKey = leavesConfig.cacheKey;
+    completedLayer.viewportSideBandKey = viewportSideBandKey;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(completedLayer.canvas, 0, 0);
+    ctx.restore();
+    if (hasCompletedBranchLayerContent('back') || hasCompletedBranchLayerContent('front')) {
+      invalidateCompletedBranchLayer('back');
+      invalidateCompletedBranchLayer('front');
+    }
+  } else if (useDualCompletedLayer) {
+    completedLayerBack = ensureCompletedBranchLayer('back');
+    completedLayerFront = ensureCompletedBranchLayer('front');
+    if (
+      completedLayerBack.leavesConfigKey !== leavesConfig.cacheKey
+      || completedLayerBack.viewportSideBandKey !== viewportSideBandKey
+    ) {
+      invalidateCompletedBranchLayer('back');
+      invalidateCompletedBranchLayer('front');
+      completedLayerBack = ensureCompletedBranchLayer('back');
+      completedLayerFront = ensureCompletedBranchLayer('front');
+    }
+    completedLayerBack.leavesConfigKey = leavesConfig.cacheKey;
+    completedLayerBack.viewportSideBandKey = viewportSideBandKey;
+    completedLayerFront.leavesConfigKey = leavesConfig.cacheKey;
+    completedLayerFront.viewportSideBandKey = viewportSideBandKey;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(completedLayerBack.canvas, 0, 0);
+    ctx.restore();
+    if (frontCtx) {
+      frontCtx.save();
+      frontCtx.setTransform(1, 0, 0, 1, 0, 0);
+      frontCtx.drawImage(completedLayerFront.canvas, 0, 0);
+      frontCtx.restore();
+    }
+    if (hasCompletedBranchLayerContent('single')) {
+      invalidateCompletedBranchLayer('single');
+    }
+  } else if (
+    hasCompletedBranchLayerContent('single')
+    || hasCompletedBranchLayerContent('back')
+    || hasCompletedBranchLayerContent('front')
+  ) {
+    invalidateCompletedBranchLayer('all');
+  }
+
+  const branches = STATE.branchGarden.branches;
+  const branchById = _renderSceneBranchById;
+  const branchVisibleLengthById = _renderSceneBranchVisibleLengthById;
+  const branchEndpointVisibleById = _renderSceneBranchEndpointVisibleById;
+  branchById.clear();
+  branchVisibleLengthById.clear();
+  branchEndpointVisibleById.clear();
+  for (let i = 0; i < branches.length; i += 1) {
+    const branch = branches[i];
+    if (branch && Number.isFinite(branch.id)) {
+      branchById.set(branch.id, branch);
+      if (useAnimation && branch.pathData) {
+        const branchLength = Number.isFinite(branch.pathData.totalLength)
+          ? Math.max(0, branch.pathData.totalLength)
+          : 0;
+        const visibleLength = getBranchVisibleLengthAtElapsed(branch, elapsedSec, animationTotalTimeSec, easedElapsedSec);
+        branchVisibleLengthById.set(branch.id, visibleLength);
+        branchEndpointVisibleById.set(
+          branch.id,
+          visibleLength >= branchLength - 1e-6,
+        );
+      }
+    }
+  }
+  syncFlowerGrowthAnimationWithBranchGrowth(
+    useAnimation,
+    elapsedSec,
+    animationTotalTimeSec,
+    branches,
+    branchVisibleLengthById,
+    renderTimestampMs,
+  );
+  const isBranchFlowerEndpointVisible = (branchId) => {
+    const growthState = STATE.flowerGrowth;
+    if (growthState && growthState.dynamicEndpointsActive === true) {
+      return true;
+    }
+    if (!useAnimation || !Number.isFinite(branchId)) {
+      return true;
+    }
+    if (!branchEndpointVisibleById.has(branchId)) {
+      return true;
+    }
+    return branchEndpointVisibleById.get(branchId) === true;
+  };
+  const shouldRenderLeaves = Boolean(leavesConfig.enabled && STATE.leafImage);
+  const canUseLeafOverlayFastPath = Boolean(
+    isSwayFastPathEnabled()
+    && overlayWrapActive !== true
+    && shouldRenderLeaves
+    && useSingleCompletedLayer
+    && completedLayer
+    && branchesFullyGrown
+    && completedLayer.committedBranchIds.size >= branches.length
+  );
+  const canSkipBranchLoop = useSingleCompletedLayer
+    && completedLayer
+    && branchesFullyGrown
+    && completedLayer.committedBranchIds.size >= branches.length
+    && !shouldRenderLeaves
+    && !canUseLeafOverlayFastPath;
+
+  let activeBranches = 0;
+  if (overlayWrapActive) {
+    for (let i = 0; i < branches.length; i += 1) {
+      const branch = branches[i];
+      if (!branch || !branch.pathData) {
+        continue;
+      }
+      const visibleLength = useAnimation
+        ? (
+          Number.isFinite(branch.id) && branchVisibleLengthById.has(branch.id)
+            ? branchVisibleLengthById.get(branch.id)
+            : getBranchVisibleLengthAtElapsed(branch, elapsedSec, animationTotalTimeSec, easedElapsedSec)
+        )
+        : branch.pathData.totalLength;
+      const branchTextures = getBranchStemTextures(branch, CONFIG.brush);
+      if (!branchTextures || !branchTextures.defaultImage) {
+        continue;
+      }
+      if (visibleLength > 1e-8) {
+        activeBranches += 1;
+      }
+      const promotionEntry = useAnimation
+        ? updateOverlayPromotionForGrowthOn(branch, visibleLength, hiddenBand)
+        : updateOverlayPromotionFromTipExit(branch, visibleLength, hiddenBand);
+      const ranges = resolveOverlayRenderRanges(branch, visibleLength, promotionEntry);
+      if (useDualCompletedLayer && completedLayerBack && completedLayerFront && frontCtx) {
+        const branchRenderId = getBranchRenderId(branch);
+        drawOverlayBranchRangeWithStemCache({
+          branch,
+          branchRenderId,
+          branchTextures,
+          leavesConfig,
+          branchIndex: i,
+          rangeStart: ranges.backStart,
+          rangeEnd: ranges.backEnd,
+          nowMs: renderTimestampMs,
+          targetCtx: ctx,
+          cacheLayer: completedLayerBack,
+          perfStats,
+          hiddenBand,
+          hiddenBands,
+          skipFullyHiddenInBand: overlayWrapConfig.skipHiddenBackDrawEnabled === true,
+          hiddenSpriteCullInnerPaddingPx: overlayWrapConfig.spriteHiddenCullInnerPaddingPx,
+          hiddenSpriteCullRadiusScale: overlayWrapConfig.spriteHiddenCullRadiusScale,
+          hiddenSpriteCullDebug,
+          hiddenSpriteCullDebugBudget,
+        });
+        drawOverlayBranchRangeWithStemCache({
+          branch,
+          branchRenderId,
+          branchTextures,
+          leavesConfig,
+          branchIndex: i,
+          rangeStart: ranges.frontStart,
+          rangeEnd: ranges.frontEnd,
+          nowMs: renderTimestampMs,
+          targetCtx: frontCtx,
+          cacheLayer: completedLayerFront,
+          perfStats,
+          hiddenBand: null,
+          hiddenBands: viewportSideBands ? [viewportSideBands.leftBand, viewportSideBands.rightBand] : [],
+          skipFullyHiddenInBand: false,
+        });
+      } else {
+        renderBranch(branch, {
+          visibleStartLength: ranges.backStart,
+          visibleLength: ranges.backEnd,
+          branchTextures,
+          leavesConfig,
+          branchIndex: i,
+          nowMs: renderTimestampMs,
+          targetCtx: ctx,
+          perfStats,
+          hiddenBand,
+          hiddenBands,
+          skipFullyHiddenInBand: overlayWrapConfig.skipHiddenBackDrawEnabled === true,
+          hiddenSpriteCullInnerPaddingPx: overlayWrapConfig.spriteHiddenCullInnerPaddingPx,
+          hiddenSpriteCullRadiusScale: overlayWrapConfig.spriteHiddenCullRadiusScale,
+          hiddenSpriteCullDebug,
+          hiddenSpriteCullDebugBudget,
+        });
+        if (frontCtx) {
+          renderBranch(branch, {
+            visibleStartLength: ranges.frontStart,
+            visibleLength: ranges.frontEnd,
+            branchTextures,
+            leavesConfig,
+            branchIndex: i,
+            nowMs: renderTimestampMs,
+            targetCtx: frontCtx,
+            perfStats,
+            hiddenBand: null,
+            hiddenBands: viewportSideBands ? [viewportSideBands.leftBand, viewportSideBands.rightBand] : [],
+            skipFullyHiddenInBand: false,
+          });
+        }
+      }
+    }
+  } else if (canSkipBranchLoop) {
+    activeBranches = branches.length;
+  } else if (canUseLeafOverlayFastPath) {
+    activeBranches = branches.length;
+    const leafStartMs = perfEnabled ? performance.now() : 0;
+    const leafStats = drawLeafOverlayFast(
+      leavesConfig,
+      renderTimestampMs,
+      ctx,
+      hiddenBands,
+    );
+    if (perfEnabled) {
+      perfStats.leafDrawMs += Math.max(0, performance.now() - leafStartMs);
+    }
+    perfStats.leavesDrawn += Number.isFinite(leafStats && leafStats.drawn) ? leafStats.drawn : 0;
+    perfStats.leavesCulled += Number.isFinite(leafStats && leafStats.culled) ? leafStats.culled : 0;
+  } else {
+    for (let i = 0; i < branches.length; i += 1) {
+      const branch = branches[i];
+      const visibleLength = useAnimation
+        ? (
+          Number.isFinite(branch.id) && branchVisibleLengthById.has(branch.id)
+            ? branchVisibleLengthById.get(branch.id)
+            : getBranchVisibleLengthAtElapsed(branch, elapsedSec, animationTotalTimeSec, easedElapsedSec)
+        )
+        : null;
+
+      if (useSingleCompletedLayer && branch.pathData) {
+        const branchLength = Number.isFinite(branch.pathData.totalLength) ? branch.pathData.totalLength : 0;
+        const isFullyVisible = visibleLength === null || visibleLength >= branchLength - 1e-6;
+        if (isFullyVisible) {
+          const branchRenderId = getBranchRenderId(branch);
+          if (completedLayer.committedBranchIds.has(branchRenderId)) {
+            activeBranches += 1;
+            if (shouldRenderLeaves) {
+              const leafStartMs = perfEnabled ? performance.now() : 0;
+              const leafStats = drawCommittedBranchLeavesFast(
+                branch,
+                leavesConfig,
+                completedLayer.ctx,
+                ctx,
+                i,
+                renderTimestampMs,
+                hiddenBands,
+              );
+              if (perfEnabled) {
+                perfStats.leafDrawMs += Math.max(0, performance.now() - leafStartMs);
+              }
+              perfStats.leavesDrawn += Number.isFinite(leafStats && leafStats.drawn) ? leafStats.drawn : 0;
+              perfStats.leavesCulled += Number.isFinite(leafStats && leafStats.culled) ? leafStats.culled : 0;
+            }
+            continue;
+          }
+
+          const branchTextures = getBranchStemTextures(branch, CONFIG.brush);
+          if (!branchTextures.defaultImage) {
+            continue;
+          }
+          activeBranches += 1;
+          const stemStartMs = perfEnabled ? performance.now() : 0;
+          drawBrushAlongPath(
+            branch,
+            CONFIG.brush,
+            DISABLED_DEBUG_CONFIG,
+            branchTextures.defaultImage,
+            branchTextures.flippedImage,
+            null,
+            completedLayer.ctx,
+          );
+          if (perfEnabled) {
+            perfStats.stemDrawMs += Math.max(0, performance.now() - stemStartMs);
+          }
+          completedLayer.committedBranchIds.add(branchRenderId);
+          if (shouldRenderLeaves) {
+            drawCommittedBranchLeavesFast(
+              branch,
+              leavesConfig,
+              completedLayer.ctx,
+              null,
+              i,
+              renderTimestampMs,
+              hiddenBands,
+            );
+          }
+          // Draw once on this frame since layer blit already happened earlier.
+          renderBranch(branch, {
+            visibleLength,
+            branchTextures,
+            leavesConfig,
+            branchIndex: i,
+            nowMs: renderTimestampMs,
+            perfStats,
+            hiddenBands,
+          });
+          continue;
+        }
+      }
+
+      const branchTextures = getBranchStemTextures(branch, CONFIG.brush);
+      if (!branchTextures.defaultImage) {
+        continue;
+      }
+      if (visibleLength === null || visibleLength > 0) {
+        activeBranches += 1;
+      }
+
+      const useIncrementalCache = (
+        useSingleCompletedLayer
+        && completedLayer
+        && useAnimation
+        && visibleLength !== null
+        && visibleLength > 0
+        && CONFIG.branchGrowth.useIncrementalStemCache !== false
+      );
+
+      if (useIncrementalCache) {
+        const branchRenderId = getBranchRenderId(branch);
+        const committedMap = completedLayer.committedStemEndByBranchId;
+        const previousCommitted = Number.isFinite(committedMap.get(branchRenderId))
+          ? committedMap.get(branchRenderId)
+          : 0;
+        const delta = visibleLength - previousCommitted;
+        if (delta > 1e-6) {
+          const stemStartMs = perfEnabled ? performance.now() : 0;
+          drawBrushAlongPath(
+            branch,
+            CONFIG.brush,
+            DISABLED_DEBUG_CONFIG,
+            branchTextures.defaultImage,
+            branchTextures.flippedImage,
+            visibleLength,
+            completedLayer.ctx,
+            { visibleStartLength: previousCommitted },
+          );
+          drawBrushAlongPath(
+            branch,
+            CONFIG.brush,
+            CONFIG.debug,
+            branchTextures.defaultImage,
+            branchTextures.flippedImage,
+            visibleLength,
+            ctx,
+            { visibleStartLength: previousCommitted },
+          );
+          if (perfEnabled) {
+            perfStats.stemDrawMs += Math.max(0, performance.now() - stemStartMs);
+          }
+          committedMap.set(branchRenderId, visibleLength);
+        }
+        if (shouldRenderLeaves) {
+          const earlyCommitEnabled = CONFIG.branchGrowth.earlyCommitEnabled !== false;
+          const earlyCommitThreshold = Number.isFinite(CONFIG.branchGrowth.earlyCommitThreshold)
+            ? clamp(CONFIG.branchGrowth.earlyCommitThreshold, 0, 1)
+            : 0.85;
+          const branchLength = branch.pathData && Number.isFinite(branch.pathData.totalLength)
+            ? branch.pathData.totalLength
+            : 0;
+          const useEarlyLeafBake = (
+            earlyCommitEnabled
+            && branchLength > 0
+            && visibleLength / branchLength >= earlyCommitThreshold
+          );
+          const leafStartMs = perfEnabled ? performance.now() : 0;
+          let leafStats;
+          if (useEarlyLeafBake) {
+            leafStats = drawCommittedBranchLeavesFast(
+              branch,
+              leavesConfig,
+              completedLayer.ctx,
+              ctx,
+              i,
+              renderTimestampMs,
+              hiddenBands,
+            );
+          } else {
+            leafStats = drawBranchLeaves(branch, leavesConfig, {
+              visibleLength,
+              targetCtx: ctx,
+              branchIndex: i,
+              nowMs: renderTimestampMs,
+              perfStats,
+              hiddenBands,
+              skipFullyHiddenInBand: true,
+            });
+          }
+          if (perfEnabled) {
+            perfStats.leafDrawMs += Math.max(0, performance.now() - leafStartMs);
+          }
+          perfStats.leavesDrawn += Number.isFinite(leafStats && leafStats.drawn) ? leafStats.drawn : 0;
+          perfStats.leavesCulled += Number.isFinite(leafStats && leafStats.culled) ? leafStats.culled : 0;
+        }
+      } else {
+        renderBranch(branch, {
+          visibleLength,
+          branchTextures,
+          leavesConfig,
+          branchIndex: i,
+          nowMs: renderTimestampMs,
+          perfStats,
+          hiddenBands,
+          skipFullyHiddenInBand: true,
+        });
+      }
+    }
+  }
+
+  if (shouldRenderEndpointFlowers()) {
+    if (overlayWrapActive) {
+      const isBackLayerForBranch = (branchId) => {
+        if (!Number.isFinite(branchId)) {
+          return true;
+        }
+        const branch = branchById.get(branchId);
+        if (!branch || !branch.pathData) {
+          return true;
+        }
+        const entry = getOverlayPromotionEntry(branch);
+        if (!entry || entry.promoted !== true) {
+          return true;
+        }
+        const cutover = Number.isFinite(entry.promotionCutoverDistanceOnPath)
+          ? Math.max(0, entry.promotionCutoverDistanceOnPath)
+          : Number.POSITIVE_INFINITY;
+        const tipDistance = (
+          useAnimation
+          && branchVisibleLengthById
+          && branchVisibleLengthById.has(branchId)
+        )
+          ? Math.max(0, branchVisibleLengthById.get(branchId))
+          : (
+            Number.isFinite(branch.pathData.totalLength)
+              ? Math.max(0, branch.pathData.totalLength)
+              : 0
+          );
+        return tipDistance < cutover - 1e-6;
+      };
+      const backBranchFilter = (branchId, flower) => (
+        isBranchFlowerEndpointVisible(branchId, flower)
+        && isBackLayerForBranch(branchId, flower)
+      );
+      const frontBranchFilter = (branchId, flower) => (
+        isBranchFlowerEndpointVisible(branchId, flower)
+        && !isBackLayerForBranch(branchId, flower)
+      );
+      const backFlowerTiming = drawEndpointFlowers(
+        renderTimestampMs,
+        ctx,
+        {
+          layerName: 'back',
+          clearFront: false,
+          branchFilter: backBranchFilter,
+          hiddenBand,
+          hiddenBands,
+          skipHiddenBackDrawEnabled: overlayWrapConfig.skipHiddenBackDrawEnabled === true,
+          hiddenSpriteCullInnerPaddingPx: overlayWrapConfig.spriteHiddenCullInnerPaddingPx,
+          hiddenSpriteCullRadiusScale: overlayWrapConfig.spriteHiddenCullRadiusScale,
+          hiddenSpriteCullDebug,
+        },
+        false,
+      );
+      if (backFlowerTiming) {
+        perfStats.flowerUpdateMs += Number.isFinite(backFlowerTiming.updateMs) ? backFlowerTiming.updateMs : 0;
+        perfStats.flowerDrawMs += Number.isFinite(backFlowerTiming.drawMs) ? backFlowerTiming.drawMs : 0;
+        perfStats.flowersDrawn += Number.isFinite(backFlowerTiming.drawnCount) ? backFlowerTiming.drawnCount : 0;
+        perfStats.flowersCulled += Number.isFinite(backFlowerTiming.culledCount) ? backFlowerTiming.culledCount : 0;
+        perfStats.backSkippedFlowers += Number.isFinite(backFlowerTiming.skippedHiddenCount)
+          ? backFlowerTiming.skippedHiddenCount
+          : 0;
+      }
+      if (frontCtx) {
+        const frontFlowerTiming = drawEndpointFlowers(
+          renderTimestampMs,
+          frontCtx,
+          {
+            layerName: 'front',
+            skipUpdate: true,
+            branchFilter: frontBranchFilter,
+            hiddenBands: viewportSideBands ? [viewportSideBands.leftBand, viewportSideBands.rightBand] : [],
+          },
+          true,
+        );
+        if (frontFlowerTiming) {
+          perfStats.flowerDrawMs += Number.isFinite(frontFlowerTiming.drawMs) ? frontFlowerTiming.drawMs : 0;
+          perfStats.flowersDrawn += Number.isFinite(frontFlowerTiming.drawnCount) ? frontFlowerTiming.drawnCount : 0;
+          perfStats.flowersCulled += Number.isFinite(frontFlowerTiming.culledCount)
+            ? frontFlowerTiming.culledCount
+            : 0;
+        }
+      }
+    } else {
+      const flowerTiming = drawEndpointFlowers(
+        renderTimestampMs,
+        ctx,
+        {
+          layerName: 'back',
+          clearFront: true,
+          branchFilter: isBranchFlowerEndpointVisible,
+          hiddenBands,
+        },
+      );
+      if (flowerTiming) {
+        perfStats.flowerUpdateMs += Number.isFinite(flowerTiming.updateMs) ? flowerTiming.updateMs : 0;
+        perfStats.flowerDrawMs += Number.isFinite(flowerTiming.drawMs) ? flowerTiming.drawMs : 0;
+        perfStats.flowersDrawn += Number.isFinite(flowerTiming.drawnCount) ? flowerTiming.drawnCount : 0;
+        perfStats.flowersCulled += Number.isFinite(flowerTiming.culledCount) ? flowerTiming.culledCount : 0;
+      }
+    }
+  }
+
+  if (shouldRenderOpenButtonArrowLive(heroPlaybackGateConfig)) {
+    drawOpenButtonArrowHint(heroPlaybackGateConfig, renderTimestampMs);
+  }
+  if (
+    heroPlaybackGateConfig
+    && heroPlaybackGateConfig.openButtonDebug
+    && heroPlaybackGateConfig.openButtonDebug.enabled === true
+  ) {
+    const debugTargetCtx = (
+      heroPlaybackGateConfig.openButtonDebug.drawOnFrontLayer === true
+      && frontCtx
+    )
+      ? frontCtx
+      : ctx;
+    drawHeroPlaybackOpenButtonDebugOverlay(heroPlaybackGateConfig, debugTargetCtx);
+  }
+  if (
+    heroPlaybackGateConfig
+    && heroPlaybackGateConfig.wiggleButtonDebug
+    && heroPlaybackGateConfig.wiggleButtonDebug.enabled === true
+  ) {
+    const debugTargetCtx = (
+      heroPlaybackGateConfig.wiggleButtonDebug.drawOnFrontLayer === true
+      && frontCtx
+    )
+      ? frontCtx
+      : ctx;
+    drawHeroPlaybackWiggleButtonDebugOverlay(heroPlaybackGateConfig, debugTargetCtx);
+  }
+  const priorityConfig = resolvePriorityConfig();
+  if (priorityConfig.debug.enabled === true) {
+    const debugTargetCtx = (priorityConfig.debug.drawOnFrontLayer === true && frontCtx)
+      ? frontCtx
+      : ctx;
+    drawPriorityDebugOverlay(debugTargetCtx);
+  }
+
+  if (overlayWrapActive && hiddenBand && overlayWrapConfig.showCenterBandOverlay === true) {
+    const overlayTargetCtx = frontCtx || ctx;
+    drawOverlayCenterBand(overlayTargetCtx, hiddenBand, overlayWrapConfig);
+  }
+
+  const windDbgConfig = resolveWindConfig();
+  if (windDbgConfig.debug.enabled) {
+    const windDbgTargetCtx = (windDbgConfig.debug.drawOnFrontLayer === true && frontCtx) ? frontCtx : ctx;
+    drawWindDebugOverlay(windDbgTargetCtx);
+  }
+
+  if (perfEnabled) {
+    registerSwayPerformanceSample(perfStats);
+    if (isSwayPerfLogEnabled()) {
+      console.log('[SwayPerfFrame]', JSON.stringify(perfStats));
+    }
+    flushPerformanceFrame(frameStartMs, activeBranches);
+  }
+
+  syncSwipeSectionsScrollHintLayer(overlayNowMs);
+  syncFlowerInteractionLoop();
+}
+
+// =========================
+// 15) Events
+// =========================
+function syncSwipeSectionDomState(section, sectionIndex) {
+  if (!document || !document.body || !section) {
+    return;
+  }
+  const safeIndex = Number.isFinite(sectionIndex) ? Math.max(0, Math.floor(sectionIndex)) : 0;
+  document.body.dataset.swipeSectionIndex = String(safeIndex);
+  document.body.dataset.swipeSectionNumber = String(safeIndex + 1);
+  document.body.dataset.swipeSectionId = section.id || '';
+}
+
+function dispatchSwipeSectionChangeEvent(detail = {}) {
+  if (!window || typeof window.dispatchEvent !== 'function' || typeof CustomEvent !== 'function') {
+    return;
+  }
+  const payload = isPlainObjectLiteral(detail) ? detail : {};
+  window.dispatchEvent(new CustomEvent(SWIPE_SECTIONS_EVENT_CHANGE, { detail: payload }));
+}
+
+function setSwipeSectionOverlayPathOverride(path, options = {}) {
+  const swipeState = STATE.swipeSections;
+  if (!swipeState) {
+    return;
+  }
+  const safeOptions = isPlainObjectLiteral(options) ? options : {};
+  const forceLoad = safeOptions.forceLoad === true;
+  const nextPath = (
+    typeof path === 'string' && path.trim().length > 0
+  )
+    ? path.trim()
+    : '';
+  if (!forceLoad && swipeState.centerOverlayImagePathOverride === nextPath) {
+    return;
+  }
+  swipeState.centerOverlayImagePathOverride = nextPath;
+  if (nextPath.length > 0) {
+    ensureCenterOverlayImagePreload(nextPath, { retry: forceLoad }).catch(() => {});
+  }
+}
+
+function clearSwipeSectionsTouchTracking() {
+  const swipeState = STATE.swipeSections;
+  if (!swipeState || !swipeState.touchTracking) {
+    return;
+  }
+  swipeState.touchTracking.active = false;
+  swipeState.touchTracking.touchIdentifier = null;
+  swipeState.touchTracking.startClientX = 0;
+  swipeState.touchTracking.startClientY = 0;
+  swipeState.touchTracking.startSceneX = 0;
+  swipeState.touchTracking.startSceneY = 0;
+  swipeState.touchTracking.startMs = 0;
+  swipeState.touchTracking.sawMultiTouch = false;
+  swipeState.touchTracking.swipeIntentLocked = false;
+}
+
+function resetSwipeSectionsWheelGestureSession() {
+  const swipeState = STATE.swipeSections;
+  if (!swipeState) {
+    return;
+  }
+  swipeState.wheelAccumulatedDeltaY = 0;
+  swipeState.wheelGestureConsumed = false;
+  swipeState.wheelGestureDirection = 0;
+}
+
+function cancelSwipeSectionTransition() {
+  const swipeState = STATE.swipeSections;
+  if (!swipeState) {
+    return;
+  }
+  if (Number.isFinite(swipeState.transitionRafId) && swipeState.transitionRafId !== null) {
+    cancelAnimationFrame(swipeState.transitionRafId);
+  }
+  swipeState.transitionRafId = null;
+  swipeState.isTransitioning = false;
+  swipeState.transitionFromFrame = 0;
+  swipeState.transitionToFrame = 0;
+  swipeState.transitionStartMs = 0;
+  swipeState.transitionDurationMs = 0;
+  swipeState.transitionFromSectionIndex = -1;
+  swipeState.transitionToSectionIndex = -1;
+  swipeState.transitionDirection = 0;
+  swipeState.overlayOpacityMultiplier = 1;
+  swipeState.overlayOutgoingOpacityMultiplier = 0;
+  swipeState.overlayTransitionHasSwappedPath = false;
+}
+
+function findClosestSwipeSectionIndexToFrame(frame, swipeConfig = resolveSwipeSectionsConfig()) {
+  const sections = swipeConfig && Array.isArray(swipeConfig.sections) ? swipeConfig.sections : [];
+  if (sections.length <= 0) {
+    return 0;
+  }
+  const targetFrame = Number.isFinite(Number(frame))
+    ? Math.max(0, Number(frame))
+    : Number(sections[0].frame) || 0;
+  let closestIndex = 0;
+  let closestDistance = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < sections.length; i += 1) {
+    const sectionFrame = Number.isFinite(Number(sections[i].frame))
+      ? Math.max(0, Number(sections[i].frame))
+      : 0;
+    const distance = Math.abs(sectionFrame - targetFrame);
+    if (distance < closestDistance) {
+      closestDistance = distance;
+      closestIndex = i;
+    }
+  }
+  return closestIndex;
+}
+
+function resolveSwipeSectionIndexFromInput(indexOrId, swipeConfig = resolveSwipeSectionsConfig()) {
+  const sections = swipeConfig && Array.isArray(swipeConfig.sections) ? swipeConfig.sections : [];
+  if (sections.length <= 0) {
+    return -1;
+  }
+  if (typeof indexOrId === 'string') {
+    const normalizedId = indexOrId.trim();
+    if (normalizedId.length <= 0) {
+      return -1;
+    }
+    return sections.findIndex((section) => section.id === normalizedId);
+  }
+  if (!Number.isFinite(Number(indexOrId))) {
+    return -1;
+  }
+  const index = Math.floor(Number(indexOrId));
+  if (index < 0 || index >= sections.length) {
+    return -1;
+  }
+  return index;
+}
+
+function goToSwipeSection(indexOrId, options = {}) {
+  const safeOptions = isPlainObjectLiteral(options) ? options : {};
+  const force = safeOptions.force === true;
+  const swipeConfig = syncSwipeSectionsStateWithConfig();
+  const sections = swipeConfig && Array.isArray(swipeConfig.sections) ? swipeConfig.sections : [];
+  if (sections.length <= 0) {
+    return false;
+  }
+  const targetIndex = resolveSwipeSectionIndexFromInput(indexOrId, swipeConfig);
+  if (targetIndex < 0) {
+    return false;
+  }
+  if (!force && !isSwipeSectionsNavigationActive(swipeConfig)) {
+    return false;
+  }
+  const swipeState = STATE.swipeSections;
+  const currentIndex = (
+    swipeState
+    && Number.isFinite(swipeState.activeSectionIndex)
+    && swipeState.activeSectionIndex >= 0
+    && swipeState.activeSectionIndex < sections.length
+  )
+    ? swipeState.activeSectionIndex
+    : findClosestSwipeSectionIndexToFrame(getCurrentHeroVideoFrame(resolveHeroPlaybackGateConfig()), swipeConfig);
+  if (swipeState && swipeState.isTransitioning !== true && currentIndex === targetIndex) {
+    return true;
+  }
+  const direction = targetIndex > currentIndex ? 1 : (targetIndex < currentIndex ? -1 : 0);
+  return startSwipeSectionTransition(
+    targetIndex,
+    direction,
+    typeof safeOptions.reason === 'string' && safeOptions.reason.length > 0 ? safeOptions.reason : 'api',
+    swipeConfig,
+  );
+}
+
+function syncSwipeSectionsStateWithConfig(options = {}) {
+  const safeOptions = isPlainObjectLiteral(options) ? options : {};
+  const swipeState = STATE.swipeSections;
+  const swipeConfig = resolveSwipeSectionsConfig();
+  CONFIG.swipeSections = swipeConfig;
+  if (!swipeState || !Array.isArray(swipeConfig.sections) || swipeConfig.sections.length <= 0) {
+    return swipeConfig;
+  }
+  initializeRsvpStateIfNeeded(swipeConfig);
+  const rsvpRuntime = getSwipeSectionsRsvpRuntimeState();
+  if (rsvpRuntime && swipeConfig.rsvp) {
+    rsvpRuntime.sectionId = swipeConfig.rsvp.sectionId;
+  }
+  preloadSwipeSectionsOverlayImages(swipeConfig);
+  if (swipeConfig.scrollHint && swipeConfig.scrollHint.enabled === true && swipeConfig.scrollHint.spritePath.length > 0) {
+    ensureCenterOverlayImagePreload(swipeConfig.scrollHint.spritePath).catch(() => {});
+  }
+  if (swipeConfig.enabled !== true) {
+    cancelSwipeSectionTransition();
+    resetSwipeSectionsWheelGestureSession();
+    clearSwipeSectionsTouchTracking();
+    if (swipeState.isTransitioning !== true) {
+      setSwipeSectionOverlayPathOverride('');
+      swipeState.overlayOpacityMultiplier = 1;
+      swipeState.overlayOutgoingOpacityMultiplier = 0;
+      swipeState.overlayTransitionHasSwappedPath = false;
+    }
+    return swipeConfig;
+  }
+  let nextIndex = Number.isFinite(swipeState.activeSectionIndex)
+    ? Math.floor(swipeState.activeSectionIndex)
+    : -1;
+  const hasValidIndex = nextIndex >= 0 && nextIndex < swipeConfig.sections.length;
+  if (!hasValidIndex || safeOptions.forceRecalculate === true) {
+    if (typeof swipeState.activeSectionId === 'string' && swipeState.activeSectionId.length > 0) {
+      const idIndex = swipeConfig.sections.findIndex((section) => section.id === swipeState.activeSectionId);
+      if (idIndex >= 0) {
+        nextIndex = idIndex;
+      }
+    }
+  }
+  if (!(nextIndex >= 0 && nextIndex < swipeConfig.sections.length) || safeOptions.forceToClosestFrame === true) {
+    const currentFrame = getCurrentHeroVideoFrame(resolveHeroPlaybackGateConfig());
+    nextIndex = findClosestSwipeSectionIndexToFrame(currentFrame, swipeConfig);
+  }
+  nextIndex = clamp(nextIndex, 0, swipeConfig.sections.length - 1);
+  const nextSection = swipeConfig.sections[nextIndex];
+  const previousIndex = swipeState.activeSectionIndex;
+  swipeState.activeSectionIndex = nextIndex;
+  swipeState.activeSectionId = nextSection.id;
+  if (swipeState.isTransitioning !== true) {
+    setSwipeSectionOverlayPathOverride(nextSection.centerOverlayImagePath, { forceLoad: safeOptions.forceLoadOverlay });
+    swipeState.overlayOpacityMultiplier = 1;
+    swipeState.overlayOutgoingOpacityMultiplier = 0;
+    swipeState.overlayTransitionHasSwappedPath = false;
+  }
+  syncSwipeSectionDomState(nextSection, nextIndex);
+  handleSwipeSectionsScrollHintOnActiveSectionChange(nextSection, nextIndex, swipeConfig);
+  if (safeOptions.emitEvent === true && previousIndex !== nextIndex) {
+    dispatchSwipeSectionChangeEvent({
+      index: nextIndex,
+      sectionNumber: nextIndex + 1,
+      id: nextSection.id,
+      frame: nextSection.frame,
+      direction: 0,
+      reason: safeOptions.reason || 'sync',
+    });
+  }
+  return swipeConfig;
+}
+
+function isSwipeSectionsNavigationActive(swipeConfig = resolveSwipeSectionsConfig()) {
+  if (!swipeConfig || swipeConfig.enabled !== true) {
+    return false;
+  }
+  if (!Array.isArray(swipeConfig.sections) || swipeConfig.sections.length <= 0) {
+    return false;
+  }
+  if (!isLoadingScreenGone()) {
+    return false;
+  }
+  const gateConfig = resolveHeroPlaybackGateConfig();
+  if (!gateConfig || gateConfig.enabled !== true) {
+    return true;
+  }
+  const gateState = STATE.heroPlaybackGate;
+  return Boolean(gateState && gateState.stage === 'postOpenButtonPaused');
+}
+
+function resolveSwipeSectionTransitionDurationMs(
+  fromFrame,
+  toFrame,
+  swipeConfig = resolveSwipeSectionsConfig(),
+  gateConfig = resolveHeroPlaybackGateConfig(),
+) {
+  const transitionConfig = swipeConfig && swipeConfig.transition ? swipeConfig.transition : {};
+  const timingMode = sanitizeSwipeSectionTransitionTimingMode(transitionConfig.timingMode, 'matchFrameDelta');
+  if (timingMode === 'instant') {
+    return 0;
+  }
+  const minDurationMs = Number.isFinite(Number(transitionConfig.minDurationMs))
+    ? Math.max(0, Number(transitionConfig.minDurationMs))
+    : 0;
+  const maxDurationMs = Number.isFinite(Number(transitionConfig.maxDurationMs))
+    ? Math.max(0, Number(transitionConfig.maxDurationMs))
+    : Number.POSITIVE_INFINITY;
+  const durationClampMin = Math.min(minDurationMs, maxDurationMs);
+  const durationClampMax = Math.max(minDurationMs, maxDurationMs);
+  if (timingMode === 'fixedDuration') {
+    const fixedDurationMs = Number.isFinite(Number(transitionConfig.fixedDurationMs))
+      ? Math.max(0, Number(transitionConfig.fixedDurationMs))
+      : 0;
+    return clamp(fixedDurationMs, durationClampMin, durationClampMax);
+  }
+  const safeFromFrame = Number.isFinite(Number(fromFrame)) ? Math.max(0, Number(fromFrame)) : 0;
+  const safeToFrame = Number.isFinite(Number(toFrame)) ? Math.max(0, Number(toFrame)) : safeFromFrame;
+  const frameDistance = Math.abs(safeToFrame - safeFromFrame);
+  if (frameDistance <= 1e-6) {
+    return 0;
+  }
+  const frameRate = gateConfig && Number.isFinite(Number(gateConfig.frameRate))
+    ? Math.max(1, Number(gateConfig.frameRate))
+    : 30;
+  const speedMultiplier = Number.isFinite(Number(transitionConfig.speedMultiplier))
+    ? Math.max(0.01, Number(transitionConfig.speedMultiplier))
+    : 1;
+  const baseDurationMs = (frameDistance / frameRate) * 1000;
+  const adjustedDurationMs = baseDurationMs / speedMultiplier;
+  return clamp(adjustedDurationMs, durationClampMin, durationClampMax);
+}
+
+function prepareSwipeSectionOverlayTransitionForTargetSection(targetSection, durationMs, swipeConfig) {
+  const swipeState = STATE.swipeSections;
+  if (!swipeState) {
+    return;
+  }
+  const overlayTransitionConfig = (
+    swipeConfig
+    && swipeConfig.overlayTransition
+    && typeof swipeConfig.overlayTransition === 'object'
+  )
+    ? swipeConfig.overlayTransition
+    : {};
+  const mode = sanitizeSwipeSectionOverlayTransitionMode(overlayTransitionConfig.mode, 'fade');
+  const durationSafeMs = Math.max(1, Number.isFinite(durationMs) ? durationMs : 1);
+  const swapProgress = clamp(
+    Number.isFinite(Number(overlayTransitionConfig.swapNearTargetProgress))
+      ? Number(overlayTransitionConfig.swapNearTargetProgress)
+      : 0.85,
+    0,
+    1,
+  );
+  const fadeOutDurationMs = Number.isFinite(Number(overlayTransitionConfig.fadeOutDurationMs))
+    ? Math.max(0, Number(overlayTransitionConfig.fadeOutDurationMs))
+    : 170;
+  const fadeInDurationMs = Number.isFinite(Number(overlayTransitionConfig.fadeInDurationMs))
+    ? Math.max(0, Number(overlayTransitionConfig.fadeInDurationMs))
+    : 230;
+  const fadeOutRatio = clamp(fadeOutDurationMs / durationSafeMs, 0, 1);
+  const fadeInRatio = clamp(fadeInDurationMs / durationSafeMs, 0, 1);
+  const fadeInStartProgress = clamp(Math.max(swapProgress, 1 - fadeInRatio), 0, 1);
+  swipeState.overlayTransitionMode = mode;
+  swipeState.overlayTransitionSwapProgress = swapProgress;
+  swipeState.overlayTransitionFadeOutRatio = fadeOutRatio;
+  swipeState.overlayTransitionFadeInStartProgress = fadeInStartProgress;
+  swipeState.overlayTransitionHasSwappedPath = true;
+  swipeState.overlayOutgoingOpacityMultiplier = mode === 'none' ? 0 : 1;
+  swipeState.overlayOpacityMultiplier = mode === 'none' ? 1 : 0;
+}
+
+function updateSwipeSectionOverlayTransitionProgress(progress, targetSection) {
+  const swipeState = STATE.swipeSections;
+  if (!swipeState || !targetSection) {
+    return;
+  }
+  const clampedProgress = clamp(Number.isFinite(progress) ? progress : 0, 0, 1);
+  const mode = sanitizeSwipeSectionOverlayTransitionMode(swipeState.overlayTransitionMode, 'fade');
+  let outgoingOpacity = 1;
+  let incomingOpacity = 1;
+  if (mode === 'none') {
+    outgoingOpacity = 0;
+    incomingOpacity = 1;
+    swipeState.overlayOutgoingOpacityMultiplier = outgoingOpacity;
+    swipeState.overlayOpacityMultiplier = incomingOpacity;
+    return;
+  }
+  const fadeOutRatio = clamp(Number(swipeState.overlayTransitionFadeOutRatio), 0, 1);
+  const fadeInStartProgress = clamp(Number(swipeState.overlayTransitionFadeInStartProgress), 0, 1);
+  if (fadeOutRatio > 1e-6 && clampedProgress <= fadeOutRatio) {
+    outgoingOpacity = 1 - (clampedProgress / fadeOutRatio);
+  } else if (fadeInStartProgress >= 1 - 1e-6) {
+    outgoingOpacity = 0;
+  } else {
+    outgoingOpacity = 0;
+  }
+  if (clampedProgress < fadeInStartProgress) {
+    incomingOpacity = 0;
+  } else if (fadeInStartProgress >= 1 - 1e-6) {
+    incomingOpacity = 1;
+  } else {
+    const fadeInProgress = (clampedProgress - fadeInStartProgress) / (1 - fadeInStartProgress);
+    incomingOpacity = clamp(fadeInProgress, 0, 1);
+  }
+  swipeState.overlayOutgoingOpacityMultiplier = clamp(outgoingOpacity, 0, 1);
+  swipeState.overlayOpacityMultiplier = clamp(incomingOpacity, 0, 1);
+}
+
+function finalizeSwipeSectionTransition(targetIndex, direction, reason, swipeConfig = resolveSwipeSectionsConfig()) {
+  const swipeState = STATE.swipeSections;
+  if (!swipeState || !Array.isArray(swipeConfig.sections) || swipeConfig.sections.length <= 0) {
+    return;
+  }
+  const safeTargetIndex = clamp(
+    Number.isFinite(targetIndex) ? Math.floor(targetIndex) : 0,
+    0,
+    swipeConfig.sections.length - 1,
+  );
+  const targetSection = swipeConfig.sections[safeTargetIndex];
+  const previousIndex = swipeState.activeSectionIndex;
+  const gateConfig = resolveHeroPlaybackGateConfig();
+  lockHeroVideoToFrame(targetSection.frame, gateConfig);
+  cancelSwipeSectionTransition();
+  swipeState.activeSectionIndex = safeTargetIndex;
+  swipeState.activeSectionId = targetSection.id;
+  setSwipeSectionOverlayPathOverride(targetSection.centerOverlayImagePath, { forceLoad: true });
+  syncSwipeSectionDomState(targetSection, safeTargetIndex);
+  handleSwipeSectionsScrollHintOnActiveSectionChange(targetSection, safeTargetIndex, swipeConfig);
+  if (previousIndex !== safeTargetIndex) {
+    dispatchSwipeSectionChangeEvent({
+      index: safeTargetIndex,
+      sectionNumber: safeTargetIndex + 1,
+      id: targetSection.id,
+      frame: targetSection.frame,
+      direction: direction > 0 ? 1 : (direction < 0 ? -1 : 0),
+      reason: typeof reason === 'string' && reason.length > 0 ? reason : 'swipe',
+    });
+  }
+  renderScene({ skipAutoStart: true });
+}
+
+function startSwipeSectionTransition(targetIndex, direction, reason, swipeConfig = resolveSwipeSectionsConfig()) {
+  const swipeState = STATE.swipeSections;
+  if (!swipeState || !Array.isArray(swipeConfig.sections) || swipeConfig.sections.length <= 0) {
+    return false;
+  }
+  const safeTargetIndex = clamp(
+    Number.isFinite(targetIndex) ? Math.floor(targetIndex) : 0,
+    0,
+    swipeConfig.sections.length - 1,
+  );
+  const targetSection = swipeConfig.sections[safeTargetIndex];
+  if (!targetSection) {
+    return false;
+  }
+  const gateConfig = resolveHeroPlaybackGateConfig();
+  const fromFrame = getCurrentHeroVideoFrame(gateConfig);
+  const toFrame = Number.isFinite(Number(targetSection.frame))
+    ? Math.max(0, Number(targetSection.frame))
+    : fromFrame;
+  const durationMs = resolveSwipeSectionTransitionDurationMs(fromFrame, toFrame, swipeConfig, gateConfig);
+  const currentIndex = (
+    Number.isFinite(swipeState.activeSectionIndex)
+    && swipeState.activeSectionIndex >= 0
+    && swipeState.activeSectionIndex < swipeConfig.sections.length
+  )
+    ? swipeState.activeSectionIndex
+    : findClosestSwipeSectionIndexToFrame(fromFrame, swipeConfig);
+
+  if (Number.isFinite(swipeState.transitionRafId) && swipeState.transitionRafId !== null) {
+    cancelAnimationFrame(swipeState.transitionRafId);
+    swipeState.transitionRafId = null;
+  }
+  try {
+    video.pause();
+  } catch (_error) {
+    // Keep transition logic resilient if pause throws.
+  }
+  swipeState.isTransitioning = true;
+  swipeState.transitionFromFrame = fromFrame;
+  swipeState.transitionToFrame = toFrame;
+  swipeState.transitionStartMs = performance.now();
+  swipeState.transitionDurationMs = durationMs;
+  swipeState.transitionFromSectionIndex = currentIndex;
+  swipeState.transitionToSectionIndex = safeTargetIndex;
+  swipeState.transitionDirection = direction > 0 ? 1 : (direction < 0 ? -1 : 0);
+  prepareSwipeSectionOverlayTransitionForTargetSection(targetSection, durationMs, swipeConfig);
+
+  if (!(durationMs > 1e-6) || Math.abs(toFrame - fromFrame) <= 0.2) {
+    finalizeSwipeSectionTransition(safeTargetIndex, direction, reason, swipeConfig);
+    return true;
+  }
+
+  const step = (nowMs) => {
+    if (!swipeState.isTransitioning) {
+      return;
+    }
+    const elapsedMs = Math.max(0, nowMs - swipeState.transitionStartMs);
+    const progress = clamp(elapsedMs / swipeState.transitionDurationMs, 0, 1);
+    const frame = swipeState.transitionFromFrame
+      + ((swipeState.transitionToFrame - swipeState.transitionFromFrame) * progress);
+    lockHeroVideoToFrame(frame, gateConfig);
+    updateSwipeSectionOverlayTransitionProgress(progress, targetSection);
+    renderScene({ skipAutoStart: true });
+    if (progress >= 1 - 1e-6) {
+      swipeState.transitionRafId = null;
+      finalizeSwipeSectionTransition(safeTargetIndex, direction, reason, swipeConfig);
+      return;
+    }
+    swipeState.transitionRafId = requestAnimationFrame(step);
+  };
+
+  swipeState.transitionRafId = requestAnimationFrame(step);
+  return true;
+}
+
+function tryNavigateSwipeSectionDirection(direction, reason, event = null) {
+  const swipeConfig = syncSwipeSectionsStateWithConfig();
+  if (!isSwipeSectionsNavigationActive(swipeConfig)) {
+    return false;
+  }
+  const normalizedDirection = direction > 0 ? 1 : (direction < 0 ? -1 : 0);
+  if (normalizedDirection === 0) {
+    return false;
+  }
+  if (event && isEditableEventTarget(event.target)) {
+    return false;
+  }
+  if (event && isRsvpControlEventTarget(event.target)) {
+    return false;
+  }
+  const swipeState = STATE.swipeSections;
+  const sections = swipeConfig.sections;
+  if (!swipeState || !Array.isArray(sections) || sections.length <= 0) {
+    return false;
+  }
+  let currentIndex = (
+    Number.isFinite(swipeState.activeSectionIndex)
+    && swipeState.activeSectionIndex >= 0
+    && swipeState.activeSectionIndex < sections.length
+  )
+    ? swipeState.activeSectionIndex
+    : findClosestSwipeSectionIndexToFrame(getCurrentHeroVideoFrame(resolveHeroPlaybackGateConfig()), swipeConfig);
+  currentIndex = clamp(currentIndex, 0, sections.length - 1);
+  if (swipeState.isTransitioning === true) {
+    const rapidMode = sanitizeSwipeSectionRapidMode(
+      swipeConfig.transition && swipeConfig.transition.rapidSwipeMode,
+      'ignore',
+    );
+    if (rapidMode !== 'retarget') {
+      return false;
+    }
+    const baseIndex = (
+      Number.isFinite(swipeState.transitionToSectionIndex)
+      && swipeState.transitionToSectionIndex >= 0
+      && swipeState.transitionToSectionIndex < sections.length
+    )
+      ? swipeState.transitionToSectionIndex
+      : currentIndex;
+    const retargetIndex = clamp(baseIndex + normalizedDirection, 0, sections.length - 1);
+    if (retargetIndex === baseIndex) {
+      return false;
+    }
+    return startSwipeSectionTransition(retargetIndex, normalizedDirection, reason, swipeConfig);
+  }
+  const targetIndex = clamp(currentIndex + normalizedDirection, 0, sections.length - 1);
+  if (targetIndex === currentIndex) {
+    return false;
+  }
+  return startSwipeSectionTransition(targetIndex, normalizedDirection, reason, swipeConfig);
+}
+
+function getCanvasPointerPositionFromClientPoint(clientX, clientY) {
+  if (!canvas || !Number.isFinite(clientX) || !Number.isFinite(clientY)) {
+    return null;
+  }
+  const rect = canvas.getBoundingClientRect();
+  if (!rect || rect.width <= 0 || rect.height <= 0) {
+    return null;
+  }
+  const scaleX = STATE.viewportWidth > 0 ? (STATE.viewportWidth / rect.width) : 1;
+  const scaleY = STATE.viewportHeight > 0 ? (STATE.viewportHeight / rect.height) : 1;
+  return {
+    x: (clientX - rect.left) * scaleX,
+    y: (clientY - rect.top) * scaleY,
+  };
+}
+
+function isScenePointInsideOverlayWrapBand(sceneX, sceneY, overlayWrapConfig = resolveOverlayWrapConfig()) {
+  if (!Number.isFinite(sceneX) || !Number.isFinite(sceneY)) {
+    return false;
+  }
+  if (!overlayWrapConfig || overlayWrapConfig.enabled !== true) {
+    return false;
+  }
+  const hiddenBand = getOverlayHiddenBand(overlayWrapConfig);
+  const bandBounds = resolveOverlayHiddenBandBoundsAtY(hiddenBand, sceneY);
+  if (!bandBounds) {
+    return false;
+  }
+  return sceneX >= bandBounds.leftX && sceneX <= bandBounds.rightX;
+}
+
+function shouldAcceptTouchSwipeStart(clientX, clientY, swipeConfig = resolveSwipeSectionsConfig()) {
+  if (
+    !swipeConfig
+    || !swipeConfig.input
+    || swipeConfig.input.touchRequireOverlayWrapBandStart !== true
+  ) {
+    return true;
+  }
+  const overlayWrapConfig = resolveOverlayWrapConfig();
+  if (!overlayWrapConfig || overlayWrapConfig.enabled !== true) {
+    return swipeConfig.input.touchFallbackToFullscreenWhenOverlayWrapDisabled === true;
+  }
+  const scenePos = getCanvasPointerPositionFromClientPoint(clientX, clientY);
+  if (!scenePos) {
+    return false;
+  }
+  return isScenePointInsideOverlayWrapBand(scenePos.x, scenePos.y, overlayWrapConfig);
+}
+
+function findTouchByIdentifier(touchList, identifier) {
+  if (!touchList || touchList.length <= 0) {
+    return null;
+  }
+  if (!Number.isFinite(identifier)) {
+    return touchList[0];
+  }
+  for (let i = 0; i < touchList.length; i += 1) {
+    const touch = touchList[i];
+    if (touch && Number.isFinite(touch.identifier) && touch.identifier === identifier) {
+      return touch;
+    }
+  }
+  return null;
+}
+
+function onSwipeSectionsWheel(event) {
+  const swipeConfig = syncSwipeSectionsStateWithConfig();
+  if (!swipeConfig || !swipeConfig.input || swipeConfig.input.wheelEnabled !== true) {
+    return;
+  }
+  if (!isSwipeSectionsNavigationActive(swipeConfig)) {
+    return;
+  }
+  if (isEditableEventTarget(event && event.target)) {
+    return;
+  }
+  if (isRsvpControlEventTarget(event && event.target)) {
+    return;
+  }
+  const swipeState = STATE.swipeSections;
+  if (!swipeState) {
+    return;
+  }
+  const deltaY = Number.isFinite(Number(event.deltaY)) ? Number(event.deltaY) : 0;
+  if (Math.abs(deltaY) <= 1e-6) {
+    return;
+  }
+  const nowMs = performance.now();
+  const threshold = Math.max(1, Number(swipeConfig.input.wheelDeltaThresholdPx) || 95);
+  const quietWindowMs = Math.max(0, Number(swipeConfig.input.wheelGestureQuietWindowMs) || 0);
+  const resetDeltaPx = Math.max(0, Number(swipeConfig.input.wheelGestureResetDeltaPx) || 0);
+  const directionResetEnabled = swipeConfig.input.wheelDirectionResetEnabled !== false;
+  const deltaDirection = deltaY > 0 ? 1 : -1;
+
+  const hasQuietGap = (
+    swipeState.wheelLastEventMs <= 0
+    || (nowMs - swipeState.wheelLastEventMs) >= quietWindowMs
+  );
+  if (hasQuietGap) {
+    resetSwipeSectionsWheelGestureSession();
+  }
+
+  if (swipeState.wheelGestureConsumed === true) {
+    const directionChanged = (
+      directionResetEnabled
+      && swipeState.wheelGestureDirection !== 0
+      && deltaDirection !== swipeState.wheelGestureDirection
+      && Math.abs(deltaY) >= resetDeltaPx
+    );
+    if (directionChanged) {
+      resetSwipeSectionsWheelGestureSession();
+    } else {
+      swipeState.wheelLastEventMs = nowMs;
+      if (event && event.cancelable === true) {
+        event.preventDefault();
+      }
+      return;
+    }
+  }
+
+  swipeState.wheelAccumulatedDeltaY += deltaY;
+  if (Math.abs(swipeState.wheelAccumulatedDeltaY) < threshold) {
+    swipeState.wheelLastEventMs = nowMs;
+    if (event && event.cancelable === true) {
+      event.preventDefault();
+    }
+    return;
+  }
+
+  const cooldownMs = Math.max(0, Number(swipeConfig.input.wheelCooldownMs) || 0);
+  const rapidMode = sanitizeSwipeSectionRapidMode(
+    swipeConfig.transition && swipeConfig.transition.rapidSwipeMode,
+    'ignore',
+  );
+  const bypassCooldownForRetarget = swipeState.isTransitioning === true && rapidMode === 'retarget';
+  if (!bypassCooldownForRetarget && nowMs - swipeState.wheelLastTriggerMs < cooldownMs) {
+    swipeState.wheelGestureConsumed = true;
+    swipeState.wheelGestureDirection = swipeState.wheelAccumulatedDeltaY > 0 ? 1 : -1;
+    swipeState.wheelAccumulatedDeltaY = 0;
+    swipeState.wheelLastEventMs = nowMs;
+    if (event && event.cancelable === true) {
+      event.preventDefault();
+    }
+    return;
+  }
+
+  const direction = swipeState.wheelAccumulatedDeltaY > 0 ? 1 : -1;
+  swipeState.wheelGestureConsumed = true;
+  swipeState.wheelGestureDirection = direction;
+  swipeState.wheelAccumulatedDeltaY = 0;
+  const triggered = tryNavigateSwipeSectionDirection(direction, 'wheel', event);
+  if (triggered) {
+    swipeState.wheelLastTriggerMs = nowMs;
+  }
+  swipeState.wheelLastEventMs = nowMs;
+  if (event && event.cancelable === true) {
+    event.preventDefault();
+  }
+}
+
+function onSwipeSectionsTouchStart(event) {
+  const swipeConfig = syncSwipeSectionsStateWithConfig();
+  if (
+    !swipeConfig
+    || !swipeConfig.input
+    || swipeConfig.input.touchEnabled !== true
+    || !isSwipeSectionsNavigationActive(swipeConfig)
+  ) {
+    clearSwipeSectionsTouchTracking();
+    return;
+  }
+  if (isEditableEventTarget(event && event.target)) {
+    clearSwipeSectionsTouchTracking();
+    return;
+  }
+  if (isRsvpControlEventTarget(event && event.target)) {
+    clearSwipeSectionsTouchTracking();
+    return;
+  }
+  const activeTouches = event && event.touches ? event.touches : null;
+  if (!activeTouches || activeTouches.length !== 1) {
+    clearSwipeSectionsTouchTracking();
+    return;
+  }
+  const changedTouches = event && event.changedTouches ? event.changedTouches : null;
+  if (!changedTouches || changedTouches.length <= 0) {
+    clearSwipeSectionsTouchTracking();
+    return;
+  }
+  const touch = changedTouches[0];
+  if (!touch || !Number.isFinite(touch.clientX) || !Number.isFinite(touch.clientY)) {
+    clearSwipeSectionsTouchTracking();
+    return;
+  }
+  if (!shouldAcceptTouchSwipeStart(touch.clientX, touch.clientY, swipeConfig)) {
+    clearSwipeSectionsTouchTracking();
+    return;
+  }
+  const scenePos = getCanvasPointerPositionFromClientPoint(touch.clientX, touch.clientY);
+  if (!scenePos) {
+    clearSwipeSectionsTouchTracking();
+    return;
+  }
+  const swipeState = STATE.swipeSections;
+  swipeState.touchTracking.active = true;
+  swipeState.touchTracking.touchIdentifier = Number.isFinite(touch.identifier) ? touch.identifier : null;
+  swipeState.touchTracking.startClientX = touch.clientX;
+  swipeState.touchTracking.startClientY = touch.clientY;
+  swipeState.touchTracking.startSceneX = scenePos.x;
+  swipeState.touchTracking.startSceneY = scenePos.y;
+  swipeState.touchTracking.startMs = performance.now();
+  swipeState.touchTracking.sawMultiTouch = false;
+  swipeState.touchTracking.swipeIntentLocked = false;
+}
+
+function onSwipeSectionsTouchMove(event) {
+  const swipeState = STATE.swipeSections;
+  if (!swipeState || !swipeState.touchTracking || swipeState.touchTracking.active !== true) {
+    return;
+  }
+  const swipeConfig = resolveSwipeSectionsConfig();
+  const touchTracking = swipeState.touchTracking;
+  const activeTouches = event && event.touches ? event.touches : null;
+  const multiTouchActive = Boolean(activeTouches && activeTouches.length >= 2);
+  if (multiTouchActive) {
+    touchTracking.sawMultiTouch = true;
+    if (swipeConfig.input && swipeConfig.input.touchCancelOnMultiTouch !== false) {
+      clearSwipeSectionsTouchTracking();
+    }
+    return;
+  }
+  if (touchTracking.sawMultiTouch === true) {
+    return;
+  }
+  const trackedTouch = findTouchByIdentifier(activeTouches, touchTracking.touchIdentifier);
+  if (!trackedTouch || !Number.isFinite(trackedTouch.clientX) || !Number.isFinite(trackedTouch.clientY)) {
+    return;
+  }
+  const dx = trackedTouch.clientX - touchTracking.startClientX;
+  const dy = trackedTouch.clientY - touchTracking.startClientY;
+  const absDx = Math.abs(dx);
+  const absDy = Math.abs(dy);
+  const axisLockRatio = Math.max(0.01, Number(swipeConfig.input.touchAxisLockRatio) || 1.2);
+  const threshold = Math.max(1, Number(swipeConfig.input.touchSwipeThresholdPx) || 42);
+  if (
+    touchTracking.swipeIntentLocked !== true
+    && absDy > (absDx * axisLockRatio)
+    && absDy >= threshold
+  ) {
+    touchTracking.swipeIntentLocked = true;
+  }
+  if (
+    touchTracking.swipeIntentLocked === true
+    && swipeConfig.input
+    && swipeConfig.input.touchPreventDefault === true
+    && event
+    && event.cancelable === true
+  ) {
+    event.preventDefault();
+  }
+}
+
+function onSwipeSectionsTouchEnd(event) {
+  const swipeState = STATE.swipeSections;
+  if (!swipeState || !swipeState.touchTracking || swipeState.touchTracking.active !== true) {
+    clearSwipeSectionsTouchTracking();
+    return;
+  }
+  if (swipeState.touchTracking.sawMultiTouch === true) {
+    clearSwipeSectionsTouchTracking();
+    return;
+  }
+  const changedTouches = event && event.changedTouches ? event.changedTouches : null;
+  const trackedTouch = findTouchByIdentifier(changedTouches, swipeState.touchTracking.touchIdentifier);
+  if (!trackedTouch || !Number.isFinite(trackedTouch.clientX) || !Number.isFinite(trackedTouch.clientY)) {
+    clearSwipeSectionsTouchTracking();
+    return;
+  }
+  const swipeConfig = resolveSwipeSectionsConfig();
+  const dx = trackedTouch.clientX - swipeState.touchTracking.startClientX;
+  const dy = trackedTouch.clientY - swipeState.touchTracking.startClientY;
+  const absDx = Math.abs(dx);
+  const absDy = Math.abs(dy);
+  const startMs = Number(swipeState.touchTracking.startMs);
+  const elapsedMs = Number.isFinite(startMs)
+    ? Math.max(1, performance.now() - startMs)
+    : 1;
+  const velocityYPxPerMs = dy / elapsedMs;
+  const threshold = Math.max(1, Number(swipeConfig.input.touchSwipeThresholdPx) || 42);
+  const minFlickVelocity = Math.max(0, Number(swipeConfig.input.touchMinFlickVelocityPxPerMs) || 0);
+  const axisLockRatio = Math.max(0.01, Number(swipeConfig.input.touchAxisLockRatio) || 1.2);
+  let triggered = false;
+  const passesVerticalIntent = (
+    swipeState.touchTracking.swipeIntentLocked === true
+    || absDy > (absDx * axisLockRatio)
+  );
+  const passesDistance = absDy >= threshold;
+  const passesVelocity = Math.abs(velocityYPxPerMs) >= minFlickVelocity;
+  if (passesVerticalIntent && (passesDistance || passesVelocity)) {
+    const direction = dy < 0 ? 1 : -1;
+    triggered = tryNavigateSwipeSectionDirection(direction, 'touch', event);
+  }
+  clearSwipeSectionsTouchTracking();
+  if (triggered && swipeConfig.input.touchPreventDefault === true && event && event.cancelable === true) {
+    event.preventDefault();
+  }
+}
+
+function onSwipeSectionsTouchCancel() {
+  clearSwipeSectionsTouchTracking();
+}
+
+function onResize() {
+  if (isViewportPinchZoomActive()) {
+    viewportPinchZoomWasActive = true;
+    schedulePostZoomLayoutResync({ reason: 'window-resize:pinch-active' });
+    return;
+  }
+  if (isTextInputFocused()) {
+    schedulePostZoomLayoutResync({ reason: 'window-resize:input-focused', delayMs: 300 });
+    return;
+  }
+  runCoalescedViewportResync('window-resize');
+}
+
+function onHeroVideoMetadataLoaded() {
+  STATE.foliageLoad.videoReady = true;
+  refreshHeroVideoReferenceRect({ force: true });
+  applyHeroVideoWiggleAnchor(resolveHeroPlaybackGateConfig());
+  renderScene({ skipAutoStart: true });
+  rerunIOSRelative166ViewportLayout();
+  scheduleIOSRelative166ViewportStabilization();
+}
+
+function onHeroVideoLoadedDataOrCanPlay() {
+  rerunIOSRelative166ViewportLayout();
+  scheduleIOSRelative166ViewportStabilization();
+}
+
+function onWindowLoadViewportLayoutStabilization() {
+  scheduleIOSRelative166ViewportStabilization();
+}
+
+function onWindowPageShowViewportLayoutStabilization() {
+  scheduleIOSRelative166ViewportStabilization();
+}
+
+function tryHandleFrameJumpHotkey(event) {
+  if (!event) {
+    return false;
+  }
+  if (isEditableEventTarget(event.target)) {
+    return false;
+  }
+  const key = typeof event.key === 'string' ? event.key.toLowerCase() : '';
+  if (!FRAME_JUMP_KEY_SET.has(key)) {
+    return false;
+  }
+
+  const hotkeyConfig = resolveFrameJumpHotkeysConfig();
+  if (!hotkeyConfig || hotkeyConfig.enabled !== true) {
+    return false;
+  }
+  const frameIndex = hotkeyConfig.bindings[key];
+  if (!Number.isFinite(frameIndex)) {
+    return false;
+  }
+  const targetSecRaw = frameIndex / hotkeyConfig.timelineFps;
+  if (!Number.isFinite(targetSecRaw)) {
+    return false;
+  }
+
+  const videoDurationSec = Number(video.duration);
+  const hasDuration = Number.isFinite(videoDurationSec) && videoDurationSec > 0;
+  const targetSec = hasDuration
+    ? clamp(targetSecRaw, 0, videoDurationSec)
+    : Math.max(0, targetSecRaw);
+  const wasPlaying = Boolean(video && video.paused === false);
+
+  try {
+    video.currentTime = targetSec;
+  } catch (_error) {
+    return false;
+  }
+  if (wasPlaying && video && typeof video.play === 'function') {
+    const playbackPromise = video.play();
+    if (playbackPromise && typeof playbackPromise.catch === 'function') {
+      playbackPromise.catch(() => {});
+    }
+  } else if (!wasPlaying && video && typeof video.pause === 'function') {
+    video.pause();
+  }
+
+  event.preventDefault();
+  return true;
+}
+
+function onKeydown(event) {
+  if (isEditableEventTarget(event && event.target)) {
+    return;
+  }
+  if (tryHandleFrameJumpHotkey(event)) {
+    return;
+  }
+  const key = event.key.toLowerCase();
+
+  if (key === 'r') {
+    // New random seed layout.
+    STATE.lastSeedPacket = setSeeds();
+    plantSeeds(STATE.lastSeedPacket, { clearFirst: true });
+    renderScene();
+  }
+
+  if (key === 'p') {
+    const gateConfig = resolveHeroPlaybackGateConfig();
+    if (gateConfig.enabled === true) {
+      return;
+    }
+    video.paused ? video.play() : video.pause();
+  }
+
+  if (key === 'g' && STATE.branchGarden) {
+    // Regenerate current branches from their existing seeds.
+    STATE.branchGarden.regenerateAll();
+    renderScene();
+  }
+
+  if (key === 'm' && STATE.branchGarden) {
+    const nextMode = getPathGenerationMode() === 'random'
+      ? 'manualTemplate'
+      : 'random';
+    applyPathGenerationOptions({ mode: nextMode });
+  }
+
+  if (key === 'q') {
+    flowerDebugLog(true, "hotkey 'q' received", {
+      hasModule: Boolean(window.StemWarpFlowerSystem11),
+      hasCreate: Boolean(window.StemWarpFlowerSystem11 && typeof window.StemWarpFlowerSystem11.createFlowerSystem === 'function'),
+      hasSystem: Boolean(STATE.flowerSystem),
+    });
+    const flowerSystem = getFlowerSystem();
+    if (!flowerSystem || typeof flowerSystem.animateTogglePetalOpenState !== 'function') {
+      if (!flowerSystem) {
+        flowerDebugLog(true, "hotkey 'q' no-op: getFlowerSystem() returned null", {
+          moduleMissing: !window.StemWarpFlowerSystem11,
+          missingCreate: Boolean(window.StemWarpFlowerSystem11)
+            && typeof window.StemWarpFlowerSystem11.createFlowerSystem !== 'function',
+        });
+      } else {
+        flowerDebugLog(true, "hotkey 'q' no-op: missing method", {
+          hasAnimateToggle: typeof flowerSystem.animateTogglePetalOpenState === 'function',
+        });
+      }
+      return;
+    }
+    flowerDebugLog(true, "hotkey 'q' invoking animateTogglePetalOpenState");
+    flowerSystem.animateTogglePetalOpenState(getFlowersRuntimeConfig(), performance.now());
+    renderScene({ skipAutoStart: true });
+  }
+
+  if (key === 'c') {
+    flowerDebugLog(true, "hotkey 'c' received", {
+      hasModule: Boolean(window.StemWarpFlowerSystem11),
+      hasCreate: Boolean(window.StemWarpFlowerSystem11 && typeof window.StemWarpFlowerSystem11.createFlowerSystem === 'function'),
+      hasSystem: Boolean(STATE.flowerSystem),
+    });
+    const flowerSystem = getFlowerSystem();
+    if (!flowerSystem || typeof flowerSystem.togglePetalOpenState !== 'function') {
+      if (!flowerSystem) {
+        flowerDebugLog(true, "hotkey 'c' no-op: getFlowerSystem() returned null", {
+          moduleMissing: !window.StemWarpFlowerSystem11,
+          missingCreate: Boolean(window.StemWarpFlowerSystem11)
+            && typeof window.StemWarpFlowerSystem11.createFlowerSystem !== 'function',
+        });
+      } else {
+        flowerDebugLog(true, "hotkey 'c' no-op: missing method", {
+          hasToggle: typeof flowerSystem.togglePetalOpenState === 'function',
+        });
+      }
+      return;
+    }
+    flowerDebugLog(true, "hotkey 'c' invoking togglePetalOpenState");
+    flowerSystem.togglePetalOpenState();
+    renderScene({ skipAutoStart: true });
+  }
+}
+
+function getCanvasPointerPosition(event) {
+  if (!event || !canvas) {
+    return null;
+  }
+  const rect = canvas.getBoundingClientRect();
+  if (!rect || rect.width <= 0 || rect.height <= 0) {
+    return null;
+  }
+  const scaleX = STATE.viewportWidth > 0 ? (STATE.viewportWidth / rect.width) : 1;
+  const scaleY = STATE.viewportHeight > 0 ? (STATE.viewportHeight / rect.height) : 1;
+  return {
+    x: (event.clientX - rect.left) * scaleX,
+    y: (event.clientY - rect.top) * scaleY,
+  };
+}
+
+function extractPrimaryClientPoint(event) {
+  if (!event) {
+    return null;
+  }
+  if (Number.isFinite(event.clientX) && Number.isFinite(event.clientY)) {
+    return { x: event.clientX, y: event.clientY };
+  }
+  const touches = event.touches && event.touches.length > 0
+    ? event.touches
+    : (event.changedTouches && event.changedTouches.length > 0 ? event.changedTouches : null);
+  if (!touches || touches.length <= 0) {
+    return null;
+  }
+  const firstTouch = touches[0];
+  if (!firstTouch || !Number.isFinite(firstTouch.clientX) || !Number.isFinite(firstTouch.clientY)) {
+    return null;
+  }
+  return { x: firstTouch.clientX, y: firstTouch.clientY };
+}
+
+function onMouseMove(event) {
+  const pointer = getCanvasPointerPosition(event);
+  if (!pointer) {
+    return;
+  }
+  const nowMs = performance.now();
+  if (
+    Number.isFinite(STATE.pointerLastSampleX)
+    && Number.isFinite(STATE.pointerLastSampleY)
+    && Number.isFinite(STATE.pointerLastSampleMs)
+    && STATE.pointerLastSampleMs > 0
+  ) {
+    const dtSec = Math.max(1e-4, (nowMs - STATE.pointerLastSampleMs) / 1000);
+    const dx = pointer.x - STATE.pointerLastSampleX;
+    const dy = pointer.y - STATE.pointerLastSampleY;
+    STATE.pointerSpeedPxPerSec = Math.hypot(dx, dy) / dtSec;
+  }
+  STATE.pointerLastSampleX = pointer.x;
+  STATE.pointerLastSampleY = pointer.y;
+  STATE.pointerLastSampleMs = nowMs;
+  STATE.pointerX = pointer.x;
+  STATE.pointerY = pointer.y;
+  const flowerSystem = getFlowerSystem();
+  if (flowerSystem && CONFIG.flowers && CONFIG.flowers.enabled === true) {
+    flowerSystem.setMousePosition(pointer.x, pointer.y);
+  }
+  if (!STATE.branchGrowth.running) {
+    scheduleFlowerInteractionFrame(true);
+  }
+}
+
+function onMouseOut() {
+  STATE.pointerX = Number.NEGATIVE_INFINITY;
+  STATE.pointerY = Number.NEGATIVE_INFINITY;
+  STATE.pointerSpeedPxPerSec = 0;
+  STATE.pointerLastSampleX = Number.NEGATIVE_INFINITY;
+  STATE.pointerLastSampleY = Number.NEGATIVE_INFINITY;
+  STATE.pointerLastSampleMs = 0;
+  const flowerSystem = getFlowerSystem();
+  if (flowerSystem && CONFIG.flowers && CONFIG.flowers.enabled === true) {
+    flowerSystem.clearMousePosition();
+  }
+  if (!STATE.branchGrowth.running) {
+    scheduleFlowerInteractionFrame(true);
+  }
+}
+
+function onMouseClick(event) {
+  if (isRsvpControlEventTarget(event && event.target)) {
+    return;
+  }
+  if (tryResumeHeroVideoPlaybackFromUserGesture(event)) {
+    return;
+  }
+  if (tryHandleHeroPlaybackOpenButtonClick(event)) {
+    return;
+  }
+  if (tryHandleHeroPlaybackWiggleButtonClick(event)) {
+    return;
+  }
+  if (!CONFIG.flowers || CONFIG.flowers.enabled !== true) {
+    return;
+  }
+  const flowerSystem = getFlowerSystem();
+  if (!flowerSystem || typeof flowerSystem.applyJumpAt !== 'function') {
+    return;
+  }
+  const pointer = getCanvasPointerPosition(event);
+  if (!pointer) {
+    return;
+  }
+  const affectedCount = flowerSystem.applyJumpAt(
+    pointer.x,
+    pointer.y,
+    getFlowersRuntimeConfig(),
+  );
+  if (affectedCount > 0 && !STATE.branchGrowth.running) {
+    scheduleFlowerInteractionFrame(true);
+  }
+}
+
+function setupEventHandlers() {
+  window.addEventListener('resize', onResize);
+  window.addEventListener('load', onWindowLoadViewportLayoutStabilization);
+  window.addEventListener('pageshow', onWindowPageShowViewportLayoutStabilization);
+  window.addEventListener('keydown', onKeydown);
+  window.addEventListener('wheel', onSwipeSectionsWheel, { passive: false });
+  window.addEventListener('touchstart', onSwipeSectionsTouchStart, { passive: false });
+  window.addEventListener('touchmove', onSwipeSectionsTouchMove, { passive: false });
+  window.addEventListener('touchend', onSwipeSectionsTouchEnd, { passive: false });
+  window.addEventListener('touchcancel', onSwipeSectionsTouchCancel, { passive: false });
+  window.addEventListener('mousemove', onMouseMove);
+  window.addEventListener('mouseout', onMouseOut);
+  window.addEventListener('click', onMouseClick);
+  window.addEventListener('pointerdown', onMouseClick);
+  window.addEventListener('touchstart', onMouseClick, { passive: false });
+  if (document && document.body) {
+    document.body.addEventListener('click', onMouseClick);
+    document.body.addEventListener('touchstart', onMouseClick, { passive: false });
+  }
+  if (video && typeof video.addEventListener === 'function') {
+    video.addEventListener('timeupdate', onHeroVideoTimeUpdate);
+    video.addEventListener('play', ensureHeroPlaybackGateMonitorRunning);
+    video.addEventListener('seeking', onHeroVideoTimeUpdate);
+    video.addEventListener('seeked', onHeroVideoTimeUpdate);
+    video.addEventListener('loadedmetadata', onHeroVideoMetadataLoaded);
+    video.addEventListener('loadeddata', onHeroVideoLoadedDataOrCanPlay);
+    video.addEventListener('canplay', onHeroVideoLoadedDataOrCanPlay);
+  }
+}
+
+// =========================
+// 16) Public API
+// =========================
+function applyBranchGrowthOptions(nextOptions) {
+  if (!nextOptions || typeof nextOptions !== 'object') {
+    return;
+  }
+
+  const previous = {
+    enabled: Boolean(CONFIG.branchGrowth.enabled),
+    autoStart: Boolean(CONFIG.branchGrowth.autoStart),
+    useOffscreenLayerCache: CONFIG.branchGrowth.useOffscreenLayerCache !== false,
+    overlayPromotionGrowthOnMode: sanitizeOverlayPromotionGrowthOnMode(
+      CONFIG.branchGrowth.overlayPromotionGrowthOnMode,
+      'matchGrowthOff',
+    ),
+  };
+
+  const sanitized = {};
+  if (nextOptions.enabled !== undefined) {
+    sanitized.enabled = Boolean(nextOptions.enabled);
+  }
+  if (nextOptions.autoStart !== undefined) {
+    sanitized.autoStart = Boolean(nextOptions.autoStart);
+  }
+  if (nextOptions.useOffscreenLayerCache !== undefined) {
+    sanitized.useOffscreenLayerCache = Boolean(nextOptions.useOffscreenLayerCache);
+  }
+  if (nextOptions.speedMode !== undefined) {
+    sanitized.speedMode = sanitizeAnimationSpeedMode(nextOptions.speedMode, CONFIG.branchGrowth.speedMode);
+  }
+  if (nextOptions.mode !== undefined) {
+    sanitized.mode = sanitizeBranchGrowthMode(nextOptions.mode, CONFIG.branchGrowth.mode);
+  }
+  if (nextOptions.linearSweepDirection !== undefined) {
+    sanitized.linearSweepDirection = sanitizeBranchGrowthSweepDirection(
+      nextOptions.linearSweepDirection,
+      CONFIG.branchGrowth.linearSweepDirection,
+    );
+  }
+  if (nextOptions.linearSweepDurationSec !== undefined) {
+    const linearSweepDurationSec = Number(nextOptions.linearSweepDurationSec);
+    if (Number.isFinite(linearSweepDurationSec)) {
+      sanitized.linearSweepDurationSec = Math.max(0, linearSweepDurationSec);
+    }
+  }
+  if (nextOptions.totalDurationSec !== undefined) {
+    const durationSec = Number(nextOptions.totalDurationSec);
+    if (Number.isFinite(durationSec)) {
+      sanitized.totalDurationSec = Math.max(0.001, durationSec);
+    }
+  }
+  if (nextOptions.pixelsPerSecond !== undefined) {
+    const pxPerSec = Number(nextOptions.pixelsPerSecond);
+    if (Number.isFinite(pxPerSec)) {
+      sanitized.pixelsPerSecond = Math.max(0, pxPerSec);
+    }
+  }
+  if (nextOptions.growthEase !== undefined) {
+    sanitized.growthEase = sanitizeAnimationGrowthEaseMode(
+      nextOptions.growthEase,
+      CONFIG.branchGrowth.growthEase,
+    );
+  }
+  if (nextOptions.growthEasePower !== undefined) {
+    const growthEasePower = Number(nextOptions.growthEasePower);
+    if (Number.isFinite(growthEasePower)) {
+      sanitized.growthEasePower = Math.max(0.01, growthEasePower);
+    }
+  }
+  if (nextOptions.requireFoliageLoadedBeforeStart !== undefined) {
+    sanitized.requireFoliageLoadedBeforeStart = Boolean(nextOptions.requireFoliageLoadedBeforeStart);
+  }
+  if (nextOptions.overlayPromotionGrowthOnMode !== undefined) {
+    sanitized.overlayPromotionGrowthOnMode = sanitizeOverlayPromotionGrowthOnMode(
+      nextOptions.overlayPromotionGrowthOnMode,
+      CONFIG.branchGrowth.overlayPromotionGrowthOnMode,
+    );
+  }
+
+  Object.assign(CONFIG.branchGrowth, sanitized);
+  CONFIG.branchGrowth.overlayPromotionGrowthOnMode = sanitizeOverlayPromotionGrowthOnMode(
+    CONFIG.branchGrowth.overlayPromotionGrowthOnMode,
+    previous.overlayPromotionGrowthOnMode,
+  );
+  if (STATE.heroPlaybackGate) {
+    STATE.heroPlaybackGate.growthAnimationEnabledByConfig = CONFIG.branchGrowth.enabled === true;
+  }
+
+  const offscreenCacheChanged = (
+    previous.useOffscreenLayerCache
+    !== (CONFIG.branchGrowth.useOffscreenLayerCache !== false)
+  );
+  if (offscreenCacheChanged) {
+    invalidateCompletedBranchLayer();
+  }
+  const overlayPromotionModeChanged = (
+    previous.overlayPromotionGrowthOnMode
+    !== CONFIG.branchGrowth.overlayPromotionGrowthOnMode
+  );
+  if (overlayPromotionModeChanged) {
+    resetOverlayWrapPromotionState();
+    invalidateCompletedBranchLayer();
+  }
+
+  if (!CONFIG.branchGrowth.enabled) {
+    stopBranchAnimation({ keepElapsed: false });
+    renderScene({ skipAutoStart: true });
+    return;
+  }
+
+  refreshBranchAnimationMetrics();
+
+  const enabledJustTurnedOn = previous.enabled === false && CONFIG.branchGrowth.enabled === true;
+  const autoStartJustEnabled = previous.autoStart === false && CONFIG.branchGrowth.autoStart === true;
+  if (
+    (enabledJustTurnedOn || autoStartJustEnabled)
+    && CONFIG.branchGrowth.autoStart
+    && !isHeroPlaybackGrowthStartBlocked()
+  ) {
+    restartBranchAnimation();
+    return;
+  }
+
+  if (STATE.branchGrowth.running) {
+    STATE.branchGrowth.startTimeMs = performance.now() - STATE.branchGrowth.elapsedSec * 1000;
+    scheduleBranchAnimationFrame();
+  }
+
+  renderScene({ skipAutoStart: true });
+}
+
+// Backward-compatible alias.
+function applyAnimationOptions(nextOptions) {
+  applyBranchGrowthOptions(nextOptions);
+}
+
+function applyHeroPlaybackGateOptions(nextOptions) {
+  if (!isPlainObjectLiteral(nextOptions)) {
+    return;
+  }
+  const currentConfig = resolveHeroPlaybackGateConfig();
+  const nextLegacyButtonPatch = isPlainObjectLiteral(nextOptions.button) ? nextOptions.button : {};
+  const nextOpenButtonPatch = isPlainObjectLiteral(nextOptions.openButton)
+    ? nextOptions.openButton
+    : nextLegacyButtonPatch;
+  const nextOpenButtonArrowPatch = isPlainObjectLiteral(nextOptions.openButtonArrow)
+    ? nextOptions.openButtonArrow
+    : {};
+  const nextOpenButtonDebugPatch = isPlainObjectLiteral(nextOptions.openButtonDebug)
+    ? nextOptions.openButtonDebug
+    : {};
+  const nextWiggleButtonPatch = isPlainObjectLiteral(nextOptions.wiggleButton)
+    ? nextOptions.wiggleButton
+    : {};
+  const nextWiggleButtonDebugPatch = isPlainObjectLiteral(nextOptions.wiggleButtonDebug)
+    ? nextOptions.wiggleButtonDebug
+    : {};
+  const nextVideoWigglePatch = isPlainObjectLiteral(nextOptions.videoWiggle)
+    ? nextOptions.videoWiggle
+    : {};
+  const mergedConfig = {
+    ...currentConfig,
+    ...nextOptions,
+    openButton: {
+      ...currentConfig.openButton,
+      ...nextOpenButtonPatch,
+    },
+    openButtonArrow: {
+      ...currentConfig.openButtonArrow,
+      ...nextOpenButtonArrowPatch,
+    },
+    openButtonDebug: {
+      ...currentConfig.openButtonDebug,
+      ...nextOpenButtonDebugPatch,
+    },
+    wiggleButton: {
+      ...currentConfig.wiggleButton,
+      ...nextWiggleButtonPatch,
+    },
+    wiggleButtonDebug: {
+      ...currentConfig.wiggleButtonDebug,
+      ...nextWiggleButtonDebugPatch,
+    },
+    videoWiggle: {
+      ...currentConfig.videoWiggle,
+      ...nextVideoWigglePatch,
+    },
+  };
+  CONFIG.heroPlaybackGate = resolveHeroPlaybackGateConfig(mergedConfig);
+  requestOpenButtonArrowImageLoad({ force: true }).catch(() => {});
+  startHeroPlaybackGateFlow();
+}
+
+function applyHeroVideoDebugOptions(nextOptions) {
+  if (!isPlainObjectLiteral(nextOptions)) {
+    return;
+  }
+  const currentConfig = resolveHeroVideoDebugConfig();
+  const mergedConfig = {
+    ...currentConfig,
+    ...nextOptions,
+  };
+  CONFIG.heroVideoDebug = resolveHeroVideoDebugConfig(mergedConfig);
+}
+
+function applyCenterOverlayImageOptions(nextOptions) {
+  if (!isPlainObjectLiteral(nextOptions)) {
+    return;
+  }
+  const currentConfig = isPlainObjectLiteral(CONFIG.centerOverlayImage)
+    ? CONFIG.centerOverlayImage
+    : resolveCenterOverlayImageConfig();
+  const mergedConfig = {
+    ...currentConfig,
+    ...nextOptions,
+  };
+  CONFIG.centerOverlayImage = resolveCenterOverlayImageConfig(mergedConfig);
+  requestCenterOverlayImageLoad({ force: true }).catch(() => {});
+  renderScene({ skipAutoStart: true });
+}
+
+function applySwipeSectionsOptions(nextOptions) {
+  if (!isPlainObjectLiteral(nextOptions)) {
+    return;
+  }
+  const currentConfig = resolveSwipeSectionsConfig();
+  const nextInputPatch = isPlainObjectLiteral(nextOptions.input) ? nextOptions.input : {};
+  const nextTransitionPatch = isPlainObjectLiteral(nextOptions.transition) ? nextOptions.transition : {};
+  const nextOverlayTransitionPatch = isPlainObjectLiteral(nextOptions.overlayTransition)
+    ? nextOptions.overlayTransition
+    : {};
+  const nextRsvpPatch = isPlainObjectLiteral(nextOptions.rsvp) ? nextOptions.rsvp : {};
+  const currentRsvp = isPlainObjectLiteral(currentConfig.rsvp) ? currentConfig.rsvp : {};
+  const currentRsvpInitialState = isPlainObjectLiteral(currentRsvp.initialState) ? currentRsvp.initialState : {};
+  const currentRsvpNameField = isPlainObjectLiteral(currentRsvp.nameField) ? currentRsvp.nameField : {};
+  const currentRsvpDebug = isPlainObjectLiteral(currentRsvp.debug) ? currentRsvp.debug : {};
+  const currentRsvpButtons = isPlainObjectLiteral(currentRsvp.buttons) ? currentRsvp.buttons : {};
+  const currentRsvpButtonsFrameMap = isPlainObjectLiteral(currentRsvpButtons.frameMap) ? currentRsvpButtons.frameMap : {};
+  const currentRsvpButtonsYes = isPlainObjectLiteral(currentRsvpButtons.yes) ? currentRsvpButtons.yes : {};
+  const currentRsvpButtonsNo = isPlainObjectLiteral(currentRsvpButtons.no) ? currentRsvpButtons.no : {};
+  const currentRsvpButtonsAnimation = isPlainObjectLiteral(currentRsvpButtons.animation)
+    ? currentRsvpButtons.animation
+    : {};
+  const nextRsvpInitialState = isPlainObjectLiteral(nextRsvpPatch.initialState) ? nextRsvpPatch.initialState : {};
+  const nextRsvpNameField = isPlainObjectLiteral(nextRsvpPatch.nameField) ? nextRsvpPatch.nameField : {};
+  const nextRsvpDebug = isPlainObjectLiteral(nextRsvpPatch.debug) ? nextRsvpPatch.debug : {};
+  const nextRsvpButtons = isPlainObjectLiteral(nextRsvpPatch.buttons) ? nextRsvpPatch.buttons : {};
+  const nextRsvpButtonsFrameMap = isPlainObjectLiteral(nextRsvpButtons.frameMap) ? nextRsvpButtons.frameMap : {};
+  const nextRsvpButtonsYes = isPlainObjectLiteral(nextRsvpButtons.yes) ? nextRsvpButtons.yes : {};
+  const nextRsvpButtonsNo = isPlainObjectLiteral(nextRsvpButtons.no) ? nextRsvpButtons.no : {};
+  const nextRsvpButtonsAnimation = isPlainObjectLiteral(nextRsvpButtons.animation)
+    ? nextRsvpButtons.animation
+    : {};
+  const mergedConfig = {
+    ...currentConfig,
+    ...nextOptions,
+    sections: Array.isArray(nextOptions.sections) ? nextOptions.sections : currentConfig.sections,
+    input: {
+      ...currentConfig.input,
+      ...nextInputPatch,
+    },
+    transition: {
+      ...currentConfig.transition,
+      ...nextTransitionPatch,
+    },
+    overlayTransition: {
+      ...currentConfig.overlayTransition,
+      ...nextOverlayTransitionPatch,
+    },
+    rsvp: {
+      ...currentRsvp,
+      ...nextRsvpPatch,
+      initialState: {
+        ...currentRsvpInitialState,
+        ...nextRsvpInitialState,
+      },
+      nameField: {
+        ...currentRsvpNameField,
+        ...nextRsvpNameField,
+      },
+      debug: {
+        ...currentRsvpDebug,
+        ...nextRsvpDebug,
+      },
+      buttons: {
+        ...currentRsvpButtons,
+        ...nextRsvpButtons,
+        frameMap: {
+          ...currentRsvpButtonsFrameMap,
+          ...nextRsvpButtonsFrameMap,
+        },
+        yes: {
+          ...currentRsvpButtonsYes,
+          ...nextRsvpButtonsYes,
+        },
+        no: {
+          ...currentRsvpButtonsNo,
+          ...nextRsvpButtonsNo,
+        },
+        animation: {
+          ...currentRsvpButtonsAnimation,
+          ...nextRsvpButtonsAnimation,
+        },
+      },
+    },
+  };
+  CONFIG.swipeSections = resolveSwipeSectionsConfig(mergedConfig);
+  cancelSwipeSectionTransition();
+  syncSwipeSectionsStateWithConfig({
+    forceRecalculate: true,
+    forceToClosestFrame: true,
+    forceLoadOverlay: true,
+    emitEvent: false,
+    reason: 'config',
+  });
+  renderScene({ skipAutoStart: true });
+}
+
+async function applyFlowerOptions(nextOptions) {
+  if (!isPlainObjectLiteral(nextOptions)) {
+    return;
+  }
+
+  ensureFlowerConfigShapeInPlace(CONFIG.flowers);
+  const patch = normalizeFlowerOptionPatch(nextOptions);
+  mergeFlowerOptionsInPlace(CONFIG.flowers, patch);
+  ensureFlowerConfigShapeInPlace(CONFIG.flowers);
+  STATE.flowerPerfLastLogMs = 0;
+
+  await loadFlowerSpriteIntoSystem();
+
+  resetFlowerGrowthRuntimeState({ clearSignature: true });
+  rebuildEndpointFlowers();
+  renderScene({ skipAutoStart: true });
+}
+
+function applyPerformanceOptions(nextOptions) {
+  if (!nextOptions || typeof nextOptions !== 'object') {
+    return;
+  }
+
+  const sanitized = {};
+  if (nextOptions.enabled !== undefined) {
+    sanitized.enabled = Boolean(nextOptions.enabled);
+  }
+  if (nextOptions.logIntervalMs !== undefined) {
+    const intervalMs = Number(nextOptions.logIntervalMs);
+    if (Number.isFinite(intervalMs)) {
+      sanitized.logIntervalMs = Math.max(250, intervalMs);
+    }
+  }
+
+  Object.assign(CONFIG.performance, sanitized);
+
+  if (CONFIG.performance.enabled) {
+    resetPerformanceCounters();
+  }
+}
+
+function applyOffshootOptions(nextOptions) {
+  if (!nextOptions || typeof nextOptions !== 'object') {
+    return;
+  }
+  const sanitized = { ...nextOptions };
+  if (sanitized.centerBlockEnabled !== undefined) {
+    sanitized.centerBlockEnabled = Boolean(sanitized.centerBlockEnabled);
+  }
+  if (sanitized.centerBlockHalfWidthPxVideoHeightRatio !== undefined) {
+    sanitized.centerBlockHalfWidthPxVideoHeightRatio = Math.max(
+      0,
+      Number.isFinite(Number(sanitized.centerBlockHalfWidthPxVideoHeightRatio))
+        ? Number(sanitized.centerBlockHalfWidthPxVideoHeightRatio)
+        : Number(CONFIG.offshoot.centerBlockHalfWidthPxVideoHeightRatio) || 0,
+    );
+  }
+  if (sanitized.centerBlockHalfHeightAbovePxVideoHeightRatio !== undefined) {
+    sanitized.centerBlockHalfHeightAbovePxVideoHeightRatio = Math.max(
+      0,
+      Number.isFinite(Number(sanitized.centerBlockHalfHeightAbovePxVideoHeightRatio))
+        ? Number(sanitized.centerBlockHalfHeightAbovePxVideoHeightRatio)
+        : Number(CONFIG.offshoot.centerBlockHalfHeightAbovePxVideoHeightRatio) || 0,
+    );
+  }
+  if (sanitized.centerBlockHalfHeightBelowPxVideoHeightRatio !== undefined) {
+    sanitized.centerBlockHalfHeightBelowPxVideoHeightRatio = Math.max(
+      0,
+      Number.isFinite(Number(sanitized.centerBlockHalfHeightBelowPxVideoHeightRatio))
+        ? Number(sanitized.centerBlockHalfHeightBelowPxVideoHeightRatio)
+        : Number(CONFIG.offshoot.centerBlockHalfHeightBelowPxVideoHeightRatio) || 0,
+    );
+  }
+  Object.assign(CONFIG.offshoot, sanitized);
+  if (STATE.branchGarden) {
+    STATE.branchGarden.rebuildBranches();
+  }
+  renderScene();
+}
+
+function applyPriorityOptions(nextOptions) {
+  if (!isPlainObjectLiteral(nextOptions)) {
+    return;
+  }
+  const current = resolvePriorityConfig();
+  const mergedSquares = Array.isArray(nextOptions.squares)
+    ? nextOptions.squares
+    : current.squares;
+  const mergedDebug = isPlainObjectLiteral(nextOptions.debug)
+    ? { ...current.debug, ...nextOptions.debug }
+    : current.debug;
+  CONFIG.priority = resolvePriorityConfig({
+    ...current,
+    ...nextOptions,
+    squares: mergedSquares,
+    debug: mergedDebug,
+  });
+  STATE.priorityZonesCache.signature = '';
+  if (STATE.branchGarden) {
+    STATE.branchGarden.rebuildBranches({ regenerateRoots: true, resetRootTimeCursor: true });
+  }
+  renderScene();
+}
+
+function applyPathGenerationOptions(nextOptions) {
+  if (!nextOptions || typeof nextOptions !== 'object') {
+    return;
+  }
+  const sanitized = { ...nextOptions };
+  if (sanitized.templateNoiseHighpassWindow3 !== undefined) {
+    sanitized.templateNoiseHighpassWindow3 = normalizeTemplateNoiseHighpassWindow(
+      Number(sanitized.templateNoiseHighpassWindow3),
+      CONFIG.pathGeneration.templateNoiseHighpassWindow3,
+    );
+  }
+  if (sanitized.templateNoiseDirectionalBias !== undefined) {
+    sanitized.templateNoiseDirectionalBias = normalizeTemplateNoiseDirectionalBias(
+      Number(sanitized.templateNoiseDirectionalBias),
+      CONFIG.pathGeneration.templateNoiseDirectionalBias,
+    );
+  }
+  if (
+    sanitized.templateScaleRangeMin !== undefined ||
+    sanitized.templateScaleRangeMax !== undefined
+  ) {
+    const current = resolveTemplateScaleRange(CONFIG.pathGeneration);
+    const candidateMin = Number(sanitized.templateScaleRangeMin);
+    const candidateMax = Number(sanitized.templateScaleRangeMax);
+    sanitized.templateScaleRangeMin = Number.isFinite(candidateMin)
+      ? Math.max(0, candidateMin)
+      : current.minScale;
+    sanitized.templateScaleRangeMax = Number.isFinite(candidateMax)
+      ? Math.max(0, candidateMax)
+      : current.maxScale;
+    if (sanitized.templateScaleRangeMin > sanitized.templateScaleRangeMax) {
+      const tmp = sanitized.templateScaleRangeMin;
+      sanitized.templateScaleRangeMin = sanitized.templateScaleRangeMax;
+      sanitized.templateScaleRangeMax = tmp;
+    }
+  }
+  if (sanitized.templateInheritCheckpointSpacingSteps !== undefined) {
+    sanitized.templateInheritCheckpointSpacingSteps = Boolean(sanitized.templateInheritCheckpointSpacingSteps);
+  }
+  if (sanitized.useAbsoluteNoiseX !== undefined) {
+    sanitized.useAbsoluteNoiseX = Boolean(sanitized.useAbsoluteNoiseX);
+  }
+  if (sanitized.useAbsoluteNoiseY !== undefined) {
+    sanitized.useAbsoluteNoiseY = Boolean(sanitized.useAbsoluteNoiseY);
+  }
+  if (sanitized.absoluteNoiseXRatio !== undefined) {
+    const numeric = Number(sanitized.absoluteNoiseXRatio);
+    sanitized.absoluteNoiseXRatio = clamp(
+      Number.isFinite(numeric) ? numeric : CONFIG.pathGeneration.absoluteNoiseXRatio,
+      0,
+      1,
+    );
+  }
+  if (sanitized.absoluteNoiseYRatio !== undefined) {
+    const numeric = Number(sanitized.absoluteNoiseYRatio);
+    sanitized.absoluteNoiseYRatio = clamp(
+      Number.isFinite(numeric) ? numeric : CONFIG.pathGeneration.absoluteNoiseYRatio,
+      0,
+      1,
+    );
+  }
+  if (sanitized.baseRotationDeg !== undefined) {
+    const numeric = Number(sanitized.baseRotationDeg);
+    sanitized.baseRotationDeg = clamp(
+      Number.isFinite(numeric) ? numeric : Number(CONFIG.pathGeneration.baseRotationDeg) || 0,
+      -180,
+      180,
+    );
+  }
+  Object.assign(CONFIG.pathGeneration, sanitized);
+  if (STATE.branchGarden) {
+    STATE.branchGarden.rebuildBranches({ regenerateRoots: true, resetRootTimeCursor: true });
+  }
+  renderScene();
+}
+
+function formatOffshootValue(value, digits = 3) {
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => formatOffshootValue(entry, digits)).join(', ')}]`;
+  }
+  if (typeof value === 'boolean') {
+    return value ? 'true' : 'false';
+  }
+  if (typeof value === 'number') {
+    if (Math.abs(value - Math.round(value)) < 1e-8) {
+      return String(Math.round(value));
+    }
+    return value.toFixed(digits).replace(/\.?0+$/, '');
+  }
+  return String(value);
+}
+
+function injectOffshootControlStyles() {
+  if (document.getElementById('offshoot-controls-style')) {
+    return;
+  }
+  const style = document.createElement('style');
+  style.id = 'offshoot-controls-style';
+  style.textContent = `
+    #offshoot-controls {
+      position: fixed;
+      top: 12px;
+      right: 12px;
+      z-index: 40;
+      width: min(430px, calc(100vw - 24px));
+      max-height: calc(100vh - 24px);
+      overflow: auto;
+      background: rgba(8, 14, 16, 0.88);
+      border: 1px solid rgba(150, 208, 172, 0.35);
+      border-radius: 10px;
+      padding: 10px;
+      color: #d9f8e8;
+      font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
+      backdrop-filter: blur(2px);
+      box-shadow: 0 6px 22px rgba(0, 0, 0, 0.35);
+    }
+
+    #offshoot-controls h2 {
+      margin: 0 0 8px;
+      font-size: 12px;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      color: #9dd8ba;
+    }
+
+    #offshoot-controls .offshoot-row {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr auto;
+      gap: 6px;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+
+    #offshoot-controls .offshoot-range-row {
+      grid-template-columns: 1.2fr 1fr auto auto;
+    }
+
+    #offshoot-controls .offshoot-key {
+      color: #bff2d6;
+      word-break: break-word;
+    }
+
+    #offshoot-controls .offshoot-value {
+      color: #f5fff9;
+      text-align: right;
+      padding-right: 2px;
+    }
+
+    #offshoot-controls .offshoot-actions {
+      display: flex;
+      gap: 4px;
+    }
+
+    #offshoot-controls button {
+      border: 1px solid rgba(157, 216, 186, 0.35);
+      background: rgba(26, 44, 39, 0.85);
+      color: #eafff3;
+      border-radius: 5px;
+      padding: 2px 6px;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    #offshoot-controls button:hover {
+      background: rgba(49, 79, 70, 0.95);
+    }
+
+    #offshoot-controls .offshoot-mini {
+      min-width: 36px;
+      text-align: center;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+function createOffshootControls() {
+  if (!document.body || document.getElementById('offshoot-controls')) {
+    return;
+  }
+
+  injectOffshootControlStyles();
+
+  const descriptors = [
+    { key: 'enabled', type: 'toggle' },
+    { key: 'deterministic', type: 'toggle' },
+    { key: 'maxDepth', type: 'number', step: 1, min: 0, max: 20, integer: true },
+    { key: 'countRange', type: 'range', step: 1, min: 0, max: 50, integer: true },
+    { key: 'spawnTMin', type: 'number', step: 0.02, min: 0, max: 1 },
+    { key: 'spawnTMax', type: 'number', step: 0.02, min: 0, max: 1 },
+    { key: 'biasExponent', type: 'number', step: 0.2, min: 0.01, max: 8 },
+    { key: 'angleDegRange', type: 'range', step: 1, min: 0, max: 89, integer: true },
+    { key: 'sideMode', type: 'enum', values: ['random', 'left', 'right', 'alternate'] },
+    { key: 'depthScale', type: 'number', step: 0.05, min: 0.05, max: 2 },
+    { key: 'minSpawnSpacingT', type: 'number', step: 0.01, min: 0, max: 1 },
+    { key: 'maxSpawnAttemptsPerChild', type: 'number', step: 1, min: 1, max: 100, integer: true },
+    { key: 'maxTotalBranches', type: 'number', step: 10, min: 1, max: 5000, integer: true },
+    { key: 'centerBlockEnabled', type: 'toggle' },
+    { key: 'centerBlockHalfWidthPxVideoHeightRatio', type: 'number', step: 0.01, min: 0, max: 3 },
+    { key: 'centerBlockHalfHeightAbovePxVideoHeightRatio', type: 'number', step: 0.01, min: 0, max: 3 },
+    { key: 'centerBlockHalfHeightBelowPxVideoHeightRatio', type: 'number', step: 0.01, min: 0, max: 3 },
+  ];
+
+  const panel = document.createElement('section');
+  panel.id = 'offshoot-controls';
+
+  const title = document.createElement('h2');
+  title.textContent = 'Offshoot Controls';
+  panel.appendChild(title);
+
+  const valueNodes = {};
+
+  function getDescriptor(key) {
+    for (let i = 0; i < descriptors.length; i += 1) {
+      if (descriptors[i].key === key) {
+        return descriptors[i];
+      }
+    }
+    return null;
+  }
+
+  function readNumberValue(key, fallback = 0) {
+    const value = Number(CONFIG.offshoot[key]);
+    return Number.isFinite(value) ? value : fallback;
+  }
+
+  function normalizeNumber(descriptor, value) {
+    let next = clamp(value, descriptor.min, descriptor.max);
+    if (descriptor.integer) {
+      next = Math.round(next);
+    }
+    return next;
+  }
+
+  function getRangeValue(descriptor) {
+    const fallback = [descriptor.min, descriptor.max];
+    const raw = Array.isArray(CONFIG.offshoot[descriptor.key]) ? CONFIG.offshoot[descriptor.key] : fallback;
+    const a = normalizeNumber(descriptor, Number(raw[0]));
+    const b = normalizeNumber(descriptor, Number(raw[1]));
+    return a <= b ? [a, b] : [b, a];
+  }
+
+  function refreshValues() {
+    for (let i = 0; i < descriptors.length; i += 1) {
+      const descriptor = descriptors[i];
+      if (!valueNodes[descriptor.key]) {
+        continue;
+      }
+      valueNodes[descriptor.key].textContent = formatOffshootValue(CONFIG.offshoot[descriptor.key], 3);
+    }
+  }
+
+  function setOffshootPatch(patch) {
+    applyOffshootOptions(patch);
+    refreshValues();
+  }
+
+  function adjustScalar(descriptor, directionSign, stepMultiplier = 1) {
+    const current = readNumberValue(descriptor.key, descriptor.min);
+    let next = current + descriptor.step * directionSign * stepMultiplier;
+    next = normalizeNumber(descriptor, next);
+
+    if (descriptor.key === 'spawnTMin') {
+      const currentMax = readNumberValue('spawnTMax', 1);
+      if (next > currentMax) {
+        setOffshootPatch({ spawnTMin: next, spawnTMax: next });
+        return;
+      }
+    }
+
+    if (descriptor.key === 'spawnTMax') {
+      const currentMin = readNumberValue('spawnTMin', 0);
+      if (next < currentMin) {
+        setOffshootPatch({ spawnTMin: next, spawnTMax: next });
+        return;
+      }
+    }
+
+    setOffshootPatch({ [descriptor.key]: next });
+  }
+
+  function adjustRange(descriptor, index, directionSign, stepMultiplier = 1) {
+    const range = getRangeValue(descriptor);
+    range[index] = normalizeNumber(
+      descriptor,
+      range[index] + descriptor.step * directionSign * stepMultiplier,
+    );
+    if (range[0] > range[1]) {
+      if (index === 0) {
+        range[1] = range[0];
+      } else {
+        range[0] = range[1];
+      }
+    }
+    setOffshootPatch({ [descriptor.key]: range });
+  }
+
+  function cycleEnum(descriptor) {
+    const values = descriptor.values || [];
+    if (values.length === 0) {
+      return;
+    }
+    const current = String(CONFIG.offshoot[descriptor.key]);
+    const index = values.indexOf(current);
+    const nextIndex = index >= 0 ? (index + 1) % values.length : 0;
+    setOffshootPatch({ [descriptor.key]: values[nextIndex] });
+  }
+
+  for (let i = 0; i < descriptors.length; i += 1) {
+    const descriptor = descriptors[i];
+    const row = document.createElement('div');
+    row.className = 'offshoot-row';
+    if (descriptor.type === 'range') {
+      row.classList.add('offshoot-range-row');
+    }
+
+    const keyEl = document.createElement('div');
+    keyEl.className = 'offshoot-key';
+    keyEl.textContent = descriptor.key;
+
+    const valueEl = document.createElement('div');
+    valueEl.className = 'offshoot-value';
+    valueNodes[descriptor.key] = valueEl;
+
+    const actions = document.createElement('div');
+    actions.className = 'offshoot-actions';
+
+    if (descriptor.type === 'toggle') {
+      const toggleBtn = document.createElement('button');
+      toggleBtn.textContent = 'toggle';
+      toggleBtn.addEventListener('click', () => {
+        setOffshootPatch({ [descriptor.key]: !Boolean(CONFIG.offshoot[descriptor.key]) });
+      });
+      actions.appendChild(toggleBtn);
+    } else if (descriptor.type === 'enum') {
+      const nextBtn = document.createElement('button');
+      nextBtn.textContent = 'next';
+      nextBtn.addEventListener('click', () => cycleEnum(descriptor));
+      actions.appendChild(nextBtn);
+    } else if (descriptor.type === 'range') {
+      const minActions = document.createElement('div');
+      minActions.className = 'offshoot-actions';
+      const minMinus = document.createElement('button');
+      minMinus.className = 'offshoot-mini';
+      minMinus.textContent = 'min-';
+      minMinus.addEventListener('click', (event) => {
+        adjustRange(descriptor, 0, -1, getModifierStepMultiplier(event));
+      });
+      const minPlus = document.createElement('button');
+      minPlus.className = 'offshoot-mini';
+      minPlus.textContent = 'min+';
+      minPlus.addEventListener('click', (event) => {
+        adjustRange(descriptor, 0, 1, getModifierStepMultiplier(event));
+      });
+      minActions.append(minMinus, minPlus);
+
+      const maxActions = document.createElement('div');
+      maxActions.className = 'offshoot-actions';
+      const maxMinus = document.createElement('button');
+      maxMinus.className = 'offshoot-mini';
+      maxMinus.textContent = 'max-';
+      maxMinus.addEventListener('click', (event) => {
+        adjustRange(descriptor, 1, -1, getModifierStepMultiplier(event));
+      });
+      const maxPlus = document.createElement('button');
+      maxPlus.className = 'offshoot-mini';
+      maxPlus.textContent = 'max+';
+      maxPlus.addEventListener('click', (event) => {
+        adjustRange(descriptor, 1, 1, getModifierStepMultiplier(event));
+      });
+      maxActions.append(maxMinus, maxPlus);
+
+      row.append(keyEl, valueEl, minActions, maxActions);
+      panel.appendChild(row);
+      continue;
+    } else {
+      const minusBtn = document.createElement('button');
+      minusBtn.className = 'offshoot-mini';
+      minusBtn.textContent = '-';
+      minusBtn.addEventListener('click', (event) => {
+        adjustScalar(descriptor, -1, getModifierStepMultiplier(event));
+      });
+      const plusBtn = document.createElement('button');
+      plusBtn.className = 'offshoot-mini';
+      plusBtn.textContent = '+';
+      plusBtn.addEventListener('click', (event) => {
+        adjustScalar(descriptor, 1, getModifierStepMultiplier(event));
+      });
+      actions.append(minusBtn, plusBtn);
+    }
+
+    row.append(keyEl, valueEl, actions);
+    panel.appendChild(row);
+  }
+
+  const footerActions = document.createElement('div');
+  footerActions.className = 'offshoot-actions';
+  footerActions.style.justifyContent = 'flex-end';
+
+  const resetBtn = document.createElement('button');
+  resetBtn.textContent = 'defaults';
+  const offshootDefaults = JSON.parse(JSON.stringify(CONFIG.offshoot));
+  resetBtn.addEventListener('click', () => {
+    setOffshootPatch({ ...offshootDefaults });
+  });
+
+  footerActions.appendChild(resetBtn);
+  panel.appendChild(footerActions);
+
+  document.body.appendChild(panel);
+  refreshValues();
+}
+
+function injectPathGenerationControlStyles() {
+  if (document.getElementById('path-generation-controls-style')) {
+    return;
+  }
+  const style = document.createElement('style');
+  style.id = 'path-generation-controls-style';
+  style.textContent = `
+    #path-generation-controls {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      z-index: 40;
+      width: min(430px, calc(100vw - 24px));
+      max-height: calc(100vh - 24px);
+      overflow: auto;
+      background: rgba(8, 14, 16, 0.88);
+      border: 1px solid rgba(147, 200, 255, 0.35);
+      border-radius: 10px;
+      padding: 10px;
+      color: #e5f4ff;
+      font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
+      backdrop-filter: blur(2px);
+      box-shadow: 0 6px 22px rgba(0, 0, 0, 0.35);
+    }
+
+    #path-generation-controls h2 {
+      margin: 0 0 8px;
+      font-size: 12px;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      color: #99c6eb;
+    }
+
+    #path-generation-controls .pathgen-row {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr auto;
+      gap: 6px;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+
+    #path-generation-controls .pathgen-key {
+      color: #bddfff;
+      word-break: break-word;
+    }
+
+    #path-generation-controls .pathgen-value {
+      color: #f5fbff;
+      text-align: right;
+      padding-right: 2px;
+    }
+
+    #path-generation-controls .pathgen-input {
+      width: 100%;
+      box-sizing: border-box;
+      border: 1px solid rgba(153, 198, 235, 0.35);
+      background: rgba(18, 27, 38, 0.9);
+      color: #f5fbff;
+      border-radius: 5px;
+      padding: 3px 6px;
+      font: inherit;
+    }
+
+    #path-generation-controls .pathgen-input:focus {
+      outline: none;
+      border-color: rgba(180, 220, 255, 0.9);
+      box-shadow: 0 0 0 1px rgba(180, 220, 255, 0.35);
+    }
+
+    #path-generation-controls .pathgen-input.pathgen-input-invalid {
+      border-color: rgba(255, 120, 120, 0.9);
+      box-shadow: 0 0 0 1px rgba(255, 120, 120, 0.25);
+    }
+
+    #path-generation-controls .pathgen-actions {
+      display: flex;
+      gap: 4px;
+    }
+
+    #path-generation-controls button {
+      border: 1px solid rgba(153, 198, 235, 0.35);
+      background: rgba(26, 38, 52, 0.85);
+      color: #f5fbff;
+      border-radius: 5px;
+      padding: 2px 6px;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    #path-generation-controls button:hover {
+      background: rgba(52, 74, 96, 0.95);
+    }
+
+    #path-generation-controls .pathgen-mini {
+      min-width: 36px;
+      text-align: center;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+function createPathGenerationControls() {
+  if (!document.body || document.getElementById('path-generation-controls')) {
+    return;
+  }
+
+  injectPathGenerationControlStyles();
+
+  const descriptors = [
+    { key: 'mode', type: 'enum', values: ['random', 'manualTemplate'] },
+    { key: 'useAbsoluteNoiseX', type: 'toggle' },
+    { key: 'useAbsoluteNoiseY', type: 'toggle' },
+    { key: 'absoluteNoiseXRatio', type: 'number', step: 0.05, min: 0, max: 1 },
+    { key: 'absoluteNoiseYRatio', type: 'number', step: 0.05, min: 0, max: 1 },
+    { key: 'baseRotationDeg', type: 'number', step: 1, min: -180, max: 180 },
+    { key: 'templateScale', type: 'number', step: 0.05, min: 0, max: 10 },
+    { key: 'templateScaleRangeMin', type: 'number', step: 0.05, min: 0, max: 10 },
+    { key: 'templateScaleRangeMax', type: 'number', step: 0.05, min: 0, max: 10 },
+    { key: 'templateNoiseAmount', type: 'number', step: 5, min: 0, max: 2000 },
+    { key: 'templateNoiseStep', type: 'number', step: 0.0001, min: 0.000001, max: 2 },
+    { key: 'templateNoiseAmount2', type: 'number', step: 5, min: 0, max: 2000 },
+    { key: 'templateNoiseStep2', type: 'number', step: 0.0001, min: 0.000001, max: 2 },
+    { key: 'templateNoiseAmount3', type: 'number', step: 5, min: 0, max: 2000 },
+    { key: 'templateNoiseStep3', type: 'number', step: 0.0001, min: 0.000001, max: 2 },
+    { key: 'templateNoiseHighpassWindow3', type: 'number', step: 2, min: 3, max: 51, integer: true },
+    { key: 'templateNoiseDirectionalBias', type: 'number', step: 0.05, min: 0, max: 1 },
+    { key: 'templateInheritCheckpointSpacingSteps', type: 'toggle' },
+    { key: 'alignTemplateToGrowth', type: 'toggle' },
+    { key: 'templatePickMode', type: 'enum', values: ['random', 'fixed'] },
+    { key: 'templatePickDeterministic', type: 'toggle' },
+    { key: 'fixedTemplateIndex', type: 'number', step: 1, min: 0, max: 999, integer: true },
+    { key: 'manualTemplatesCount', type: 'readonly' },
+  ];
+
+  const panel = document.createElement('section');
+  panel.id = 'path-generation-controls';
+
+  const title = document.createElement('h2');
+  title.textContent = 'Path Generation';
+  panel.appendChild(title);
+
+  const valueNodes = {};
+  const inputNodes = {};
+
+  function getTemplateCount() {
+    return getSanitizedManualTemplates().length;
+  }
+
+  function getDescriptorMax(descriptor) {
+    if (descriptor.key === 'fixedTemplateIndex') {
+      return Math.max(0, getTemplateCount() - 1);
+    }
+    return descriptor.max;
+  }
+
+  function normalizeNumber(descriptor, value) {
+    const descriptorMax = getDescriptorMax(descriptor);
+    const maxValue = Number.isFinite(descriptorMax) ? descriptorMax : descriptor.max;
+    let next = clamp(value, descriptor.min, maxValue);
+    if (descriptor.integer) {
+      next = Math.round(next);
+    }
+    if (descriptor.key === 'templateNoiseHighpassWindow3') {
+      next = normalizeTemplateNoiseHighpassWindow(next, descriptor.min);
+    }
+    if (descriptor.key === 'templateNoiseDirectionalBias') {
+      next = normalizeTemplateNoiseDirectionalBias(next, descriptor.min);
+    }
+    return next;
+  }
+
+  function readNumberValue(key, fallback = 0) {
+    const value = Number(CONFIG.pathGeneration[key]);
+    return Number.isFinite(value) ? value : fallback;
+  }
+
+  function readDescriptorValue(descriptor) {
+    if (descriptor.type === 'readonly' && descriptor.key === 'manualTemplatesCount') {
+      return getTemplateCount();
+    }
+    return CONFIG.pathGeneration[descriptor.key];
+  }
+
+  function formatDescriptorValue(descriptor, value) {
+    if (descriptor.type === 'number') {
+      return formatOffshootValue(value, 6);
+    }
+    if (descriptor.type === 'toggle') {
+      return value ? 'true' : 'false';
+    }
+    return String(value);
+  }
+
+  function parseToggleValue(raw) {
+    const text = raw.trim().toLowerCase();
+    if (text === 'true' || text === '1' || text === 'yes' || text === 'on') {
+      return true;
+    }
+    if (text === 'false' || text === '0' || text === 'no' || text === 'off') {
+      return false;
+    }
+    return null;
+  }
+
+  function parseDescriptorInput(descriptor, raw) {
+    const text = raw.trim();
+    if (descriptor.type === 'number') {
+      const parsed = Number(text);
+      if (!Number.isFinite(parsed)) {
+        return { ok: false, value: null };
+      }
+      return { ok: true, value: normalizeNumber(descriptor, parsed) };
+    }
+    if (descriptor.type === 'toggle') {
+      const parsed = parseToggleValue(text);
+      if (parsed === null) {
+        return { ok: false, value: null };
+      }
+      return { ok: true, value: parsed };
+    }
+    if (descriptor.type === 'enum') {
+      const values = descriptor.values || [];
+      if (values.includes(text)) {
+        return { ok: true, value: text };
+      }
+      const lower = text.toLowerCase();
+      for (let i = 0; i < values.length; i += 1) {
+        if (String(values[i]).toLowerCase() === lower) {
+          return { ok: true, value: values[i] };
+        }
+      }
+      return { ok: false, value: null };
+    }
+    return { ok: false, value: null };
+  }
+
+  function areSameValue(a, b) {
+    if (typeof a === 'number' && typeof b === 'number') {
+      return Math.abs(a - b) < 1e-10;
+    }
+    return a === b;
+  }
+
+  function commitInputValue(descriptor, inputEl) {
+    const parsed = parseDescriptorInput(descriptor, inputEl.value);
+    if (!parsed.ok) {
+      inputEl.classList.add('pathgen-input-invalid');
+      return;
+    }
+
+    inputEl.classList.remove('pathgen-input-invalid');
+    const currentValue = readDescriptorValue(descriptor);
+    if (areSameValue(currentValue, parsed.value)) {
+      refreshValues();
+      return;
+    }
+
+    setPathGenerationPatch({ [descriptor.key]: parsed.value });
+  }
+
+  function refreshValues() {
+    for (let i = 0; i < descriptors.length; i += 1) {
+      const descriptor = descriptors[i];
+      const value = readDescriptorValue(descriptor);
+
+      const valueNode = valueNodes[descriptor.key];
+      if (valueNode) {
+        valueNode.textContent = formatDescriptorValue(descriptor, value);
+      }
+
+      const inputNode = inputNodes[descriptor.key];
+      if (inputNode && document.activeElement !== inputNode) {
+        inputNode.value = formatDescriptorValue(descriptor, value);
+        inputNode.classList.remove('pathgen-input-invalid');
+      }
+    }
+  }
+
+  function setPathGenerationPatch(patch) {
+    applyPathGenerationOptions(patch);
+    refreshValues();
+  }
+
+  function adjustScalar(descriptor, directionSign, stepMultiplier = 1) {
+    const fallback = Number.isFinite(descriptor.min) ? descriptor.min : 0;
+    const current = readNumberValue(descriptor.key, fallback);
+    let next = current + descriptor.step * directionSign * stepMultiplier;
+    next = normalizeNumber(descriptor, next);
+    setPathGenerationPatch({ [descriptor.key]: next });
+  }
+
+  function cycleEnum(descriptor) {
+    const values = descriptor.values || [];
+    if (values.length === 0) {
+      return;
+    }
+    const current = String(CONFIG.pathGeneration[descriptor.key]);
+    const index = values.indexOf(current);
+    const nextIndex = index >= 0 ? (index + 1) % values.length : 0;
+    setPathGenerationPatch({ [descriptor.key]: values[nextIndex] });
+  }
+
+  for (let i = 0; i < descriptors.length; i += 1) {
+    const descriptor = descriptors[i];
+    const row = document.createElement('div');
+    row.className = 'pathgen-row';
+
+    const keyEl = document.createElement('div');
+    keyEl.className = 'pathgen-key';
+    keyEl.textContent = descriptor.key;
+
+    let valueCell;
+    if (descriptor.type === 'readonly') {
+      const valueEl = document.createElement('div');
+      valueEl.className = 'pathgen-value';
+      valueNodes[descriptor.key] = valueEl;
+      valueCell = valueEl;
+    } else {
+      const inputEl = document.createElement('input');
+      inputEl.type = 'text';
+      inputEl.className = 'pathgen-input';
+      inputNodes[descriptor.key] = inputEl;
+      inputEl.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          commitInputValue(descriptor, inputEl);
+          inputEl.blur();
+        } else if (event.key === 'Escape') {
+          refreshValues();
+          inputEl.blur();
+        }
+      });
+      inputEl.addEventListener('blur', () => {
+        commitInputValue(descriptor, inputEl);
+      });
+      valueCell = inputEl;
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'pathgen-actions';
+
+    if (descriptor.type === 'toggle') {
+      const toggleBtn = document.createElement('button');
+      toggleBtn.textContent = 'toggle';
+      toggleBtn.addEventListener('click', () => {
+        setPathGenerationPatch({ [descriptor.key]: !Boolean(CONFIG.pathGeneration[descriptor.key]) });
+      });
+      actions.appendChild(toggleBtn);
+    } else if (descriptor.type === 'enum') {
+      const nextBtn = document.createElement('button');
+      nextBtn.textContent = 'next';
+      nextBtn.addEventListener('click', () => cycleEnum(descriptor));
+      actions.appendChild(nextBtn);
+    } else if (descriptor.type === 'number') {
+      const minusBtn = document.createElement('button');
+      minusBtn.className = 'pathgen-mini';
+      minusBtn.textContent = '-';
+      minusBtn.addEventListener('click', (event) => {
+        adjustScalar(descriptor, -1, getModifierStepMultiplier(event));
+      });
+      const plusBtn = document.createElement('button');
+      plusBtn.className = 'pathgen-mini';
+      plusBtn.textContent = '+';
+      plusBtn.addEventListener('click', (event) => {
+        adjustScalar(descriptor, 1, getModifierStepMultiplier(event));
+      });
+      actions.append(minusBtn, plusBtn);
+    } else {
+      const readonlyTag = document.createElement('div');
+      readonlyTag.textContent = 'read-only';
+      actions.appendChild(readonlyTag);
+    }
+
+    row.append(keyEl, valueCell, actions);
+    panel.appendChild(row);
+  }
+
+  const footerActions = document.createElement('div');
+  footerActions.className = 'pathgen-actions';
+  footerActions.style.justifyContent = 'flex-end';
+
+  const resetBtn = document.createElement('button');
+  resetBtn.textContent = 'defaults';
+  const pathGenerationDefaults = JSON.parse(JSON.stringify(CONFIG.pathGeneration));
+  resetBtn.addEventListener('click', () => {
+    setPathGenerationPatch({ ...pathGenerationDefaults });
+  });
+
+  footerActions.appendChild(resetBtn);
+  panel.appendChild(footerActions);
+
+  document.body.appendChild(panel);
+  refreshValues();
+}
+
+function exposeDevToolsApi() {
+  const api = {
+    config: CONFIG,
+
+    setSeeds,
+
+    plantSeeds(seedPacket, options = {}) {
+      const branches = plantSeeds(seedPacket, options);
+      renderScene();
+      return branches;
+    },
+
+    addBranch(seedX, seedY, direction = -1, offshootOrOptions = {}) {
+      if (!STATE.branchGarden) {
+        return null;
+      }
+      const branch = STATE.branchGarden.addBranch(
+        seedX,
+        seedY,
+        direction,
+        normalizeAddBranchOptions(offshootOrOptions),
+      );
+      renderScene();
+      return branch;
+    },
+
+    clearBranches() {
+      if (!STATE.branchGarden) {
+        return;
+      }
+      STATE.branchGarden.clear();
+      renderScene();
+    },
+
+    regenerateBranches() {
+      if (!STATE.branchGarden) {
+        return;
+      }
+      STATE.branchGarden.regenerateAll();
+      renderScene();
+    },
+
+    getBranches() {
+      return STATE.branchGarden ? STATE.branchGarden.branches : [];
+    },
+
+    getBranchEndpoints() {
+      return Array.isArray(STATE.branchEndpoints)
+        ? STATE.branchEndpoints.map((endpoint) => ({ ...endpoint }))
+        : [];
+    },
+
+    setBrushOptions(nextOptions) {
+      Object.assign(CONFIG.brush, nextOptions);
+      resetFilteredStemTextureCache();
+      refreshBranchThicknessBaseScales();
+      refreshBranchFilterVariations();
+      invalidateAllBranchStripCaches();
+      invalidateCompletedBranchLayer();
+      renderScene();
+    },
+
+    setGlobalFoliageScale(nextScale) {
+      const numeric = Number(nextScale);
+      CONFIG.globalFoliageScale = Number.isFinite(numeric) ? Math.max(0.01, numeric) : 1;
+      renderScene();
+      return CONFIG.globalFoliageScale;
+    },
+
+    setDebugOptions(nextOptions) {
+      Object.assign(CONFIG.debug, nextOptions);
+      invalidateCompletedBranchLayer();
+      renderScene();
+    },
+
+    setOffshootOptions(nextOptions) {
+      applyOffshootOptions(nextOptions);
+    },
+
+    setPriorityOptions(nextOptions) {
+      applyPriorityOptions(nextOptions);
+    },
+
+    setPathGenerationOptions(nextOptions) {
+      applyPathGenerationOptions(nextOptions);
+    },
+
+    setBranchGrowthOptions(nextOptions) {
+      applyBranchGrowthOptions(nextOptions);
+    },
+
+    setAnimationOptions(nextOptions) {
+      applyBranchGrowthOptions(nextOptions);
+    },
+
+    setHeroPlaybackGateOptions(nextOptions) {
+      applyHeroPlaybackGateOptions(nextOptions);
+    },
+
+    setHeroVideoDebugOptions(nextOptions) {
+      applyHeroVideoDebugOptions(nextOptions);
+    },
+
+    setCenterOverlayImageOptions(nextOptions) {
+      applyCenterOverlayImageOptions(nextOptions);
+    },
+
+    setSwipeSectionsOptions(nextOptions) {
+      applySwipeSectionsOptions(nextOptions);
+    },
+
+    getRsvpState() {
+      return getRsvpStateSnapshot();
+    },
+
+    setRsvpState(patch = {}) {
+      return setRsvpStatePatch(patch);
+    },
+
+    clearRsvpState() {
+      return clearRsvpState();
+    },
+
+    getSwipeSectionState() {
+      const swipeConfig = resolveSwipeSectionsConfig();
+      const swipeState = STATE.swipeSections;
+      const sections = Array.isArray(swipeConfig.sections) ? swipeConfig.sections : [];
+      const activeIndex = (
+        swipeState
+        && Number.isFinite(swipeState.activeSectionIndex)
+        && swipeState.activeSectionIndex >= 0
+        && swipeState.activeSectionIndex < sections.length
+      )
+        ? swipeState.activeSectionIndex
+        : -1;
+      const activeSection = activeIndex >= 0 ? sections[activeIndex] : null;
+      return {
+        enabled: swipeConfig.enabled === true,
+        isActive: isSwipeSectionsNavigationActive(swipeConfig),
+        isTransitioning: Boolean(swipeState && swipeState.isTransitioning === true),
+        activeIndex,
+        activeSectionNumber: activeIndex >= 0 ? activeIndex + 1 : null,
+        activeId: activeSection ? activeSection.id : '',
+        activeFrame: activeSection ? activeSection.frame : null,
+        sectionCount: sections.length,
+      };
+    },
+
+    goToSwipeSection(indexOrId, options = {}) {
+      return goToSwipeSection(indexOrId, options);
+    },
+
+    setFrameJumpHotkeysOptions(nextOptions) {
+      applyFrameJumpHotkeysOptions(nextOptions);
+    },
+
+    async setFlowerOptions(nextOptions) {
+      await applyFlowerOptions(nextOptions);
+    },
+
+    getFlowerPerformanceSnapshot() {
+      const flowerSystem = getFlowerSystem();
+      if (!flowerSystem || typeof flowerSystem.getPerformanceSnapshot !== 'function') {
+        return null;
+      }
+      return flowerSystem.getPerformanceSnapshot();
+    },
+
+    setPerformanceOptions(nextOptions) {
+      applyPerformanceOptions(nextOptions);
+    },
+
+    getPerformanceSnapshot() {
+      const perf = STATE.performance;
+      if (!perf.lastSummary) {
+        return null;
+      }
+      return {
+        ...perf.lastSummary,
+        cacheMissReasons: {
+          ...perf.lastSummary.cacheMissReasons,
+        },
+      };
+    },
+
+    resetPerformanceStats() {
+      resetPerformanceCounters();
+      return true;
+    },
+
+    startBranchGrowth() {
+      if (!CONFIG.branchGrowth.enabled) {
+        CONFIG.branchGrowth.enabled = true;
+      }
+      startBranchAnimation({ restart: true });
+    },
+
+    pauseBranchGrowth() {
+      pauseBranchAnimation();
+    },
+
+    resumeBranchGrowth() {
+      resumeBranchAnimation();
+    },
+
+    restartBranchGrowth() {
+      restartBranchAnimation();
+    },
+
+    // Backward-compatible aliases
+    startAnimation() {
+      if (!CONFIG.branchGrowth.enabled) {
+        CONFIG.branchGrowth.enabled = true;
+      }
+      startBranchAnimation({ restart: true });
+    },
+
+    pauseAnimation() {
+      pauseBranchAnimation();
+    },
+
+    resumeAnimation() {
+      resumeBranchAnimation();
+    },
+
+    restartAnimation() {
+      restartBranchAnimation();
+    },
+
+    listManualTemplates() {
+      return getManualTemplateDescriptors();
+    },
+
+    async reloadManualTemplates() {
+      await loadManualTemplateSources({ force: true });
+      if (STATE.branchGarden) {
+        STATE.branchGarden.rebuildBranches({ regenerateRoots: true, resetRootTimeCursor: true });
+      }
+      renderScene();
+      return getManualTemplateDescriptors();
+    },
+
+    rerender() {
+      renderScene();
+    },
+  };
+  window.stemWarpDemo10 = api;
+  window.stemWarpDemo11 = api;
+}
+
+// Export functions for foliage exporter
+window.STEM_WARP_EXPORT_FUNCTIONS = {
+  resetFlowerGrowthRuntimeState,
+  areFlowersFullyOpen,
+  stepAnimationFrame,
+  CONFIG,
+  STATE,
+};
+
+// =========================
+// 17) Bootstrap
+// =========================
+async function bootstrap() {
+  if (STATE.hasBootstrapped) {
+    return;
+  }
+  STATE.hasBootstrapped = true;
+  clearViewportPostZoomResyncTimer();
+  postZoomViewportRecoveryActive = false;
+  viewportPinchZoomWasActive = false;
+  const defaultLoadingMessage = getDefaultLoadingScreenMessage();
+  setLoadingScreenVisible(true);
+  setLoadingScreenMessage(defaultLoadingMessage);
+  preloadSwipeSectionsOverlayImages();
+
+  STATE.viewportLayoutMode = resolveInitialViewportLayoutMode();
+  viewportScrollNudgeApplied = false;
+  ensureViewportLayoutDebugToggleButton();
+  ensureViewportRelativeAdjustableControls();
+  updateViewportLayoutDebugToggleButtonLabel();
+  ensureScrollStageLayoutStructure();
+  ensureRootBackgroundLayoutStructure();
+  applyBodyFixedLayoutModeIfNeeded();
+  syncIOSFixedViewportWorkaroundFlag();
+  syncVisualViewportOffsets();
+  setupVisualViewportHandlers();
+  resizeCanvasToViewport();
+  refreshHeroVideoReferenceRect({ force: true });
+  applyViewportLayoutMode(STATE.viewportLayoutMode, { forceRerender: true });
+  scheduleIOSRelative166ViewportStabilization();
+  
+  STATE.foliageLoad.videoReady = false;
+  STATE.foliageLoad.stemReady = false;
+  STATE.foliageLoad.leafReady = false;
+  STATE.foliageLoad.flowerReady = false;
+  STATE.foliageLoad.ready = false;
+  setLoadingScreenMessage(defaultLoadingMessage);
+  const initialVideoStatus = await waitForInitialHeroVideoReadyForStartup();
+  STATE.foliageLoad.videoReady = Boolean(initialVideoStatus && initialVideoStatus.ready);
+  refreshHeroVideoReferenceRect({ force: true });
+  rerunIOSRelative166ViewportLayout();
+  scheduleIOSRelative166ViewportStabilization();
+  if (!STATE.foliageLoad.videoReady) {
+    if (initialVideoStatus && initialVideoStatus.unsupported) {
+      setLoadingScreenVisible(true);
+      setLoadingScreenMessage('this experience is not supported on this browser yet');
+      return;
+    }
+  }
+
+  if (
+    window.StemWarpFlowerSystem11
+    && typeof window.StemWarpFlowerSystem11.createFlowerSystem === 'function'
+  ) {
+    STATE.flowerSystem = window.StemWarpFlowerSystem11.createFlowerSystem();
+    if (STATE.flowerSystem && typeof STATE.flowerSystem.setPixiSurfaces === 'function') {
+      STATE.flowerSystem.setPixiSurfaces({
+        backCanvas: flowersBackCanvas,
+        frontCanvas: flowersFrontCanvas,
+      });
+    }
+  } else {
+    console.warn('Flower system module missing (script_11_flowers.js). Flowers are disabled.');
+  }
+
+  // Immediate fallback stem so first paint is not blocked on network.
+  STATE.stemImage = createFallbackStemTexture();
+  STATE.stemImageFlippedX = createHorizontallyFlippedTexture(STATE.stemImage);
+  STATE.leafImage = null;
+  setFoliageLoadReadyFlag('stemReady', true);
+  resetFilteredStemTextureCache();
+  await loadManualTemplateSources();
+  STATE.branchGarden = new BranchGarden();
+
+  // Optional center branch.
+  // STATE.branchGarden.addBranch(STATE.viewportWidth * 0.5, STATE.viewportHeight * 0.9, -1);
+
+  // Plant many side branches from seeds.
+  STATE.lastSeedPacket = setSeeds();
+  plantSeeds(STATE.lastSeedPacket, { clearFirst: true });
+
+  if (CONFIG.performance.enabled) {
+    resetPerformanceCounters();
+  }
+  syncSwipeSectionsStateWithConfig({
+    forceRecalculate: true,
+    forceToClosestFrame: true,
+    forceLoadOverlay: true,
+    emitEvent: false,
+    reason: 'bootstrap',
+  });
+  startHeroPlaybackGateFlow();
+  renderScene();
+  applyViewportScrollNudgeIfNeeded();
+  setupEventHandlers();
+  exposeDevToolsApi();
+  setLoadingScreenMessage(defaultLoadingMessage);
+  // Load heavier visual assets in the background and progressively upgrade.
+  loadStemTexture()
+    .then((stemTexture) => {
+      if (!stemTexture) {
+        return;
+      }
+      STATE.stemImage = stemTexture;
+      STATE.stemImageFlippedX = createHorizontallyFlippedTexture(stemTexture);
+      setFoliageLoadReadyFlag('stemReady', true);
+      resetFilteredStemTextureCache();
+      invalidateAllBranchStripCaches();
+      invalidateCompletedBranchLayer();
+      renderScene({ skipAutoStart: true });
+    })
+    .catch((error) => {
+      console.warn(error.message || String(error));
+      setFoliageLoadReadyFlag('stemReady', true);
+    });
+
+  loadLeafTexture(CONFIG.leaves || {})
+    .then((leafTexture) => {
+      STATE.leafImage = leafTexture;
+      setFoliageLoadReadyFlag('leafReady', true);
+      invalidateCompletedBranchLayer();
+      renderScene({ skipAutoStart: true });
+    })
+    .catch((error) => {
+      console.warn(error.message || String(error));
+      setFoliageLoadReadyFlag('leafReady', true);
+    });
+
+  loadFlowerSpriteIntoSystem()
+    .then(() => {
+      setFoliageLoadReadyFlag('flowerReady', true);
+      invalidateCompletedBranchLayer();
+      renderScene({ skipAutoStart: true });
+    })
+    .catch((error) => {
+      console.warn(error.message || String(error));
+      setFoliageLoadReadyFlag('flowerReady', true);
+    });
+  // createPathGenerationControls();
+  // createOffshootControls();
+}
+
+// =========================
+// 18) Run Area
+// =========================
+function startBootstrap() {
+  bootstrap().catch((error) => {
+    setLoadingScreenVisible(true);
+    setLoadingScreenMessage('please refresh and try again');
+    console.error('Failed to bootstrap script_11.js', error);
+  });
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', startBootstrap, { once: true });
+} else {
+  startBootstrap();
+}

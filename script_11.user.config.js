@@ -8,6 +8,42 @@
       : 9;
 
     return {
+  // SECTION CONTROL - Enable/disable individual canvas elements
+  sectionControl: {
+    enabled: false,
+    debugConsole: {
+      enabled: true,
+      position: 'top-right', // top-right | top-left | bottom-right | bottom-left
+      backgroundColor: 'rgba(0, 0, 0, 0.85)',
+      textColor: '#00ff00',
+      fontSize: '12px',
+      padding: '10px',
+      maxWidth: '300px',
+    },
+    canvases: {
+      myCanvas: {
+        enabled: true,
+        description: 'Holds foliage below Hero video',
+      },
+      myCanvasFront: {
+        enabled: true,
+        description: 'Holds foliage above Hero video',
+      },
+      myCanvasFlowersBack: {
+        enabled: false,
+        description: 'Empty as far as I can tell',
+      },
+      myCanvasFlowersFront: {
+        enabled: false,
+        description: 'Empty canvas as far as I can tell',
+      },
+      rsvpNameFitMeasureCanvas: {
+        enabled: true,
+        description: 'RSVP name fit measurement canvas (hidden, for text sizing)',
+      },
+    },
+  },
+
   backgroundColor: gradient,
   globalFoliageScale: 0.85, // global foliage multiplier (branches + stems + leaves + flowers)
 
@@ -90,7 +126,7 @@
     sidePad: -0.14, // interpreted by sidePadBasis
     sidePadBasis: 'videoWidthRatio', // px | videoWidthRatio | viewportWidthRatio
     sideAnchorXMode: 'videoCenter', // viewportEdges | videoCenter
-    sideMargin: 2,
+    sideMargin: 0,
     mode: 'explicitYRatios', // autoSpacing | explicitYRatios
     // mode: 'autoSpacing', // autoSpacing | explicitYRatios
 
@@ -100,7 +136,7 @@
     explicitYRatiosLeft: null, // optional side override list
     explicitYRatiosRight: null, // optional side override list
     startY: window.innerHeight * 0.05, // explicit first-seed Y; null randomizes first seed per side
-    randomizeSpacing: true, // if true, per-seed spacing is sampled in [minSpacing, maxSpacing]
+    randomizeSpacing: false, // if true, per-seed spacing is sampled in [minSpacing, maxSpacing]
     minSpacing: window.innerHeight/ defaultCountPerSide, // minimum vertical distance between seeds on the same side
     // minSpacing: 300,
     maxSpacing: null, // when null + randomizeSpacing=true, an automatic max is derived from minSpacing
@@ -197,7 +233,7 @@
   },
 
   branchGrowth: {
-    enabled: true,
+    enabled: false,
     mode: 'linearBySeedY', // simultaneous | linearBySeedY
     linearSweepDirection: 'up', // down (top->bottom) | up (bottom->top)
     linearSweepDurationSec: 8, // sweep time across root seed Y range
@@ -214,6 +250,21 @@
     earlyCommitEnabled: false, // commit partially-grown branches once they cross earlyCommitThreshold
     earlyCommitThreshold: 0.5, // fraction of totalLength (0..1) at which a growing branch is committed early
     overlayPromotionGrowthOnMode: 'growthON', // growthON only: matchGrowthOff | firstExitCutover
+  },
+
+  foliageVideos: {
+    enabled: true,
+    startFrame: 270, // Hero video frame at which to start foliage videos
+    playbackSpeed: 1.0,
+    fallbackToFoliageOnLoadError: true,
+    lowerVideo: {
+      webm: './smallGrowBloom_lower.webm',
+      mov: './smallGrowBloom_lower_foriOS.mov',
+    },
+    upperVideo: {
+      webm: './smallGrowBloom_upper.webm',
+      mov: './smallGrowBloom_upper_foriOS.mov',
+    },
   },
 
   frameJumpHotkeys: {
@@ -812,7 +863,7 @@
   },
 
   floralResponsiveScale: {
-    enabled: true,
+    enabled: false,
     // [viewportWidthCssPx, scaleFactor]
     points: [
       [390, 0.62],
@@ -830,7 +881,7 @@
     dprBaseline: 2,
     dprStrength: 0.14, // mild; > baseline shrinks slightly, < baseline grows slightly
     dprMultiplierClamp: [0.92, 1.08],
-    landscapeModifierEnabled: true,
+    landscapeModifierEnabled: false,
     landscapeMultiplier: 1.1, // applied only when viewportWidth > viewportHeight
     finalScaleClamp: [0.25, 10],
   },
@@ -870,7 +921,7 @@
     swayPerfLogEnabled: false,
 
     wind: {
-      enabled: true,
+      enabled: false,
       sweepSpeedPxPerSec: 140,      // horizontal travel speed in canvas px/sec
       yAmplitudeRatio: 0.5,        // sin-wave Y amplitude as fraction of canvas height (0..1)
       yFrequencyHz: 0.05,           // Y oscillation cycles per second
@@ -906,8 +957,8 @@
 
   flowers: {
     enabled: true,
-    renderer: 'pixi', // pixi | canvas
-    pixiEnabled: true,
+    renderer: 'canvas', // pixi | canvas
+    pixiEnabled: false,
     baked: {
       enabled: false,
       manifestPath: './flowers/flowers_atlas_manifest_master.json',
@@ -1115,7 +1166,7 @@
     growthDurationSec: 1, // time from minScale to full size
     growthEase: 'easeOut', // linear | easeIn | easeOut | easeInOut
     growthEasePower: 2, // easing curve strength
-    swayEnabled: true,
+    swayEnabled: false,
     swayInteractionRadiusFactor: 2.1,
     swayRiseSpeed: 5.5,
     swayFallSpeed: 0.5,
