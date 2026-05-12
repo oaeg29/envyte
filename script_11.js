@@ -3816,15 +3816,16 @@ function buildHeroVideoReferenceRectSnapshot() {
 
   let width = 0;
   let height = 0;
+  let videoBcrRect = null;
+  if (video && typeof video.getBoundingClientRect === 'function') {
+    videoBcrRect = video.getBoundingClientRect();
+  }
   const intrinsicWidth = Number(video && video.videoWidth);
   const intrinsicHeight = Number(video && video.videoHeight);
   if (Number.isFinite(intrinsicWidth) && intrinsicWidth > 0 && Number.isFinite(intrinsicHeight) && intrinsicHeight > 0) {
-    const bcrRect = video && typeof video.getBoundingClientRect === 'function'
-      ? video.getBoundingClientRect()
-      : null;
-    if (bcrRect && bcrRect.height > 0) {
-      height = bcrRect.height;
-      width = bcrRect.width > 0 ? bcrRect.width : height * (intrinsicWidth / intrinsicHeight);
+    if (videoBcrRect && videoBcrRect.height > 0) {
+      height = videoBcrRect.height;
+      width = videoBcrRect.width > 0 ? videoBcrRect.width : height * (intrinsicWidth / intrinsicHeight);
     } else {
       height = viewportHeight;
       width = height * (intrinsicWidth / intrinsicHeight);
@@ -3834,8 +3835,8 @@ function buildHeroVideoReferenceRectSnapshot() {
       intrinsic: `${intrinsicWidth}x${intrinsicHeight}`,
       viewport: `${viewportWidth}x${viewportHeight}`,
       viewportOffsetTop: STATE.viewportOffsetTopPx,
-      bcrHeight: bcrRect ? bcrRect.height : 'n/a',
-      bcrWidth: bcrRect ? bcrRect.width : 'n/a',
+      bcrHeight: videoBcrRect ? videoBcrRect.height : 'n/a',
+      bcrWidth: videoBcrRect ? videoBcrRect.width : 'n/a',
     });
   } else if (
     video
@@ -3846,12 +3847,9 @@ function buildHeroVideoReferenceRectSnapshot() {
   ) {
     width = Number(video.clientWidth);
     height = Number(video.clientHeight);
-  } else if (video && typeof video.getBoundingClientRect === 'function') {
-    const rect = video.getBoundingClientRect();
-    if (rect && Number.isFinite(rect.width) && Number.isFinite(rect.height)) {
-      width = Math.max(0, rect.width);
-      height = Math.max(0, rect.height);
-    }
+  } else if (videoBcrRect && Number.isFinite(videoBcrRect.width) && Number.isFinite(videoBcrRect.height)) {
+    width = Math.max(0, videoBcrRect.width);
+    height = Math.max(0, videoBcrRect.height);
   }
 
   if (width <= 0 || height <= 0) {
@@ -3860,8 +3858,43 @@ function buildHeroVideoReferenceRectSnapshot() {
 
   const centerX = viewportWidth * 0.5;
   const centerY = viewportHeight * 0.5;
-  const left = centerX - (width * 0.5);
-  const top = centerY - (height * 0.5);
+  let left = centerX - (width * 0.5);
+  let top = centerY - (height * 0.5);
+  let sceneSource = 'centerMath';
+
+  // Scene space is measured from the canvas top-left; this avoids double-applying
+  // viewport offset in live foliage placement when layers are already offset in CSS.
+  const canvasBcrRect = canvas && typeof canvas.getBoundingClientRect === 'function'
+    ? canvas.getBoundingClientRect()
+    : null;
+  if (
+    videoBcrRect
+    && Number.isFinite(videoBcrRect.left)
+    && Number.isFinite(videoBcrRect.top)
+    && canvasBcrRect
+    && Number.isFinite(canvasBcrRect.left)
+    && Number.isFinite(canvasBcrRect.top)
+  ) {
+    left = videoBcrRect.left - canvasBcrRect.left;
+    top = videoBcrRect.top - canvasBcrRect.top;
+    sceneSource = 'videoBcrMinusCanvasBcr';
+  } else if (
+    videoBcrRect
+    && Number.isFinite(videoBcrRect.left)
+    && Number.isFinite(videoBcrRect.top)
+  ) {
+    const viewportOffsetLeft = Number.isFinite(STATE.viewportOffsetLeftPx) ? STATE.viewportOffsetLeftPx : 0;
+    const viewportOffsetTop = Number.isFinite(STATE.viewportOffsetTopPx) ? STATE.viewportOffsetTopPx : 0;
+    left = videoBcrRect.left - viewportOffsetLeft;
+    top = videoBcrRect.top - viewportOffsetTop;
+    sceneSource = 'videoBcrMinusViewportOffset';
+  }
+  viewportDebugLog(
+    'heroRect.sceneCoords',
+    `source=${sceneSource}`,
+    `left=${left.toFixed(2)}`,
+    `top=${top.toFixed(2)}`,
+  );
   return {
     x: left,
     y: top,
