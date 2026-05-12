@@ -2174,24 +2174,37 @@ function startFoliageVideos() {
 
   console.log('[FoliageVideos] Starting playback with speed:', playbackSpeed);
 
-  // Check if the hero rect has drifted since startup and rebuild foliage if needed.
-  const _prevFoliageStartRect = STATE.heroVideoReferenceRect
-    ? { ...STATE.heroVideoReferenceRect }
+  // Check for hero rect drift since seed build and remap canonical seeds if needed.
+  if (!STATE.heroRectAtSeedBuild || !STATE.canonicalSeedPacket) {
+    refreshSeedCanonicalBaselineFromLastPacket({ forceRectRefresh: true });
+  }
+  const _prevFoliageStartRect = STATE.heroRectAtSeedBuild
+    ? { ...STATE.heroRectAtSeedBuild }
     : null;
-  refreshHeroVideoReferenceRect({ force: true });
-  const _nextFoliageStartRect = STATE.heroVideoReferenceRect;
-  const _foliageRectDrifted = _prevFoliageStartRect && _nextFoliageStartRect && (
-    Math.abs(_prevFoliageStartRect.height - _nextFoliageStartRect.height) > 0.5 ||
-    Math.abs(_prevFoliageStartRect.width  - _nextFoliageStartRect.width)  > 0.5
-  );
-  if (_foliageRectDrifted) {
+  const _nextFoliageStartRect = refreshHeroVideoReferenceRect({ force: true });
+  const _drift = computeHeroRectDrift(_prevFoliageStartRect, _nextFoliageStartRect, 0.5);
+  if (_drift.drifted) {
     console.warn(
-      '[FoliageVideos] Hero rect drifted since startup — rebuilding foliage to match.',
-      `was=${_prevFoliageStartRect.width.toFixed(1)}x${_prevFoliageStartRect.height.toFixed(1)}`,
-      `now=${_nextFoliageStartRect.width.toFixed(1)}x${_nextFoliageStartRect.height.toFixed(1)}`,
+      '[FoliageVideos] Hero rect drifted since seed build — remapping seed packet.',
+      `was=${_prevFoliageStartRect.width.toFixed(1)}x${_prevFoliageStartRect.height.toFixed(1)}@(${_prevFoliageStartRect.left.toFixed(1)},${_prevFoliageStartRect.top.toFixed(1)})`,
+      `now=${_nextFoliageStartRect.width.toFixed(1)}x${_nextFoliageStartRect.height.toFixed(1)}@(${_nextFoliageStartRect.left.toFixed(1)},${_nextFoliageStartRect.top.toFixed(1)})`,
+      `delta(w/h/l/t)=(${_drift.deltas.width.toFixed(3)}/${_drift.deltas.height.toFixed(3)}/${_drift.deltas.left.toFixed(3)}/${_drift.deltas.top.toFixed(3)})`,
+      `threshold=${_drift.thresholdPx}px`,
     );
     if (STATE.branchGarden) {
-      STATE.branchGarden.rebuildBranches({ regenerateRoots: true, resetRootTimeCursor: true });
+      const remappedSeedPacket = remapSeedPacketFromHeroRectSpace(
+        STATE.canonicalSeedPacket,
+        _nextFoliageStartRect,
+      );
+      if (remappedSeedPacket) {
+        STATE.lastSeedPacket = remappedSeedPacket;
+        plantSeeds(remappedSeedPacket, { clearFirst: true });
+        updateSeedCanonicalBaselineFromPacket(remappedSeedPacket, _nextFoliageStartRect);
+        console.log('[FoliageVideos] Drift action: remapped canonical seed packet and replanted branches.');
+      } else {
+        console.warn('[FoliageVideos] Missing canonical seed packet during drift remap; falling back to branch rebuild.');
+        STATE.branchGarden.rebuildBranches({ regenerateRoots: true, resetRootTimeCursor: true });
+      }
     }
   }
 
@@ -3172,6 +3185,8 @@ const STATE = {
   branchGarden: null,
   branchEndpoints: [],
   lastSeedPacket: null,
+  canonicalSeedPacket: null,
+  heroRectAtSeedBuild: null,
   hasBootstrapped: false,
   foliageLoad: {
     videoReady: false,
@@ -11207,6 +11222,197 @@ function sampleSeedYValues(
   }
 
   return out;
+}
+
+function isValidHeroRectForSeedMapping(rect) {
+  if (!rect || typeof rect !== 'object') {
+    return false;
+  }
+  return (
+    Number.isFinite(rect.left)
+    && Number.isFinite(rect.top)
+    && Number.isFinite(rect.width)
+    && Number.isFinite(rect.height)
+    && rect.width > 0
+    && rect.height > 0
+  );
+}
+
+function buildCanonicalSeedFromAbsolute(seed, heroRect, fallbackDirection) {
+  if (!seed || !isValidHeroRectForSeedMapping(heroRect)) {
+    return null;
+  }
+  const x = Number(seed.x);
+  const y = Number(seed.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return null;
+  }
+  const direction = Number.isFinite(Number(seed.direction))
+    ? (Number(seed.direction) >= 0 ? 1 : -1)
+    : fallbackDirection;
+  const canonical = {
+    xRatio: (x - heroRect.left) / heroRect.width,
+    yRatio: (y - heroRect.top) / heroRect.height,
+    direction,
+  };
+  if (typeof seed.stableKey === 'string') {
+    canonical.stableKey = seed.stableKey;
+  }
+  if (seed.offshoot !== undefined) {
+    canonical.offshoot = seed.offshoot;
+  }
+  if (Number.isFinite(Number(seed.manualTemplateIndex))) {
+    canonical.manualTemplateIndex = Math.floor(Number(seed.manualTemplateIndex));
+  }
+  return canonical;
+}
+
+function buildAbsoluteSeedFromCanonical(canonicalSeed, heroRect, fallbackDirection) {
+  if (!canonicalSeed || !isValidHeroRectForSeedMapping(heroRect)) {
+    return null;
+  }
+  const xRatio = Number(canonicalSeed.xRatio);
+  const yRatio = Number(canonicalSeed.yRatio);
+  if (!Number.isFinite(xRatio) || !Number.isFinite(yRatio)) {
+    return null;
+  }
+  const direction = Number.isFinite(Number(canonicalSeed.direction))
+    ? (Number(canonicalSeed.direction) >= 0 ? 1 : -1)
+    : fallbackDirection;
+  const absolute = {
+    x: heroRect.left + xRatio * heroRect.width,
+    y: heroRect.top + yRatio * heroRect.height,
+    direction,
+  };
+  if (typeof canonicalSeed.stableKey === 'string') {
+    absolute.stableKey = canonicalSeed.stableKey;
+  }
+  if (canonicalSeed.offshoot !== undefined) {
+    absolute.offshoot = canonicalSeed.offshoot;
+  }
+  if (Number.isFinite(Number(canonicalSeed.manualTemplateIndex))) {
+    absolute.manualTemplateIndex = Math.floor(Number(canonicalSeed.manualTemplateIndex));
+  }
+  return absolute;
+}
+
+function captureSeedPacketInHeroRectSpace(seedPacket, heroRect) {
+  if (!seedPacket || !isValidHeroRectForSeedMapping(heroRect)) {
+    return null;
+  }
+  const toCanonicalList = (list, fallbackDirection) => {
+    if (!Array.isArray(list)) {
+      return [];
+    }
+    const out = [];
+    for (let i = 0; i < list.length; i += 1) {
+      const canonicalSeed = buildCanonicalSeedFromAbsolute(list[i], heroRect, fallbackDirection);
+      if (canonicalSeed) {
+        out.push(canonicalSeed);
+      }
+    }
+    return out;
+  };
+  return {
+    seedsLeft: toCanonicalList(seedPacket.seedsLeft, 1),
+    seedsRight: toCanonicalList(seedPacket.seedsRight, -1),
+  };
+}
+
+function remapSeedPacketFromHeroRectSpace(canonicalPacket, heroRect) {
+  if (!canonicalPacket || !isValidHeroRectForSeedMapping(heroRect)) {
+    return null;
+  }
+  const toAbsoluteList = (list, fallbackDirection) => {
+    if (!Array.isArray(list)) {
+      return [];
+    }
+    const out = [];
+    for (let i = 0; i < list.length; i += 1) {
+      const absoluteSeed = buildAbsoluteSeedFromCanonical(list[i], heroRect, fallbackDirection);
+      if (absoluteSeed) {
+        out.push(absoluteSeed);
+      }
+    }
+    return out;
+  };
+  return {
+    seedsLeft: toAbsoluteList(canonicalPacket.seedsLeft, 1),
+    seedsRight: toAbsoluteList(canonicalPacket.seedsRight, -1),
+  };
+}
+
+function computeHeroRectDrift(prevRect, nextRect, thresholdPx = 0.5) {
+  const safeThresholdPx = Number.isFinite(Number(thresholdPx))
+    ? Math.max(0, Number(thresholdPx))
+    : 0.5;
+  if (!isValidHeroRectForSeedMapping(prevRect) || !isValidHeroRectForSeedMapping(nextRect)) {
+    return {
+      valid: false,
+      drifted: false,
+      thresholdPx: safeThresholdPx,
+      deltas: null,
+    };
+  }
+  const deltas = {
+    width: Math.abs(prevRect.width - nextRect.width),
+    height: Math.abs(prevRect.height - nextRect.height),
+    left: Math.abs(prevRect.left - nextRect.left),
+    top: Math.abs(prevRect.top - nextRect.top),
+  };
+  const drifted = (
+    deltas.width > safeThresholdPx
+    || deltas.height > safeThresholdPx
+    || deltas.left > safeThresholdPx
+    || deltas.top > safeThresholdPx
+  );
+  return {
+    valid: true,
+    drifted,
+    thresholdPx: safeThresholdPx,
+    deltas,
+  };
+}
+
+function updateSeedCanonicalBaselineFromPacket(seedPacket, heroRect) {
+  if (!seedPacket || !isValidHeroRectForSeedMapping(heroRect)) {
+    return false;
+  }
+  const canonicalSeedPacket = captureSeedPacketInHeroRectSpace(seedPacket, heroRect);
+  if (!canonicalSeedPacket) {
+    return false;
+  }
+  STATE.canonicalSeedPacket = canonicalSeedPacket;
+  const left = heroRect.left;
+  const top = heroRect.top;
+  const width = heroRect.width;
+  const height = heroRect.height;
+  STATE.heroRectAtSeedBuild = {
+    left,
+    top,
+    width,
+    height,
+    right: Number.isFinite(heroRect.right) ? heroRect.right : left + width,
+    bottom: Number.isFinite(heroRect.bottom) ? heroRect.bottom : top + height,
+    x: Number.isFinite(heroRect.x) ? heroRect.x : left,
+    y: Number.isFinite(heroRect.y) ? heroRect.y : top,
+  };
+  return true;
+}
+
+function refreshSeedCanonicalBaselineFromLastPacket(options = {}) {
+  const safeOptions = isPlainObjectLiteral(options) ? options : {};
+  const forceRectRefresh = safeOptions.forceRectRefresh === true;
+  const rect = forceRectRefresh
+    ? refreshHeroVideoReferenceRect({ force: true })
+    : getHeroVideoRenderedRect();
+  if (!isValidHeroRectForSeedMapping(rect)) {
+    return false;
+  }
+  if (!STATE.lastSeedPacket) {
+    return false;
+  }
+  return updateSeedCanonicalBaselineFromPacket(STATE.lastSeedPacket, rect);
 }
 
 function setSeeds() {
@@ -20331,6 +20537,7 @@ function onKeydown(event) {
     // New random seed layout.
     STATE.lastSeedPacket = setSeeds();
     plantSeeds(STATE.lastSeedPacket, { clearFirst: true });
+    refreshSeedCanonicalBaselineFromLastPacket({ forceRectRefresh: true });
     renderScene();
   }
 
@@ -21792,6 +21999,10 @@ function exposeDevToolsApi() {
 
     plantSeeds(seedPacket, options = {}) {
       const branches = plantSeeds(seedPacket, options);
+      if (seedPacket && typeof seedPacket === 'object') {
+        STATE.lastSeedPacket = seedPacket;
+        refreshSeedCanonicalBaselineFromLastPacket({ forceRectRefresh: true });
+      }
       renderScene();
       return branches;
     },
@@ -22124,6 +22335,7 @@ async function bootstrap() {
   // Plant many side branches from seeds.
   STATE.lastSeedPacket = setSeeds();
   plantSeeds(STATE.lastSeedPacket, { clearFirst: true });
+  refreshSeedCanonicalBaselineFromLastPacket({ forceRectRefresh: true });
 
   if (CONFIG.performance.enabled) {
     resetPerformanceCounters();
