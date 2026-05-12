@@ -3810,27 +3810,18 @@ function buildHeroVideoReferenceRectSnapshot() {
     if (bcrRect && bcrRect.height > 0) {
       height = bcrRect.height;
       width = bcrRect.width > 0 ? bcrRect.width : height * (intrinsicWidth / intrinsicHeight);
-      const bcrTop = Number.isFinite(bcrRect.top) ? bcrRect.top : (viewportHeight * 0.5 - height * 0.5);
-      const bcrLeft = Number.isFinite(bcrRect.left) ? bcrRect.left : (viewportWidth * 0.5 - width * 0.5);
-      console.log('[HeroRect] BCR snapshot:', {
-        bcrTop, bcrLeft, width, height,
-        intrinsic: `${intrinsicWidth}x${intrinsicHeight}`,
-        viewport: `${viewportWidth}x${viewportHeight}`,
-        viewportOffsetTop: STATE.viewportOffsetTopPx,
-      });
-      return {
-        x: bcrLeft,
-        y: bcrTop,
-        left: bcrLeft,
-        top: bcrTop,
-        width,
-        height,
-        right: bcrLeft + width,
-        bottom: bcrTop + height,
-      };
+    } else {
+      height = viewportHeight;
+      width = height * (intrinsicWidth / intrinsicHeight);
     }
-    height = viewportHeight;
-    width = height * (intrinsicWidth / intrinsicHeight);
+    console.log('[HeroRect] snapshot:', {
+      width, height,
+      intrinsic: `${intrinsicWidth}x${intrinsicHeight}`,
+      viewport: `${viewportWidth}x${viewportHeight}`,
+      viewportOffsetTop: STATE.viewportOffsetTopPx,
+      bcrHeight: bcrRect ? bcrRect.height : 'n/a',
+      bcrWidth: bcrRect ? bcrRect.width : 'n/a',
+    });
   } else if (
     video
     && Number.isFinite(video.clientWidth)
