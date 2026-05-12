@@ -30,11 +30,11 @@
         description: 'Holds foliage above Hero video',
       },
       myCanvasFlowersBack: {
-        enabled: false,
+        enabled: true,
         description: 'Empty as far as I can tell',
       },
       myCanvasFlowersFront: {
-        enabled: false,
+        enabled: true,
         description: 'Empty canvas as far as I can tell',
       },
       rsvpNameFitMeasureCanvas: {

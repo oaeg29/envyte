@@ -151,6 +151,16 @@ body.ios-safari-top-tint-shim-experiment #safari-top-tint-shim {
   pointer-events: none;
 }
 
+#myCanvasHeroHint {
+  position: fixed;
+  top: var(--app-viewport-offset-top);
+  left: var(--app-viewport-offset-left);
+  width: var(--app-viewport-width);
+  height: var(--app-viewport-height);
+  z-index: 0;
+  pointer-events: none;
+}
+
 #myCanvasFlowersBack {
   position: fixed;
   top: var(--app-viewport-offset-top);

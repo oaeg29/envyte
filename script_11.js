@@ -32,6 +32,11 @@ if (!flowersFrontCanvas) {
   flowersFrontCanvas = document.createElement('canvas');
   flowersFrontCanvas.id = 'myCanvasFlowersFront';
 }
+let heroHintCanvas = document.getElementById('myCanvasHeroHint');
+if (!heroHintCanvas) {
+  heroHintCanvas = document.createElement('canvas');
+  heroHintCanvas.id = 'myCanvasHeroHint';
+}
 const video = document.createElement('video');
 const foliageVideoLower = document.createElement('video');
 const foliageVideoUpper = document.createElement('video');
@@ -75,6 +80,7 @@ function initSectionControl() {
       myCanvasFront: frontCanvas,
       myCanvasFlowersBack: flowersBackCanvas,
       myCanvasFlowersFront: flowersFrontCanvas,
+      myCanvasHeroHint: heroHintCanvas,
       rsvpNameFitMeasureCanvas: rsvpNameFitMeasureCanvas,
     };
 
@@ -162,6 +168,7 @@ const HERO_VIDEO_SOURCE_RUNTIME = {
   errorEvents: 0,
   errorListenerInstalled: false,
 };
+let USE_APPLE_VIDEO_SOURCE_FAMILY = false;
 const FOLIAGE_VIDEO_SOURCE_RUNTIME = {
   lower: {
     candidates: [],
@@ -1766,8 +1773,12 @@ function resolveInitialViewportRelativeAdjustableValue() {
   return VIEWPORT_LAYOUT_RELATIVE_ADJUSTABLE_DEFAULT_VALUE;
 }
 
+function shouldUseAppleVideoSourceFamily() {
+  return USE_APPLE_VIDEO_SOURCE_FAMILY === true;
+}
+
 function resolveHeroVideoSourcePath() {
-  if (isLikelyIOSDevice() || isLikelySafariOnMacDesktop()) {
+  if (shouldUseAppleVideoSourceFamily()) {
     return HERO_VIDEO_PATH_APPLE_SAFARI;
   }
   return HERO_VIDEO_PATH_DEFAULT;
@@ -1938,7 +1949,7 @@ function resolveFoliageVideoSourcePath(videoType) {
   if (!videoConfig) {
     return null;
   }
-  if (isLikelyIOSDevice() || isLikelySafariOnMacDesktop()) {
+  if (shouldUseAppleVideoSourceFamily()) {
     return videoConfig.mov || null;
   }
   return videoConfig.webm || null;
@@ -1953,12 +1964,30 @@ function buildFoliageVideoSourceCandidates(videoType) {
   if (!videoConfig) {
     return [];
   }
+  const preferredPath = normalizeHostedAssetPath(resolveFoliageVideoSourcePath(videoType));
   const candidates = [];
+  if (typeof preferredPath === 'string' && preferredPath.trim().length > 0) {
+    candidates.push(preferredPath.trim());
+  }
   if (typeof videoConfig.webm === 'string' && videoConfig.webm.trim().length > 0) {
-    candidates.push(normalizeHostedAssetPath(videoConfig.webm.trim()));
+    const normalizedWebmPath = normalizeHostedAssetPath(videoConfig.webm.trim());
+    if (
+      typeof normalizedWebmPath === 'string'
+      && normalizedWebmPath.trim().length > 0
+      && !candidates.includes(normalizedWebmPath.trim())
+    ) {
+      candidates.push(normalizedWebmPath.trim());
+    }
   }
   if (typeof videoConfig.mov === 'string' && videoConfig.mov.trim().length > 0) {
-    candidates.push(normalizeHostedAssetPath(videoConfig.mov.trim()));
+    const normalizedMovPath = normalizeHostedAssetPath(videoConfig.mov.trim());
+    if (
+      typeof normalizedMovPath === 'string'
+      && normalizedMovPath.trim().length > 0
+      && !candidates.includes(normalizedMovPath.trim())
+    ) {
+      candidates.push(normalizedMovPath.trim());
+    }
   }
   return candidates;
 }
@@ -1981,6 +2010,7 @@ function setFoliageVideoSourceByIndex(videoType, index, options = {}) {
   const safeOptions = (options && typeof options === 'object') ? options : {};
   const shouldForceLoad = safeOptions.forceLoad !== false;
   const nextPath = candidates[index].trim();
+  runtime.activeIndex = index;
   videoEl.setAttribute('data-foliage-video-source-path', nextPath);
   videoEl.setAttribute('src', nextPath);
   videoEl.src = nextPath;
@@ -1991,6 +2021,46 @@ function setFoliageVideoSourceByIndex(videoType, index, options = {}) {
       // Ignore load() exceptions and rely on media events.
     }
   }
+  return true;
+}
+
+function readFoliageVideoMediaErrorLabel(videoEl) {
+  const mediaError = videoEl && videoEl.error ? videoEl.error : null;
+  if (!mediaError || !Number.isFinite(mediaError.code)) {
+    return 'unknown';
+  }
+  switch (mediaError.code) {
+    case 1:
+      return 'aborted';
+    case 2:
+      return 'network';
+    case 3:
+      return 'decode';
+    case 4:
+      return 'src_not_supported';
+    default:
+      return String(mediaError.code);
+  }
+}
+
+function tryAdvanceFoliageVideoSourceCandidate(videoType, reason = 'unknown') {
+  const runtime = videoType === 'lower' ? FOLIAGE_VIDEO_SOURCE_RUNTIME.lower : FOLIAGE_VIDEO_SOURCE_RUNTIME.upper;
+  const candidates = runtime.candidates;
+  if (!Array.isArray(candidates) || candidates.length <= 1) {
+    return false;
+  }
+  const nextIndex = Number.isFinite(runtime.activeIndex)
+    ? runtime.activeIndex + 1
+    : 1;
+  if (nextIndex < 0 || nextIndex >= candidates.length) {
+    return false;
+  }
+  const switched = setFoliageVideoSourceByIndex(videoType, nextIndex, { forceLoad: true });
+  if (!switched) {
+    return false;
+  }
+  runtime.fallbackUsed = true;
+  console.warn(`[FoliageVideo${videoType}] Switching source due to ${reason}: ${candidates[nextIndex]}`);
   return true;
 }
 
@@ -2032,7 +2102,11 @@ function configureFoliageVideoElement(videoType) {
   if (!runtime.errorListenerInstalled) {
     videoEl.addEventListener('error', () => {
       runtime.errorEvents += 1;
-      console.warn(`[FoliageVideo${videoType}] Media error on source: ${getFoliageVideoCurrentSourcePath(videoType)}`);
+      const errorLabel = readFoliageVideoMediaErrorLabel(videoEl);
+      if (tryAdvanceFoliageVideoSourceCandidate(videoType, `video-error:${errorLabel}`)) {
+        return;
+      }
+      console.warn(`[FoliageVideo${videoType}] Media error (${errorLabel}) on source: ${getFoliageVideoCurrentSourcePath(videoType)}`);
       if (config.fallbackToFoliageOnLoadError) {
         showFoliageCanvases();
         hideFoliageVideos();
@@ -2598,6 +2672,7 @@ async function runHeroVideoDebugCycle(debugConfig = resolveHeroVideoDebugConfig(
   return result;
 }
 
+USE_APPLE_VIDEO_SOURCE_FAMILY = isLikelyIOSDevice() || isLikelySafariOnMacDesktop();
 configureHeroVideoElement();
 
 // Set up click-to-start screen
@@ -2684,6 +2759,7 @@ section2ButtonLayer.appendChild(section2Button);
 // video.height = window.innerHeight;   // Set height in pixels
 
 document.body.appendChild(flowersBackCanvas);
+document.body.appendChild(heroHintCanvas);
 document.body.appendChild(wash1Layer);
 document.body.appendChild(wash2Layer);
 document.body.appendChild(video);  // Adds it to the page
@@ -2727,6 +2803,7 @@ wash2Layer.addEventListener('animationend', (event) => {
   }
 });
 const frontCtx = frontCanvas.getContext('2d');
+const heroHintCtx = heroHintCanvas.getContext('2d');
 
 
 // // Define your color values
@@ -12694,7 +12771,21 @@ function drawBackground() {
   ctx.fillRect(0, 0, STATE.viewportWidth, STATE.viewportHeight);
 }
 
-function drawOpenButtonArrowHint(gateConfig = resolveHeroPlaybackGateConfig(), nowMs = performance.now()) {
+function resolveOpenButtonArrowDrawTargetCtx() {
+  if (canvas && canvas.style && canvas.style.display === 'none' && heroHintCtx) {
+    return heroHintCtx;
+  }
+  return ctx;
+}
+
+function drawOpenButtonArrowHint(
+  gateConfig = resolveHeroPlaybackGateConfig(),
+  nowMs = performance.now(),
+  targetCtx = resolveOpenButtonArrowDrawTargetCtx(),
+) {
+  if (!targetCtx) {
+    return;
+  }
   if (!gateConfig || !gateConfig.openButtonArrow || gateConfig.openButtonArrow.enabled !== true) {
     return;
   }
@@ -12764,10 +12855,10 @@ function drawOpenButtonArrowHint(gateConfig = resolveHeroPlaybackGateConfig(), n
   const drawX = centerX - drawWidthPx * 0.5;
   const drawY = centerY - drawHeightPx * 0.5;
 
-  ctx.save();
-  ctx.globalAlpha *= alpha;
-  ctx.drawImage(image, drawX, drawY, drawWidthPx, drawHeightPx);
-  ctx.restore();
+  targetCtx.save();
+  targetCtx.globalAlpha *= alpha;
+  targetCtx.drawImage(image, drawX, drawY, drawWidthPx, drawHeightPx);
+  targetCtx.restore();
 }
 
 function drawHeroPlaybackOpenButtonDebugOverlay(
@@ -17118,6 +17209,11 @@ function resizeCanvasToViewport() {
     frontCanvas.height = Math.floor(STATE.viewportHeight * STATE.dpr);
     frontCtx.setTransform(STATE.dpr, 0, 0, STATE.dpr, 0, 0);
   }
+  if (heroHintCanvas && heroHintCtx) {
+    heroHintCanvas.width = Math.floor(STATE.viewportWidth * STATE.dpr);
+    heroHintCanvas.height = Math.floor(STATE.viewportHeight * STATE.dpr);
+    heroHintCtx.setTransform(STATE.dpr, 0, 0, STATE.dpr, 0, 0);
+  }
   if (flowersBackCanvas) {
     flowersBackCanvas.width = Math.floor(STATE.viewportWidth * STATE.dpr);
     flowersBackCanvas.height = Math.floor(STATE.viewportHeight * STATE.dpr);
@@ -17579,6 +17675,7 @@ function ensureScrollStageLayoutStructure() {
   const orderedStageChildren = [
     canvas,
     flowersBackCanvas,
+    heroHintCanvas,
     wash1Layer,
     wash2Layer,
     video,
@@ -17616,6 +17713,7 @@ function ensureRootBackgroundLayoutStructure() {
   const orderedLayers = [
     canvas,
     flowersBackCanvas,
+    heroHintCanvas,
     wash1Layer,
     wash2Layer,
     video,
@@ -18474,6 +18572,10 @@ function renderScene(options = {}) {
   if (frontCanvas && frontCtx) {
     frontCtx.setTransform(STATE.dpr, 0, 0, STATE.dpr, 0, 0);
     frontCtx.clearRect(0, 0, STATE.viewportWidth, STATE.viewportHeight);
+  }
+  if (heroHintCanvas && heroHintCtx) {
+    heroHintCtx.setTransform(STATE.dpr, 0, 0, STATE.dpr, 0, 0);
+    heroHintCtx.clearRect(0, 0, STATE.viewportWidth, STATE.viewportHeight);
   }
 
   let completedLayer = null;
