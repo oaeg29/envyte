@@ -2100,7 +2100,7 @@ function configureFoliageVideoElement(videoType) {
   runtime.candidates = buildFoliageVideoSourceCandidates(videoType);
   runtime.activeIndex = -1;
   runtime.fallbackUsed = false;
-  setFoliageVideoSourceByIndex(videoType, 0, { forceLoad: false });
+  setFoliageVideoSourceByIndex(videoType, 0, { forceLoad: true });
 
   console.log(`[FoliageVideo${videoType}] Configured with sources:`, runtime.candidates);
 
