@@ -2174,6 +2174,27 @@ function startFoliageVideos() {
 
   console.log('[FoliageVideos] Starting playback with speed:', playbackSpeed);
 
+  // Check if the hero rect has drifted since startup and rebuild foliage if needed.
+  const _prevFoliageStartRect = STATE.heroVideoReferenceRect
+    ? { ...STATE.heroVideoReferenceRect }
+    : null;
+  refreshHeroVideoReferenceRect({ force: true });
+  const _nextFoliageStartRect = STATE.heroVideoReferenceRect;
+  const _foliageRectDrifted = _prevFoliageStartRect && _nextFoliageStartRect && (
+    Math.abs(_prevFoliageStartRect.height - _nextFoliageStartRect.height) > 0.5 ||
+    Math.abs(_prevFoliageStartRect.width  - _nextFoliageStartRect.width)  > 0.5
+  );
+  if (_foliageRectDrifted) {
+    console.warn(
+      '[FoliageVideos] Hero rect drifted since startup — rebuilding foliage to match.',
+      `was=${_prevFoliageStartRect.width.toFixed(1)}x${_prevFoliageStartRect.height.toFixed(1)}`,
+      `now=${_nextFoliageStartRect.width.toFixed(1)}x${_nextFoliageStartRect.height.toFixed(1)}`,
+    );
+    if (STATE.branchGarden) {
+      STATE.branchGarden.rebuildBranches({ regenerateRoots: true, resetRootTimeCursor: true });
+    }
+  }
+
   // Sync positioning before starting
   syncFoliageVideoPositioning();
 
@@ -3129,6 +3150,7 @@ const STATE = {
   centerOverlayImageLastShouldBeVisible: false,
   centerOverlayImageLayerVisibleSinceMs: [0, 0],
   centerOverlayImageLayerLastShouldBeVisible: [false, false],
+  centerOverlaySteadyLayerIndex: 0,
   wash1LastFrame: Number.NaN,
   wash1LoopCounter: 0,
   wash1LastTriggeredLoopCounter: -1,
@@ -3361,6 +3383,17 @@ STATE.animation = STATE.branchGrowth;
 // =========================
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function clampCenterOverlayLayerIndex(index, fallback = 0) {
+  if (Number.isFinite(index) && (index === 0 || index === 1)) {
+    return index;
+  }
+  return Number(fallback) === 1 ? 1 : 0;
+}
+
+function getCenterOverlayOppositeLayerIndex(index) {
+  return clampCenterOverlayLayerIndex(index, 0) === 0 ? 1 : 0;
 }
 
 function sanitizeViewportRelativeAdjustableValue(
@@ -3771,9 +3804,16 @@ function buildHeroVideoReferenceRectSnapshot() {
   const intrinsicWidth = Number(video && video.videoWidth);
   const intrinsicHeight = Number(video && video.videoHeight);
   if (Number.isFinite(intrinsicWidth) && intrinsicWidth > 0 && Number.isFinite(intrinsicHeight) && intrinsicHeight > 0) {
-    // Matches CSS sizing: height fills viewport, width follows intrinsic aspect ratio.
-    height = viewportHeight;
-    width = height * (intrinsicWidth / intrinsicHeight);
+    const bcrRect = video && typeof video.getBoundingClientRect === 'function'
+      ? video.getBoundingClientRect()
+      : null;
+    if (bcrRect && bcrRect.height > 0) {
+      height = bcrRect.height;
+      width = bcrRect.width > 0 ? bcrRect.width : height * (intrinsicWidth / intrinsicHeight);
+    } else {
+      height = viewportHeight;
+      width = height * (intrinsicWidth / intrinsicHeight);
+    }
   } else if (
     video
     && Number.isFinite(video.clientWidth)
@@ -5253,6 +5293,9 @@ function syncCenterOverlayImageLayer(nowMs = performance.now(), currentFrame = n
     && swipeState.transitionToSectionIndex >= 0
     && swipeState.transitionToSectionIndex < sections.length
   );
+  const steadyLayerIndex = clampCenterOverlayLayerIndex(STATE.centerOverlaySteadyLayerIndex, 0);
+  const alternateLayerIndex = getCenterOverlayOppositeLayerIndex(steadyLayerIndex);
+  STATE.centerOverlaySteadyLayerIndex = steadyLayerIndex;
 
   if (!Array.isArray(STATE.centerOverlayImageLayerVisibleSinceMs) || STATE.centerOverlayImageLayerVisibleSinceMs.length < 2) {
     STATE.centerOverlayImageLayerVisibleSinceMs = [0, 0];
@@ -5379,6 +5422,7 @@ function syncCenterOverlayImageLayer(nowMs = performance.now(), currentFrame = n
     const keepMounted = overlayConfig.enabled === true;
     hideLayerAtIndex(0, { keepMounted, enableCssFade: !isSwipeTransitioning });
     hideLayerAtIndex(1, { keepMounted, enableCssFade: !isSwipeTransitioning });
+    STATE.centerOverlaySteadyLayerIndex = 0;
     STATE.centerOverlayImageIsLoaded = false;
     STATE.centerOverlayImageVisibleSinceMs = 0;
     STATE.centerOverlayImageLastShouldBeVisible = false;
@@ -5424,18 +5468,18 @@ function syncCenterOverlayImageLayer(nowMs = performance.now(), currentFrame = n
       0,
       1,
     );
-    hasPrimaryLayerVisible = applyLayerAtIndex(0, outgoingSection, outgoingOpacity, { enableCssFade: false });
-    const hasIncomingLayerVisible = applyLayerAtIndex(1, incomingSection, incomingOpacity, { enableCssFade: false });
+    hasPrimaryLayerVisible = applyLayerAtIndex(steadyLayerIndex, outgoingSection, outgoingOpacity, { enableCssFade: false });
+    const hasIncomingLayerVisible = applyLayerAtIndex(alternateLayerIndex, incomingSection, incomingOpacity, { enableCssFade: false });
     hasAnyLayerVisible = hasPrimaryLayerVisible || hasIncomingLayerVisible;
   } else {
-    hasPrimaryLayerVisible = applyLayerAtIndex(0, activeSection, 1, { enableCssFade: true });
-    hideLayerAtIndex(1, { keepMounted: true, enableCssFade: true });
+    hasPrimaryLayerVisible = applyLayerAtIndex(steadyLayerIndex, activeSection, 1, { enableCssFade: true });
+    hideLayerAtIndex(alternateLayerIndex, { keepMounted: true, enableCssFade: true });
     hasAnyLayerVisible = hasPrimaryLayerVisible;
   }
 
   STATE.centerOverlayImageIsLoaded = hasAnyLayerVisible;
   STATE.centerOverlayImageVisibleSinceMs = hasPrimaryLayerVisible
-    ? (Number.isFinite(nowMs) ? nowMs : performance.now())
+    ? STATE.centerOverlayImageLayerVisibleSinceMs[steadyLayerIndex]
     : 0;
   STATE.centerOverlayImageLastShouldBeVisible = hasPrimaryLayerVisible;
 }
@@ -19708,9 +19752,12 @@ function finalizeSwipeSectionTransition(targetIndex, direction, reason, swipeCon
   );
   const targetSection = swipeConfig.sections[safeTargetIndex];
   const previousIndex = swipeState.activeSectionIndex;
+  const previousSteadyLayerIndex = clampCenterOverlayLayerIndex(STATE.centerOverlaySteadyLayerIndex, 0);
+  const nextSteadyLayerIndex = getCenterOverlayOppositeLayerIndex(previousSteadyLayerIndex);
   const gateConfig = resolveHeroPlaybackGateConfig();
   lockHeroVideoToFrame(targetSection.frame, gateConfig);
   cancelSwipeSectionTransition();
+  STATE.centerOverlaySteadyLayerIndex = nextSteadyLayerIndex;
   swipeState.activeSectionIndex = safeTargetIndex;
   swipeState.activeSectionId = targetSection.id;
   setSwipeSectionOverlayPathOverride(targetSection.centerOverlayImagePath, { forceLoad: true });

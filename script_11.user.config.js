@@ -258,8 +258,8 @@
     playbackSpeed: 1.0,
     fallbackToFoliageOnLoadError: true,
     syncEnabled: true, // enable/disable sync loop to keep videos in sync
-    syncMethod: 'auto', // 'auto' (try requestVideoFrameCallback first), 'requestVideoFrameCallback', 'raf'
-    driftThresholdFrames: 1, // frames of drift allowed before correction (at 30fps = 0.033s)
+    syncMethod: 'requestVideoFrameCallback', // 'auto' (try requestVideoFrameCallback first), 'requestVideoFrameCallback', 'raf'
+    driftThresholdFrames: 3, // frames of drift allowed before correction (at 30fps = 0.033s)
     syncMaster: 'upper', // which video is the master ('lower' or 'upper')
     lowerVideo: {
       webm: './smallGrowBloom_lower.webm',
