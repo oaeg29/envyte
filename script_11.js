@@ -40,6 +40,11 @@ if (!heroHintCanvas) {
 const video = document.createElement('video');
 const foliageVideoLower = document.createElement('video');
 const foliageVideoUpper = document.createElement('video');
+
+// Foliage video sync state
+let foliageSyncCallbackId = null;
+let foliageSyncRafId = null;
+let foliageSyncMaster = 'lower';
 const centerOverlayImageLayer = document.createElement('img');
 const centerOverlayImageLayerAlt = document.createElement('img');
 const centerOverlayImageLayers = [centerOverlayImageLayer, centerOverlayImageLayerAlt];
@@ -2132,6 +2137,7 @@ function showFoliageCanvases() {
 }
 
 function hideFoliageVideos() {
+  stopFoliageSyncLoop();
   if (foliageVideoLower) {
     foliageVideoLower.style.display = 'none';
     foliageVideoLower.pause();
@@ -2165,12 +2171,15 @@ function startFoliageVideos() {
     return;
   }
   const playbackSpeed = Number.isFinite(config.playbackSpeed) ? Math.max(0.1, config.playbackSpeed) : 1.0;
-  
+
   console.log('[FoliageVideos] Starting playback with speed:', playbackSpeed);
-  
+
   // Sync positioning before starting
   syncFoliageVideoPositioning();
-  
+
+  // Prepare both videos (set currentTime, playbackRate, and visibility)
+  const playPromises = [];
+
   if (foliageVideoLower) {
     foliageVideoLower.currentTime = 0;
     foliageVideoLower.playbackRate = playbackSpeed;
@@ -2184,15 +2193,15 @@ function startFoliageVideos() {
       height: foliageVideoLower.style.height,
       transform: foliageVideoLower.style.transform,
     });
-    foliageVideoLower.play().catch(err => {
+    playPromises.push(foliageVideoLower.play().catch(err => {
       console.warn('[FoliageVideos] Failed to play lower video:', err);
       if (config.fallbackToFoliageOnLoadError) {
         showFoliageCanvases();
         hideFoliageVideos();
       }
-    });
+    }));
   }
-  
+
   if (foliageVideoUpper) {
     foliageVideoUpper.currentTime = 0;
     foliageVideoUpper.playbackRate = playbackSpeed;
@@ -2206,12 +2215,22 @@ function startFoliageVideos() {
       height: foliageVideoUpper.style.height,
       transform: foliageVideoUpper.style.transform,
     });
-    foliageVideoUpper.play().catch(err => {
+    playPromises.push(foliageVideoUpper.play().catch(err => {
       console.warn('[FoliageVideos] Failed to play upper video:', err);
       if (config.fallbackToFoliageOnLoadError) {
         showFoliageCanvases();
         hideFoliageVideos();
       }
+    }));
+  }
+
+  // Start both videos simultaneously and then start sync loop
+  if (playPromises.length > 0) {
+    Promise.all(playPromises).then(() => {
+      console.log('[FoliageVideos] Both videos started, initiating sync loop');
+      startFoliageSyncLoop();
+    }).catch(err => {
+      console.warn('[FoliageVideos] One or more videos failed to start:', err);
     });
   }
 }
@@ -2243,6 +2262,121 @@ function syncFoliageVideoPositioning() {
     foliageVideo.style.objectFit = 'cover';
     foliageVideo.style.objectPosition = 'center center';
   });
+}
+
+function getFoliageSyncConfig() {
+  const config = CONFIG.foliageVideos;
+  if (!config) {
+    return {
+      enabled: false,
+      method: 'auto',
+      driftThresholdFrames: 1,
+      master: 'lower',
+    };
+  }
+  return {
+    enabled: config.syncEnabled !== false,
+    method: config.syncMethod || 'auto',
+    driftThresholdFrames: Number.isFinite(config.driftThresholdFrames) ? Math.max(1, config.driftThresholdFrames) : 1,
+    master: config.syncMaster || 'lower',
+  };
+}
+
+function calculateDriftThresholdSeconds(frames) {
+  const fps = 30; // Foliage videos are 30fps
+  return frames / fps;
+}
+
+function stopFoliageSyncLoop() {
+  if (foliageSyncCallbackId) {
+    const master = foliageSyncMaster === 'lower' ? foliageVideoLower : foliageVideoUpper;
+    if (master && typeof master.cancelVideoFrameCallback === 'function') {
+      master.cancelVideoFrameCallback(foliageSyncCallbackId);
+    }
+    foliageSyncCallbackId = null;
+  }
+  if (foliageSyncRafId) {
+    cancelAnimationFrame(foliageSyncRafId);
+    foliageSyncRafId = null;
+  }
+  console.log('[FoliageVideos] Sync loop stopped');
+}
+
+function startFoliageSyncLoop() {
+  const syncConfig = getFoliageSyncConfig();
+  if (!syncConfig.enabled) {
+    console.log('[FoliageVideos] Sync disabled in config');
+    return;
+  }
+
+  stopFoliageSyncLoop();
+
+  const masterVideo = syncConfig.master === 'lower' ? foliageVideoLower : foliageVideoUpper;
+  const slaveVideo = syncConfig.master === 'lower' ? foliageVideoUpper : foliageVideoLower;
+
+  if (!masterVideo || !slaveVideo) {
+    console.warn('[FoliageVideos] Cannot start sync: missing video elements');
+    return;
+  }
+
+  foliageSyncMaster = syncConfig.master;
+  const driftThresholdSec = calculateDriftThresholdSeconds(syncConfig.driftThresholdFrames);
+
+  console.log('[FoliageVideos] Starting sync loop:', {
+    method: syncConfig.method,
+    master: syncConfig.master,
+    driftThresholdFrames: syncConfig.driftThresholdFrames,
+    driftThresholdSec: driftThresholdSec.toFixed(3),
+  });
+
+  const useVideoFrameCallback = syncConfig.method === 'auto' || syncConfig.method === 'requestVideoFrameCallback';
+  const hasVideoFrameCallback = typeof masterVideo.requestVideoFrameCallback === 'function';
+
+  if (useVideoFrameCallback && hasVideoFrameCallback) {
+    // Use requestVideoFrameCallback for frame-accurate sync
+    foliageSyncCallbackId = masterVideo.requestVideoFrameCallback((now, metadata) => {
+      if (!masterVideo || !slaveVideo || masterVideo.paused || slaveVideo.paused ||
+          masterVideo.ended || slaveVideo.ended) {
+        stopFoliageSyncLoop();
+        return;
+      }
+
+      const masterTime = masterVideo.currentTime;
+      const slaveTime = slaveVideo.currentTime;
+      const drift = Math.abs(masterTime - slaveTime);
+
+      if (drift > driftThresholdSec) {
+        slaveVideo.currentTime = masterTime;
+        console.log('[FoliageVideos] Corrected drift (rVFC):', drift.toFixed(3), 'seconds');
+      }
+
+      foliageSyncCallbackId = masterVideo.requestVideoFrameCallback(arguments.callee);
+    });
+    console.log('[FoliageVideos] Using requestVideoFrameCallback');
+  } else {
+    // Fall back to requestAnimationFrame
+    function syncStep() {
+      if (!masterVideo || !slaveVideo || masterVideo.paused || slaveVideo.paused ||
+          masterVideo.ended || slaveVideo.ended) {
+        foliageSyncRafId = null;
+        return;
+      }
+
+      const masterTime = masterVideo.currentTime;
+      const slaveTime = slaveVideo.currentTime;
+      const drift = Math.abs(masterTime - slaveTime);
+
+      if (drift > driftThresholdSec) {
+        slaveVideo.currentTime = masterTime;
+        console.log('[FoliageVideos] Corrected drift (RAF):', drift.toFixed(3), 'seconds');
+      }
+
+      foliageSyncRafId = requestAnimationFrame(syncStep);
+    }
+
+    foliageSyncRafId = requestAnimationFrame(syncStep);
+    console.log('[FoliageVideos] Using requestAnimationFrame fallback');
+  }
 }
 
 function resolveHeroVideoDebugConfig(configCandidate = CONFIG.heroVideoDebug) {
@@ -5104,6 +5238,21 @@ function syncCenterOverlayImageLayer(nowMs = performance.now(), currentFrame = n
     ? currentFrame
     : getCurrentHeroVideoFrame(resolveHeroPlaybackGateConfig());
   const shouldBeVisibleByFrame = frameToUse >= overlayConfig.displayAfterFrame;
+  const steadyFadeDurationMs = (
+    overlayConfig.fadeInEnabled && overlayConfig.fadeInDurationSec > 1e-6
+  )
+    ? Math.max(0, overlayConfig.fadeInDurationSec * 1000)
+    : 0;
+  const isSwipeTransitioning = Boolean(
+    swipeState
+    && swipeState.isTransitioning === true
+    && Number.isFinite(swipeState.transitionFromSectionIndex)
+    && Number.isFinite(swipeState.transitionToSectionIndex)
+    && swipeState.transitionFromSectionIndex >= 0
+    && swipeState.transitionFromSectionIndex < sections.length
+    && swipeState.transitionToSectionIndex >= 0
+    && swipeState.transitionToSectionIndex < sections.length
+  );
 
   if (!Array.isArray(STATE.centerOverlayImageLayerVisibleSinceMs) || STATE.centerOverlayImageLayerVisibleSinceMs.length < 2) {
     STATE.centerOverlayImageLayerVisibleSinceMs = [0, 0];
@@ -5112,17 +5261,28 @@ function syncCenterOverlayImageLayer(nowMs = performance.now(), currentFrame = n
     STATE.centerOverlayImageLayerLastShouldBeVisible = [false, false];
   }
 
+  const applyLayerTransitionMode = (layer, enableCssFade = true) => {
+    if (!layer) {
+      return;
+    }
+    if (enableCssFade !== true || steadyFadeDurationMs <= 0) {
+      layer.style.transition = 'none';
+      return;
+    }
+    layer.style.transition = `opacity ${steadyFadeDurationMs}ms ease`;
+  };
+
   const hideLayerAtIndex = (layerIndex, options = {}) => {
     const layer = centerOverlayImageLayers[layerIndex];
     if (!layer) {
       return;
     }
-    layer.style.display = 'none';
+    const keepMounted = options.keepMounted !== false;
+    applyLayerTransitionMode(layer, options.enableCssFade !== false);
+    layer.style.display = keepMounted ? 'block' : 'none';
     layer.style.opacity = '0';
     layer.style.visibility = 'hidden';
-    if (options.preserveVisibleSince !== true) {
-      STATE.centerOverlayImageLayerVisibleSinceMs[layerIndex] = 0;
-    }
+    STATE.centerOverlayImageLayerVisibleSinceMs[layerIndex] = 0;
     STATE.centerOverlayImageLayerLastShouldBeVisible[layerIndex] = false;
   };
 
@@ -5154,26 +5314,29 @@ function syncCenterOverlayImageLayer(nowMs = performance.now(), currentFrame = n
       : overlayConfig.offsetYPx;
   };
 
-  const applyLayerAtIndex = (layerIndex, section, opacityMultiplier) => {
+  const applyLayerAtIndex = (layerIndex, section, opacityMultiplier, options = {}) => {
     const layer = centerOverlayImageLayers[layerIndex];
     if (!layer || !section) {
-      hideLayerAtIndex(layerIndex);
+      hideLayerAtIndex(layerIndex, { keepMounted: true, enableCssFade: options.enableCssFade !== false });
       return false;
     }
     const safeOpacityMultiplier = clamp(Number.isFinite(opacityMultiplier) ? opacityMultiplier : 0, 0, 1);
     if (safeOpacityMultiplier <= 1e-6) {
-      hideLayerAtIndex(layerIndex);
+      hideLayerAtIndex(layerIndex, { keepMounted: true, enableCssFade: options.enableCssFade !== false });
       return false;
     }
     const spritePath = resolveLayerPathFromSection(section);
     if (spritePath.length <= 0) {
-      hideLayerAtIndex(layerIndex);
+      hideLayerAtIndex(layerIndex, { keepMounted: true, enableCssFade: options.enableCssFade !== false });
       return false;
     }
     const preloadEntry = getCenterOverlayImagePreloadEntry(spritePath);
     if (!preloadEntry || preloadEntry.status !== 'loaded' || !preloadEntry.image) {
       ensureCenterOverlayImagePreload(spritePath).catch(() => {});
-      hideLayerAtIndex(layerIndex, { preserveVisibleSince: true });
+      // Only hide if the layer doesn't already have a valid image
+      if (!layer.src || layer.src === '' || layer.src === window.location.href) {
+        hideLayerAtIndex(layerIndex, { keepMounted: true, enableCssFade: options.enableCssFade !== false });
+      }
       return false;
     }
     if (layer.dataset.centerOverlayPath !== spritePath || layer.src !== preloadEntry.image.src) {
@@ -5196,31 +5359,26 @@ function syncCenterOverlayImageLayer(nowMs = performance.now(), currentFrame = n
     }
 
     layer.style.display = 'block';
-    if (
-      STATE.centerOverlayImageLayerLastShouldBeVisible[layerIndex] !== true
-      || STATE.centerOverlayImageLayerVisibleSinceMs[layerIndex] <= 0
-    ) {
-      STATE.centerOverlayImageLayerVisibleSinceMs[layerIndex] = Number.isFinite(nowMs) ? nowMs : performance.now();
-    }
+    applyLayerTransitionMode(layer, options.enableCssFade !== false);
+    STATE.centerOverlayImageLayerVisibleSinceMs[layerIndex] = Number.isFinite(nowMs) ? nowMs : performance.now();
     STATE.centerOverlayImageLayerLastShouldBeVisible[layerIndex] = true;
 
     let opacity = overlayConfig.maxOpacity;
-    if (overlayConfig.fadeInEnabled && overlayConfig.fadeInDurationSec > 1e-6) {
-      const fadeElapsedSec = Math.max(
-        0,
-        (nowMs - STATE.centerOverlayImageLayerVisibleSinceMs[layerIndex]) / 1000,
-      );
-      opacity = overlayConfig.maxOpacity * clamp(fadeElapsedSec / overlayConfig.fadeInDurationSec, 0, 1);
-    }
     opacity *= safeOpacityMultiplier;
-    layer.style.opacity = String(opacity);
-    layer.style.visibility = opacity > 1e-6 ? 'visible' : 'hidden';
+    if (opacity > 1e-6) {
+      layer.style.visibility = 'visible';
+      layer.style.opacity = String(opacity);
+    } else {
+      layer.style.opacity = '0';
+      layer.style.visibility = 'hidden';
+    }
     return true;
   };
 
   if (overlayConfig.enabled !== true || !shouldBeVisibleByFrame) {
-    hideLayerAtIndex(0);
-    hideLayerAtIndex(1);
+    const keepMounted = overlayConfig.enabled === true;
+    hideLayerAtIndex(0, { keepMounted, enableCssFade: !isSwipeTransitioning });
+    hideLayerAtIndex(1, { keepMounted, enableCssFade: !isSwipeTransitioning });
     STATE.centerOverlayImageIsLoaded = false;
     STATE.centerOverlayImageVisibleSinceMs = 0;
     STATE.centerOverlayImageLastShouldBeVisible = false;
@@ -5253,16 +5411,7 @@ function syncCenterOverlayImageLayer(nowMs = performance.now(), currentFrame = n
 
   let hasPrimaryLayerVisible = false;
   let hasAnyLayerVisible = false;
-  if (
-    swipeState
-    && swipeState.isTransitioning === true
-    && Number.isFinite(swipeState.transitionFromSectionIndex)
-    && Number.isFinite(swipeState.transitionToSectionIndex)
-    && swipeState.transitionFromSectionIndex >= 0
-    && swipeState.transitionFromSectionIndex < sections.length
-    && swipeState.transitionToSectionIndex >= 0
-    && swipeState.transitionToSectionIndex < sections.length
-  ) {
+  if (isSwipeTransitioning) {
     const outgoingSection = sections[swipeState.transitionFromSectionIndex];
     const incomingSection = sections[swipeState.transitionToSectionIndex];
     const outgoingOpacity = clamp(
@@ -5275,18 +5424,18 @@ function syncCenterOverlayImageLayer(nowMs = performance.now(), currentFrame = n
       0,
       1,
     );
-    hasPrimaryLayerVisible = applyLayerAtIndex(0, outgoingSection, outgoingOpacity);
-    const hasIncomingLayerVisible = applyLayerAtIndex(1, incomingSection, incomingOpacity);
+    hasPrimaryLayerVisible = applyLayerAtIndex(0, outgoingSection, outgoingOpacity, { enableCssFade: false });
+    const hasIncomingLayerVisible = applyLayerAtIndex(1, incomingSection, incomingOpacity, { enableCssFade: false });
     hasAnyLayerVisible = hasPrimaryLayerVisible || hasIncomingLayerVisible;
   } else {
-    hasPrimaryLayerVisible = applyLayerAtIndex(0, activeSection, 1);
-    hideLayerAtIndex(1);
+    hasPrimaryLayerVisible = applyLayerAtIndex(0, activeSection, 1, { enableCssFade: true });
+    hideLayerAtIndex(1, { keepMounted: true, enableCssFade: true });
     hasAnyLayerVisible = hasPrimaryLayerVisible;
   }
 
   STATE.centerOverlayImageIsLoaded = hasAnyLayerVisible;
   STATE.centerOverlayImageVisibleSinceMs = hasPrimaryLayerVisible
-    ? STATE.centerOverlayImageLayerVisibleSinceMs[0]
+    ? (Number.isFinite(nowMs) ? nowMs : performance.now())
     : 0;
   STATE.centerOverlayImageLastShouldBeVisible = hasPrimaryLayerVisible;
 }
@@ -19578,6 +19727,11 @@ function finalizeSwipeSectionTransition(targetIndex, direction, reason, swipeCon
     });
   }
   renderScene({ skipAutoStart: true });
+  if (typeof requestAnimationFrame === 'function') {
+    requestAnimationFrame(() => {
+      renderScene({ skipAutoStart: true });
+    });
+  }
 }
 
 function startSwipeSectionTransition(targetIndex, direction, reason, swipeConfig = resolveSwipeSectionsConfig()) {

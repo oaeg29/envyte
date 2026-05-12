@@ -257,6 +257,10 @@
     startFrame: 270, // Hero video frame at which to start foliage videos
     playbackSpeed: 1.0,
     fallbackToFoliageOnLoadError: true,
+    syncEnabled: true, // enable/disable sync loop to keep videos in sync
+    syncMethod: 'auto', // 'auto' (try requestVideoFrameCallback first), 'requestVideoFrameCallback', 'raf'
+    driftThresholdFrames: 1, // frames of drift allowed before correction (at 30fps = 0.033s)
+    syncMaster: 'upper', // which video is the master ('lower' or 'upper')
     lowerVideo: {
       webm: './smallGrowBloom_lower.webm',
       mov: './smallGrowBloom_lower_foriOS.mov',
@@ -743,7 +747,7 @@
       speedMultiplier: 1, // >1 is faster
       fixedDurationMs: 520, // used only by timingMode=fixedDuration
       minDurationMs: 220,
-      maxDurationMs: 6000,
+      maxDurationMs: 500,
       rapidSwipeMode: 'ignore', // canonical toggle: ignore | retarget
     },
     overlayTransition: {
