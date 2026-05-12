@@ -164,7 +164,7 @@ let valScaling = 0.01;
 const defaultCountPerSide = 2;
 const FILTER_CACHE_HUE_STEP_DEG = 2;
 const FILTER_CACHE_BRIGHTNESS_STEP = 0.02;
-const HERO_VIDEO_PATH_DEFAULT = './hero_final.webm';
+const HERO_VIDEO_PATH_DEFAULT = './hero_final_keyed.webm';
 const HERO_VIDEO_PATH_APPLE_SAFARI = './hero_final_foriOS.mov';
 const HERO_VIDEO_SOURCE_RUNTIME = {
   candidates: [],
@@ -3810,10 +3810,27 @@ function buildHeroVideoReferenceRectSnapshot() {
     if (bcrRect && bcrRect.height > 0) {
       height = bcrRect.height;
       width = bcrRect.width > 0 ? bcrRect.width : height * (intrinsicWidth / intrinsicHeight);
-    } else {
-      height = viewportHeight;
-      width = height * (intrinsicWidth / intrinsicHeight);
+      const bcrTop = Number.isFinite(bcrRect.top) ? bcrRect.top : (viewportHeight * 0.5 - height * 0.5);
+      const bcrLeft = Number.isFinite(bcrRect.left) ? bcrRect.left : (viewportWidth * 0.5 - width * 0.5);
+      console.log('[HeroRect] BCR snapshot:', {
+        bcrTop, bcrLeft, width, height,
+        intrinsic: `${intrinsicWidth}x${intrinsicHeight}`,
+        viewport: `${viewportWidth}x${viewportHeight}`,
+        viewportOffsetTop: STATE.viewportOffsetTopPx,
+      });
+      return {
+        x: bcrLeft,
+        y: bcrTop,
+        left: bcrLeft,
+        top: bcrTop,
+        width,
+        height,
+        right: bcrLeft + width,
+        bottom: bcrTop + height,
+      };
     }
+    height = viewportHeight;
+    width = height * (intrinsicWidth / intrinsicHeight);
   } else if (
     video
     && Number.isFinite(video.clientWidth)
