@@ -3145,6 +3145,7 @@ const STATE = {
   windLastTickMs: 0,
 
   noiseInstance: null,
+  noiseSeed: null,
   stemImage: null,
   stemImageFlippedX: null,
   leafImage: null,
@@ -3552,12 +3553,25 @@ function fallbackNoise2(x, y) {
   return Math.sin(x * 12.9898 + y * 78.233);
 }
 
+function resolveDeterministicNoiseSeed() {
+  const pathGenerationConfig = isPlainObjectLiteral(CONFIG.pathGeneration)
+    ? CONFIG.pathGeneration
+    : {};
+  const explicitSeed = Number(pathGenerationConfig.noiseSeed);
+  if (Number.isFinite(explicitSeed)) {
+    return explicitSeed;
+  }
+  return hashSeed('stemwarp-noise-seed-v1');
+}
+
 function getNoiseInstance() {
   if (typeof Noise !== 'function') {
     return null;
   }
   if (!STATE.noiseInstance) {
-    STATE.noiseInstance = new Noise(Math.random());
+    const seed = resolveDeterministicNoiseSeed();
+    STATE.noiseSeed = seed;
+    STATE.noiseInstance = new Noise(seed);
   }
   return STATE.noiseInstance;
 }
@@ -10364,21 +10378,22 @@ class Branch {
     this.rootBranchId = null;
 
     const hasProfileSeed = options.profileSeed !== undefined && options.profileSeed !== null;
-    const profileRng = hasProfileSeed ? mulberry32(hashSeed(options.profileSeed)) : null;
+    const resolvedProfileSeed = hasProfileSeed
+      ? options.profileSeed
+      : `${this.stableKey}|profile`;
+    const profileRng = mulberry32(hashSeed(resolvedProfileSeed));
 
     // Per-branch random profile so branches are not translated copies.
     this.noisePhase = {
-      x1: (profileRng ? profileRng() : Math.random()) * 5000,
-      y1: (profileRng ? profileRng() : Math.random()) * 5000,
-      x2: (profileRng ? profileRng() : Math.random()) * 5000,
-      y2: (profileRng ? profileRng() : Math.random()) * 5000,
+      x1: profileRng() * 5000,
+      y1: profileRng() * 5000,
+      x2: profileRng() * 5000,
+      y2: profileRng() * 5000,
     };
     this.noiseScaleMultiplier = Math.max(0.05, this.baseScale);
 
     // Also offset starting time per branch to decorrelate trajectories.
-    this.timeCursor = hasProfileSeed
-      ? (profileRng ? profileRng() : 0) * 10000
-      : Date.now() / 1000 + Math.random() * 1000;
+    this.timeCursor = profileRng() * 10000;
     this.timeOrigin = this.timeCursor;
 
     this.controlPoints = [];
@@ -10490,6 +10505,7 @@ class BranchGarden {
         ? Math.max(0.01, options.thicknessBaseScale)
         : 1,
       stableKey,
+      profileSeed: `${stableKey}|profile`,
       manualTemplateIndex: Number.isFinite(options.manualTemplateIndex)
         ? options.manualTemplateIndex
         : null,
@@ -11477,6 +11493,8 @@ function setSeeds() {
   const rightSeedBaseX = sideAnchorXMode === 'videoCenter'
     ? (videoCenterX - sidePadDistance)
     : (STATE.viewportWidth + sidePad);
+  const leftSideJitterRng = mulberry32(hashSeed('seed-jitter|left'));
+  const rightSideJitterRng = mulberry32(hashSeed('seed-jitter|right'));
 
   if (seedGenerationMode === 'explicitYRatios') {
     const ratioReference = resolveSeedYRatioReference(seedsConfig);
@@ -11546,8 +11564,9 @@ function setSeeds() {
 
   for (let i = 0; i < leftYValues.length; i += 1) {
     // Left side branches grow rightward (direction +1).
+    const xJitter = sideMargin === 0 ? 0 : leftSideJitterRng() * sideMargin;
     seedsLeft.push({
-      x: leftSeedBaseX + Math.random() * sideMargin,
+      x: leftSeedBaseX + xJitter,
       y: leftYValues[i],
       direction: 1,
     });
@@ -11555,8 +11574,9 @@ function setSeeds() {
 
   for (let i = 0; i < rightYValues.length; i += 1) {
     // Right side branches grow leftward (direction -1).
+    const xJitter = sideMargin === 0 ? 0 : rightSideJitterRng() * sideMargin;
     seedsRight.push({
-      x: rightSeedBaseX - Math.random() * sideMargin,
+      x: rightSeedBaseX - xJitter,
       y: rightYValues[i],
       direction: -1,
     });
