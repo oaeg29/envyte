@@ -3844,13 +3844,20 @@ function buildHeroVideoReferenceRectSnapshot() {
       height = viewportHeight;
       width = height * (intrinsicWidth / intrinsicHeight);
     }
+    const _canvasBcrForLog = canvas && typeof canvas.getBoundingClientRect === 'function'
+      ? canvas.getBoundingClientRect()
+      : null;
     console.log('[HeroRect] snapshot:', {
       width, height,
       intrinsic: `${intrinsicWidth}x${intrinsicHeight}`,
       viewport: `${viewportWidth}x${viewportHeight}`,
       viewportOffsetTop: STATE.viewportOffsetTopPx,
-      bcrHeight: videoBcrRect ? videoBcrRect.height : 'n/a',
-      bcrWidth: videoBcrRect ? videoBcrRect.width : 'n/a',
+      videoBcr: videoBcrRect
+        ? `${videoBcrRect.width.toFixed(1)}x${videoBcrRect.height.toFixed(1)} @ (${videoBcrRect.left.toFixed(1)}, ${videoBcrRect.top.toFixed(1)})`
+        : 'n/a',
+      canvasBcr: _canvasBcrForLog
+        ? `${_canvasBcrForLog.width.toFixed(1)}x${_canvasBcrForLog.height.toFixed(1)} @ (${_canvasBcrForLog.left.toFixed(1)}, ${_canvasBcrForLog.top.toFixed(1)})`
+        : 'n/a',
     });
   } else if (
     video
@@ -7364,7 +7371,7 @@ function maybeStartFoliageVideosFromHeroVideoFrame(currentFrame, gateConfig) {
     ? Math.max(0, Math.floor(Number(config.startFrame)))
     : 273;
   
-  console.log('[FoliageVideos] Checking frame:', currentFrame, 'vs target:', startFrame);
+  // console.log('[FoliageVideos] Checking frame:', currentFrame, 'vs target:', startFrame);
   
   if (currentFrame < startFrame) {
     return;
