@@ -3858,6 +3858,7 @@ function buildHeroVideoReferenceRectSnapshot() {
       canvasBcr: _canvasBcrForLog
         ? `${_canvasBcrForLog.width.toFixed(1)}x${_canvasBcrForLog.height.toFixed(1)} @ (${_canvasBcrForLog.left.toFixed(1)}, ${_canvasBcrForLog.top.toFixed(1)})`
         : 'n/a',
+      calledFrom: (new Error()).stack ? (new Error()).stack.split('\n').slice(1, 4).join(' | ') : 'n/a',
     });
   } else if (
     video
@@ -3953,6 +3954,8 @@ function refreshHeroVideoReferenceRect(options = null) {
     && STATE.heroVideoReferenceRect.height > 0
   ) {
     STATE.heroVideoReferenceRectLocked = true;
+    const _r = STATE.heroVideoReferenceRect;
+    console.log('[HeroRect] LOCKED:', `${_r.width.toFixed(1)}x${_r.height.toFixed(1)} @ left=${_r.left.toFixed(1)}, top=${_r.top.toFixed(1)}`, `centerX=${_r.centerX !== undefined ? _r.centerX.toFixed(1) : (_r.left + _r.width * 0.5).toFixed(1)}`);
   } else if (force) {
     STATE.heroVideoReferenceRectLocked = false;
   }
