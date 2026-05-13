@@ -712,6 +712,9 @@
     const bakedFallbackToLive = bakedConfig.fallbackToLive !== false;
     const bakedForceCanvasRenderer = bakedConfig.forceCanvasRenderer !== false;
     const bakedLogEnabled = bakedConfig.logEnabled === true;
+    const lilyPairDisplacementScaleFactor = Number.isFinite(Number(safeConfig.lilyPairDisplacementScaleFactor))
+      ? Math.max(0.01, Number(safeConfig.lilyPairDisplacementScaleFactor))
+      : 1;
     return {
       drawSize: Number.isFinite(safeConfig.drawSize) ? Math.max(1, safeConfig.drawSize) : 80,
       swayInteractionRadiusFactor: Number.isFinite(safeConfig.swayInteractionRadiusFactor)
@@ -825,6 +828,7 @@
       bakedFallbackToLive,
       bakedForceCanvasRenderer,
       bakedLogEnabled,
+      lilyPairDisplacementScaleFactor,
     };
   }
 
@@ -1394,6 +1398,9 @@
     const stamenAdditionalMode = typeConfig.stamenAdditionalMode === 'rowList'
       ? 'rowList'
       : 'randomRows';
+    const pairDisplacementScaleFactor = Number.isFinite(commonConfig && commonConfig.lilyPairDisplacementScaleFactor)
+      ? Math.max(0.01, commonConfig.lilyPairDisplacementScaleFactor)
+      : 1;
     const stamenCount = Number.isFinite(typeConfig.stamenCount)
       ? Math.max(1, Math.floor(typeConfig.stamenCount))
       : 1;
@@ -1469,14 +1476,14 @@
       pushPetal(
         rightCols[pairIndex],
         centerDeg + spread + pairRotationOffsetDeg,
-        -pairDisplacementYOffsets.right,
-        pairDisplacementXOffsets.right,
+        -(pairDisplacementYOffsets.right * pairDisplacementScaleFactor),
+        pairDisplacementXOffsets.right * pairDisplacementScaleFactor,
       );
       pushPetal(
         leftCols[pairIndex],
         centerDeg - spread - pairRotationOffsetDeg,
-        -pairDisplacementYOffsets.left,
-        -pairDisplacementXOffsets.left,
+        -(pairDisplacementYOffsets.left * pairDisplacementScaleFactor),
+        -(pairDisplacementXOffsets.left * pairDisplacementScaleFactor),
       );
     }
 

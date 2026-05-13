@@ -249,11 +249,11 @@ video {
 
 #rsvpLayer {
   position: fixed;
-  top: var(--app-viewport-offset-top);
-  left: var(--app-viewport-offset-left);
+  top: calc(50% + var(--app-viewport-offset-top));
+  left: calc(50% + var(--app-viewport-offset-left));
+  transform: translate(-50%, -50%);
   width: var(--app-viewport-width);
   height: var(--app-viewport-height);
-  z-index: 11002;
   pointer-events: none;
   display: none;
   visibility: hidden;
@@ -730,8 +730,9 @@ body[data-viewport-layout-mode="relative166"] #loadingScreen {
 
 #scrollHintLayer {
   position: fixed;
-  top: var(--app-viewport-offset-top);
-  left: var(--app-viewport-offset-left);
+  top: calc(50% + var(--app-viewport-offset-top));
+  left: calc(50% + var(--app-viewport-offset-left));
+  transform: translate(-50%, -50%);
   width: var(--app-viewport-width);
   height: var(--app-viewport-height);
   pointer-events: none;
@@ -748,8 +749,9 @@ body[data-viewport-layout-mode="relative166"] #loadingScreen {
 
 #section2ButtonLayer {
   position: fixed;
-  top: var(--app-viewport-offset-top);
-  left: var(--app-viewport-offset-left);
+  top: calc(50% + var(--app-viewport-offset-top));
+  left: calc(50% + var(--app-viewport-offset-left));
+  transform: translate(-50%, -50%);
   width: var(--app-viewport-width);
   height: var(--app-viewport-height);
   pointer-events: none;
@@ -800,8 +802,9 @@ body[data-viewport-layout-mode="relative166"] #loadingScreen {
 
 #section1LabelLayer {
   position: fixed;
-  top: var(--app-viewport-offset-top);
-  left: var(--app-viewport-offset-left);
+  top: calc(50% + var(--app-viewport-offset-top));
+  left: calc(50% + var(--app-viewport-offset-left));
+  transform: translate(-50%, -50%);
   width: var(--app-viewport-width);
   height: var(--app-viewport-height);
   pointer-events: none;

@@ -45,6 +45,19 @@ const foliageVideoUpper = document.createElement('video');
 let foliageSyncCallbackId = null;
 let foliageSyncRafId = null;
 let foliageSyncMaster = 'lower';
+const FOLIAGE_VIDEO_INLINE_GEOMETRY_STYLE_PROPS = [
+  'position',
+  'top',
+  'left',
+  'width',
+  'height',
+  'transform',
+  'objectFit',
+  'objectPosition',
+];
+const FOLIAGE_VIDEO_GEOMETRY_PARITY_EPSILON_PX = 0.5;
+const _foliageVideoGeometryInlineResetDone = new WeakSet();
+let _foliageVideoGeometryParityRafId = 0;
 const centerOverlayImageLayer = document.createElement('img');
 const centerOverlayImageLayerAlt = document.createElement('img');
 const centerOverlayImageLayers = [centerOverlayImageLayer, centerOverlayImageLayerAlt];
@@ -2174,38 +2187,15 @@ function startFoliageVideos() {
 
   console.log('[FoliageVideos] Starting playback with speed:', playbackSpeed);
 
-  // Check for hero rect drift since seed build and remap canonical seeds if needed.
-  if (!STATE.heroRectAtSeedBuild || !STATE.canonicalSeedPacket) {
-    refreshSeedCanonicalBaselineFromLastPacket({ forceRectRefresh: true });
-  }
-  const _prevFoliageStartRect = STATE.heroRectAtSeedBuild
-    ? { ...STATE.heroRectAtSeedBuild }
-    : null;
-  const _nextFoliageStartRect = refreshHeroVideoReferenceRect({ force: true });
-  const _drift = computeHeroRectDrift(_prevFoliageStartRect, _nextFoliageStartRect, 0.5);
-  if (_drift.drifted) {
-    console.warn(
-      '[FoliageVideos] Hero rect drifted since seed build — remapping seed packet.',
-      `was=${_prevFoliageStartRect.width.toFixed(1)}x${_prevFoliageStartRect.height.toFixed(1)}@(${_prevFoliageStartRect.left.toFixed(1)},${_prevFoliageStartRect.top.toFixed(1)})`,
-      `now=${_nextFoliageStartRect.width.toFixed(1)}x${_nextFoliageStartRect.height.toFixed(1)}@(${_nextFoliageStartRect.left.toFixed(1)},${_nextFoliageStartRect.top.toFixed(1)})`,
-      `delta(w/h/l/t)=(${_drift.deltas.width.toFixed(3)}/${_drift.deltas.height.toFixed(3)}/${_drift.deltas.left.toFixed(3)}/${_drift.deltas.top.toFixed(3)})`,
-      `threshold=${_drift.thresholdPx}px`,
-    );
-    if (STATE.branchGarden) {
-      const remappedSeedPacket = remapSeedPacketFromHeroRectSpace(
-        STATE.canonicalSeedPacket,
-        _nextFoliageStartRect,
-      );
-      if (remappedSeedPacket) {
-        STATE.lastSeedPacket = remappedSeedPacket;
-        plantSeeds(remappedSeedPacket, { clearFirst: true });
-        updateSeedCanonicalBaselineFromPacket(remappedSeedPacket, _nextFoliageStartRect);
-        console.log('[FoliageVideos] Drift action: remapped canonical seed packet and replanted branches.');
-      } else {
-        console.warn('[FoliageVideos] Missing canonical seed packet during drift remap; falling back to branch rebuild.');
-        STATE.branchGarden.rebuildBranches({ regenerateRoots: true, resetRootTimeCursor: true });
-      }
-    }
+  // Keep seeds anchored to the current hero rect when foliage videos start.
+  const seedSyncResult = syncSeedPacketToCurrentHeroRect({
+    reason: 'foliage-videos-start',
+    forceRectRefresh: true,
+    thresholdPx: 0.5,
+    preserveActiveGrowth: true,
+  });
+  if (seedSyncResult && seedSyncResult.applied === true) {
+    console.log('[FoliageVideos] Seed packet sync applied:', seedSyncResult.reason);
   }
 
   // Sync positioning before starting
@@ -2258,6 +2248,8 @@ function startFoliageVideos() {
     }));
   }
 
+  queueFoliageVideoGeometryParityDebugCheck('start');
+
   // Start both videos simultaneously and then start sync loop
   if (playPromises.length > 0) {
     Promise.all(playPromises).then(() => {
@@ -2271,30 +2263,85 @@ function startFoliageVideos() {
 
 function syncFoliageVideoPositioning() {
   if (!video) return;
-  
-  const heroStyles = window.getComputedStyle(video);
-  const heroRect = video.getBoundingClientRect();
-  
-  console.log('[FoliageVideos] Syncing positioning from hero:', {
-    top: heroStyles.top,
-    left: heroStyles.left,
-    width: heroStyles.width,
-    height: heroStyles.height,
-    transform: heroStyles.transform,
-    rect: heroRect,
-  });
-  
+
   [foliageVideoLower, foliageVideoUpper].forEach(foliageVideo => {
     if (!foliageVideo) return;
-    
-    foliageVideo.style.top = heroStyles.top;
-    foliageVideo.style.left = heroStyles.left;
-    foliageVideo.style.transform = heroStyles.transform;
-    foliageVideo.style.height = heroStyles.height;
-    foliageVideo.style.minHeight = heroStyles.minHeight;
-    foliageVideo.style.width = heroStyles.width;
-    foliageVideo.style.objectFit = 'cover';
-    foliageVideo.style.objectPosition = 'center center';
+    if (_foliageVideoGeometryInlineResetDone.has(foliageVideo)) {
+      return;
+    }
+    FOLIAGE_VIDEO_INLINE_GEOMETRY_STYLE_PROPS.forEach((prop) => {
+      foliageVideo.style[prop] = '';
+    });
+    _foliageVideoGeometryInlineResetDone.add(foliageVideo);
+  });
+
+  queueFoliageVideoGeometryParityDebugCheck('sync');
+}
+
+function queueFoliageVideoGeometryParityDebugCheck(reason = 'unknown') {
+  if (!CONFIG.debug || CONFIG.debug.enabled !== true) {
+    return;
+  }
+  if (_foliageVideoGeometryParityRafId) {
+    return;
+  }
+  _foliageVideoGeometryParityRafId = requestAnimationFrame(() => {
+    _foliageVideoGeometryParityRafId = 0;
+    runFoliageVideoGeometryParityDebugCheck(reason);
+  });
+}
+
+function runFoliageVideoGeometryParityDebugCheck(reason = 'unknown') {
+  if (!video || typeof video.getBoundingClientRect !== 'function') {
+    return;
+  }
+
+  const heroRect = video.getBoundingClientRect();
+  if (!Number.isFinite(heroRect.width) || !Number.isFinite(heroRect.height) || heroRect.width <= 0 || heroRect.height <= 0) {
+    return;
+  }
+
+  const epsilon = FOLIAGE_VIDEO_GEOMETRY_PARITY_EPSILON_PX;
+  const foliageEntries = [
+    { label: 'lower', element: foliageVideoLower },
+    { label: 'upper', element: foliageVideoUpper },
+  ];
+
+  foliageEntries.forEach((entry) => {
+    if (!entry.element || typeof entry.element.getBoundingClientRect !== 'function') {
+      return;
+    }
+    const rect = entry.element.getBoundingClientRect();
+    if (!Number.isFinite(rect.width) || !Number.isFinite(rect.height) || rect.width <= 0 || rect.height <= 0) {
+      return;
+    }
+    const deltas = {
+      left: Math.abs(heroRect.left - rect.left),
+      top: Math.abs(heroRect.top - rect.top),
+      width: Math.abs(heroRect.width - rect.width),
+      height: Math.abs(heroRect.height - rect.height),
+    };
+    const maxDelta = Math.max(deltas.left, deltas.top, deltas.width, deltas.height);
+    if (maxDelta > epsilon) {
+      console.warn('[FoliageVideos] Geometry parity drift detected', {
+        reason,
+        target: entry.label,
+        epsilon,
+        deltas,
+        heroRect: {
+          left: heroRect.left,
+          top: heroRect.top,
+          width: heroRect.width,
+          height: heroRect.height,
+        },
+        foliageRect: {
+          left: rect.left,
+          top: rect.top,
+          width: rect.width,
+          height: rect.height,
+        },
+      });
+    }
   });
 }
 
@@ -3291,6 +3338,7 @@ const STATE = {
   overlayWrapPromotion: new Map(),
   lastFloralResponsiveScaleFactor: null,
   lastAppliedGlobalFoliageScale: null,
+  foliageCompositionInitialHeroHeightPx: null,
   viewportLayoutMode: VIEWPORT_LAYOUT_MODE_LEGACY,
   viewportRelativeAdjustableValue: resolveInitialViewportRelativeAdjustableValue(),
   viewportOffsetLeftPx: 0,
@@ -3298,6 +3346,7 @@ const STATE = {
   useIOSFixedViewportWorkaround: false,
   heroVideoReferenceRect: null,
   heroVideoReferenceRectLocked: false,
+  heroVideoIntrinsicAspectRatio: 1,
   priorityZonesCache: {
     signature: '',
     rects: [],
@@ -3434,6 +3483,82 @@ function sanitizeViewportRelativeAdjustableValue(
   );
 }
 
+function resolveFoliageCompositionScaleConfig() {
+  const safeConfig = isPlainObjectLiteral(CONFIG.foliageCompositionScale)
+    ? CONFIG.foliageCompositionScale
+    : {};
+  const rawMode = typeof safeConfig.mode === 'string' ? safeConfig.mode.trim() : '';
+  const mode = (
+    rawMode === 'fixedReference949' || rawMode === 'dynamicHeroVsInitialHero'
+  )
+    ? rawMode
+    : 'fixedReference949';
+  const fallbackFixedReference = (
+    Number.isFinite(Number(CONFIG.foliageExportViewportHeight))
+    && Number(CONFIG.foliageExportViewportHeight) > 0
+  )
+    ? Number(CONFIG.foliageExportViewportHeight)
+    : 949;
+  const fixedReferenceHeightPx = Number.isFinite(Number(safeConfig.fixedReferenceHeightPx))
+    ? Math.max(1, Number(safeConfig.fixedReferenceHeightPx))
+    : fallbackFixedReference;
+  const clampRange = normalizeRangeInput(safeConfig.clamp, 0.25, 4);
+  return {
+    enabled: safeConfig.enabled !== false,
+    mode,
+    fixedReferenceHeightPx,
+    minScaleFactor: Math.max(0.01, clampRange[0]),
+    maxScaleFactor: Math.max(0.01, clampRange[1]),
+  };
+}
+
+function resolveHeroVideoIntrinsicAspectRatio() {
+  const intrinsicWidth = Number(video && video.videoWidth);
+  const intrinsicHeight = Number(video && video.videoHeight);
+  if (Number.isFinite(intrinsicWidth) && intrinsicWidth > 0 && Number.isFinite(intrinsicHeight) && intrinsicHeight > 0) {
+    const aspectRatio = intrinsicWidth / intrinsicHeight;
+    if (Number.isFinite(aspectRatio) && aspectRatio > 0) {
+      STATE.heroVideoIntrinsicAspectRatio = aspectRatio;
+      return aspectRatio;
+    }
+  }
+  const cachedAspectRatio = Number(STATE.heroVideoIntrinsicAspectRatio);
+  if (Number.isFinite(cachedAspectRatio) && cachedAspectRatio > 0) {
+    return cachedAspectRatio;
+  }
+  return 1;
+}
+
+function resolveFoliageCompositionScaleFactor() {
+  const config = resolveFoliageCompositionScaleConfig();
+  if (config.enabled !== true) {
+    return 1;
+  }
+  const heroRect = getHeroVideoRenderedRect();
+  const heroHeight = heroRect && Number.isFinite(heroRect.height) ? Math.max(0, heroRect.height) : 0;
+  if (heroHeight <= 0) {
+    return 1;
+  }
+
+  let factor = 1;
+  if (config.mode === 'dynamicHeroVsInitialHero') {
+    if (
+      !Number.isFinite(STATE.foliageCompositionInitialHeroHeightPx)
+      || STATE.foliageCompositionInitialHeroHeightPx <= 0
+    ) {
+      STATE.foliageCompositionInitialHeroHeightPx = heroHeight;
+    }
+    const baselineHeight = Number(STATE.foliageCompositionInitialHeroHeightPx);
+    factor = baselineHeight > 0 ? (heroHeight / baselineHeight) : 1;
+  } else {
+    factor = heroHeight / config.fixedReferenceHeightPx;
+  }
+  if (!Number.isFinite(factor) || factor <= 0) {
+    return 1;
+  }
+  return clamp(factor, config.minScaleFactor, config.maxScaleFactor);
+}
+
 function resolveGlobalFoliageScale() {
   const numeric = Number(CONFIG.globalFoliageScale);
   if (!Number.isFinite(numeric)) {
@@ -3443,7 +3568,11 @@ function resolveGlobalFoliageScale() {
 }
 
 function resolveResponsiveFoliageScale() {
-  return resolveGlobalFoliageScale() * resolveFloralResponsiveScaleFactor();
+  return (
+    resolveGlobalFoliageScale()
+    * resolveFloralResponsiveScaleFactor()
+    * resolveFoliageCompositionScaleFactor()
+  );
 }
 
 function syncGlobalFoliageScaleIfNeeded() {
@@ -3827,95 +3956,18 @@ function buildHeroVideoReferenceRectSnapshot() {
   if (viewportWidth <= 0 || viewportHeight <= 0) {
     return null;
   }
-
-  let width = 0;
-  let height = 0;
-  let videoBcrRect = null;
-  if (video && typeof video.getBoundingClientRect === 'function') {
-    videoBcrRect = video.getBoundingClientRect();
-  }
-  const intrinsicWidth = Number(video && video.videoWidth);
-  const intrinsicHeight = Number(video && video.videoHeight);
-  if (Number.isFinite(intrinsicWidth) && intrinsicWidth > 0 && Number.isFinite(intrinsicHeight) && intrinsicHeight > 0) {
-    if (videoBcrRect && videoBcrRect.height > 0) {
-      height = videoBcrRect.height;
-      width = videoBcrRect.width > 0 ? videoBcrRect.width : height * (intrinsicWidth / intrinsicHeight);
-    } else {
-      height = viewportHeight;
-      width = height * (intrinsicWidth / intrinsicHeight);
-    }
-    const _canvasBcrForLog = canvas && typeof canvas.getBoundingClientRect === 'function'
-      ? canvas.getBoundingClientRect()
-      : null;
-    console.log('[HeroRect] snapshot:', {
-      width, height,
-      intrinsic: `${intrinsicWidth}x${intrinsicHeight}`,
-      viewport: `${viewportWidth}x${viewportHeight}`,
-      viewportOffsetTop: STATE.viewportOffsetTopPx,
-      videoBcr: videoBcrRect
-        ? `${videoBcrRect.width.toFixed(1)}x${videoBcrRect.height.toFixed(1)} @ (${videoBcrRect.left.toFixed(1)}, ${videoBcrRect.top.toFixed(1)})`
-        : 'n/a',
-      canvasBcr: _canvasBcrForLog
-        ? `${_canvasBcrForLog.width.toFixed(1)}x${_canvasBcrForLog.height.toFixed(1)} @ (${_canvasBcrForLog.left.toFixed(1)}, ${_canvasBcrForLog.top.toFixed(1)})`
-        : 'n/a',
-      calledFrom: (new Error()).stack ? (new Error()).stack.split('\n').slice(1, 4).join(' | ') : 'n/a',
-    });
-  } else if (
-    video
-    && Number.isFinite(video.clientWidth)
-    && video.clientWidth > 0
-    && Number.isFinite(video.clientHeight)
-    && video.clientHeight > 0
-  ) {
-    width = Number(video.clientWidth);
-    height = Number(video.clientHeight);
-  } else if (videoBcrRect && Number.isFinite(videoBcrRect.width) && Number.isFinite(videoBcrRect.height)) {
-    width = Math.max(0, videoBcrRect.width);
-    height = Math.max(0, videoBcrRect.height);
-  }
-
-  if (width <= 0 || height <= 0) {
-    return null;
-  }
-
-  const centerX = viewportWidth * 0.5;
-  const centerY = viewportHeight * 0.5;
-  let left = centerX - (width * 0.5);
-  let top = centerY - (height * 0.5);
-  let sceneSource = 'centerMath';
-
-  // Scene space is measured from the canvas top-left; this avoids double-applying
-  // viewport offset in live foliage placement when layers are already offset in CSS.
-  const canvasBcrRect = canvas && typeof canvas.getBoundingClientRect === 'function'
-    ? canvas.getBoundingClientRect()
-    : null;
-  if (
-    videoBcrRect
-    && Number.isFinite(videoBcrRect.left)
-    && Number.isFinite(videoBcrRect.top)
-    && canvasBcrRect
-    && Number.isFinite(canvasBcrRect.left)
-    && Number.isFinite(canvasBcrRect.top)
-  ) {
-    left = videoBcrRect.left - canvasBcrRect.left;
-    top = videoBcrRect.top - canvasBcrRect.top;
-    sceneSource = 'videoBcrMinusCanvasBcr';
-  } else if (
-    videoBcrRect
-    && Number.isFinite(videoBcrRect.left)
-    && Number.isFinite(videoBcrRect.top)
-  ) {
-    const viewportOffsetLeft = Number.isFinite(STATE.viewportOffsetLeftPx) ? STATE.viewportOffsetLeftPx : 0;
-    const viewportOffsetTop = Number.isFinite(STATE.viewportOffsetTopPx) ? STATE.viewportOffsetTopPx : 0;
-    left = videoBcrRect.left - viewportOffsetLeft;
-    top = videoBcrRect.top - viewportOffsetTop;
-    sceneSource = 'videoBcrMinusViewportOffset';
-  }
+  const aspectRatio = resolveHeroVideoIntrinsicAspectRatio();
+  const height = viewportHeight;
+  const width = Math.max(0, height * aspectRatio);
+  const left = (viewportWidth - width) * 0.5;
+  const top = 0;
   viewportDebugLog(
     'heroRect.sceneCoords',
-    `source=${sceneSource}`,
+    'source=math-derived',
     `left=${left.toFixed(2)}`,
     `top=${top.toFixed(2)}`,
+    `size=${width.toFixed(2)}x${height.toFixed(2)}`,
+    `aspect=${aspectRatio.toFixed(5)}`,
   );
   return {
     x: left,
@@ -3941,24 +3993,11 @@ function refreshHeroVideoReferenceRect(options = null) {
   STATE.heroVideoReferenceRect = snapshot
     ? { ...snapshot }
     : null;
-  const hasIntrinsicVideoDimensions = (
-    Number.isFinite(Number(video.videoWidth))
-    && Number(video.videoWidth) > 0
-    && Number.isFinite(Number(video.videoHeight))
-    && Number(video.videoHeight) > 0
-  );
-  if (
-    hasIntrinsicVideoDimensions
-    && STATE.heroVideoReferenceRect
+  STATE.heroVideoReferenceRectLocked = Boolean(
+    STATE.heroVideoReferenceRect
     && STATE.heroVideoReferenceRect.width > 0
     && STATE.heroVideoReferenceRect.height > 0
-  ) {
-    STATE.heroVideoReferenceRectLocked = true;
-    const _r = STATE.heroVideoReferenceRect;
-    console.log('[HeroRect] LOCKED:', `${_r.width.toFixed(1)}x${_r.height.toFixed(1)} @ left=${_r.left.toFixed(1)}, top=${_r.top.toFixed(1)}`, `centerX=${_r.centerX !== undefined ? _r.centerX.toFixed(1) : (_r.left + _r.width * 0.5).toFixed(1)}`);
-  } else if (force) {
-    STATE.heroVideoReferenceRectLocked = false;
-  }
+  );
   if (snapshot) {
     viewportDebugLog(
       'heroRect.refresh',
@@ -5340,20 +5379,22 @@ function syncCenterOverlayImageLayer(nowMs = performance.now(), currentFrame = n
   const swipeState = STATE && STATE.swipeSections ? STATE.swipeSections : null;
   const sections = swipeConfig && Array.isArray(swipeConfig.sections) ? swipeConfig.sections : [];
   const pages = swipeConfig && Array.isArray(swipeConfig.pages) ? swipeConfig.pages : [];
-  const videoRect = getHeroVideoRenderedRect();
-  const videoSizePx = (
-    videoRect
-    && Number.isFinite(videoRect.width)
-    && Number.isFinite(videoRect.height)
-    && videoRect.width > 0
-    && videoRect.height > 0
-  )
-    ? Math.min(videoRect.width, videoRect.height)
-    : (
-      Number.isFinite(STATE.viewportHeight) && STATE.viewportHeight > 0
-        ? STATE.viewportHeight
-        : (Number.isFinite(window.innerHeight) ? Math.max(0, window.innerHeight) : 0)
-    );
+  // Use viewport height for zoom-insensitive scaling like the video
+  const viewportHeight = STATE.viewportHeight || window.innerHeight;
+  if (!Number.isFinite(viewportHeight) || viewportHeight <= 0) {
+    // Hide all layers if viewport is invalid
+    centerOverlayImageLayers.forEach((layer, index) => {
+      if (layer) {
+        layer.style.display = 'none';
+        layer.style.opacity = '0';
+        layer.style.visibility = 'hidden';
+        STATE.centerOverlayImageLayerVisibleSinceMs[index] = 0;
+        STATE.centerOverlayImageLayerLastShouldBeVisible[index] = false;
+      }
+    });
+    return;
+  }
+  const videoSizePx = viewportHeight;
   const frameToUse = Number.isFinite(currentFrame)
     ? currentFrame
     : getCurrentHeroVideoFrame(resolveHeroPlaybackGateConfig());
@@ -6295,8 +6336,12 @@ function syncRsvpDebugRect(
     rectEl.style.visibility = 'hidden';
     return;
   }
-  rectEl.style.left = `${centerX}px`;
-  rectEl.style.top = `${centerY}px`;
+  // Handle both percentage and pixel positioning
+  // Percentage values will be centered around 50 (50% +/- offset)
+  // Pixel values will typically be much larger (viewport coordinates)
+  const isPercentage = typeof centerX === 'number' && Math.abs(centerX) < 200;
+  rectEl.style.left = isPercentage ? `${centerX}%` : `${centerX}px`;
+  rectEl.style.top = isPercentage ? `${centerY}%` : `${centerY}px`;
   rectEl.style.width = `${widthPx}px`;
   rectEl.style.height = `${heightPx}px`;
   rectEl.style.borderColor = strokeColor;
@@ -6375,25 +6420,32 @@ function syncRsvpLayer(nowMs = performance.now()) {
         ? STATE.viewportHeight * 0.5
         : (Number.isFinite(window.innerHeight) ? window.innerHeight * 0.5 : 0)
     );
-
+  
+  // Use viewport height for zoom-insensitive scaling like the video
+  const viewportHeight = STATE.viewportHeight || window.innerHeight;
+  
   const nameFieldConfig = rsvpConfig.nameField || {};
   const buttonsConfig = rsvpConfig.buttons || {};
   const debugConfig = rsvpConfig.debug || {};
-  const nameCenterX = centerX + (Number(nameFieldConfig.offsetXVideoHeightRatio) || 0) * videoHeight;
-  const nameCenterY = centerY + (Number(nameFieldConfig.offsetYVideoHeightRatio) || 0) * videoHeight;
-  const nameWidth = Math.max(0, (Number(nameFieldConfig.widthVideoHeightRatio) || 0) * videoHeight);
-  const nameHeight = Math.max(0, (Number(nameFieldConfig.heightVideoHeightRatio) || 0) * videoHeight);
-  const nameFontSize = Math.max(0, (Number(nameFieldConfig.fontSizeVideoHeightRatio) || 0) * videoHeight);
+  
+  // Use percentage-based positioning to match video centering
+  // Since the container is now centered like the video, we use relative positioning
+  const nameCenterXPercent = 50 + ((Number(nameFieldConfig.offsetXVideoHeightRatio) || 0) * 100);
+  const nameCenterYPercent = 50 + ((Number(nameFieldConfig.offsetYVideoHeightRatio) || 0) * 100);
+  const nameWidth = Math.max(0, (Number(nameFieldConfig.widthVideoHeightRatio) || 0) * viewportHeight);
+  const nameHeight = Math.max(0, (Number(nameFieldConfig.heightVideoHeightRatio) || 0) * viewportHeight);
+  const nameFontSize = Math.max(0, (Number(nameFieldConfig.fontSizeVideoHeightRatio) || 0) * viewportHeight);
 
   rsvpLayer.style.display = 'block';
   rsvpLayer.style.visibility = 'visible';
   rsvpLayer.style.pointerEvents = 'none';
+  rsvpLayer.style.zIndex = String(rsvpConfig.zIndex || 5000);
   rsvpLayer.setAttribute('aria-hidden', 'false');
   runtime.visible = true;
   runtime.sectionId = rsvpConfig.sectionId;
 
-  rsvpNameInput.style.left = `${nameCenterX}px`;
-  rsvpNameInput.style.top = `${nameCenterY}px`;
+  rsvpNameInput.style.left = `${nameCenterXPercent}%`;
+  rsvpNameInput.style.top = `${nameCenterYPercent}%`;
   rsvpNameInput.style.width = `${nameWidth}px`;
   rsvpNameInput.style.height = `${nameHeight}px`;
   rsvpNameInput.style.fontFamily = nameFieldConfig.fontFamily || '';
@@ -6420,18 +6472,20 @@ function syncRsvpLayer(nowMs = performance.now()) {
   const noConfig = buttonsConfig.no || {};
   const confirmConfig = buttonsConfig.confirm || {};
   const confirmEnabled = confirmConfig.enabled !== false;
-  const yesCenterX = centerX + (Number(yesConfig.offsetXVideoHeightRatio) || 0) * videoHeight;
-  const yesCenterY = centerY + (Number(yesConfig.offsetYVideoHeightRatio) || 0) * videoHeight;
-  const yesWidth = Math.max(0, (Number(yesConfig.widthVideoHeightRatio) || 0) * videoHeight);
-  const yesHeight = Math.max(0, (Number(yesConfig.heightVideoHeightRatio) || 0) * videoHeight);
-  const noCenterX = centerX + (Number(noConfig.offsetXVideoHeightRatio) || 0) * videoHeight;
-  const noCenterY = centerY + (Number(noConfig.offsetYVideoHeightRatio) || 0) * videoHeight;
-  const noWidth = Math.max(0, (Number(noConfig.widthVideoHeightRatio) || 0) * videoHeight);
-  const noHeight = Math.max(0, (Number(noConfig.heightVideoHeightRatio) || 0) * videoHeight);
-  const confirmCenterX = centerX + (Number(confirmConfig.offsetXVideoHeightRatio) || 0) * videoHeight;
-  const confirmCenterY = centerY + (Number(confirmConfig.offsetYVideoHeightRatio) || 0) * videoHeight;
-  const confirmWidth = Math.max(0, (Number(confirmConfig.widthVideoHeightRatio) || 0) * videoHeight);
-  const confirmHeight = Math.max(0, (Number(confirmConfig.heightVideoHeightRatio) || 0) * videoHeight);
+  
+  // Use percentage-based positioning to match video centering
+  const yesCenterXPercent = 50 + ((Number(yesConfig.offsetXVideoHeightRatio) || 0) * 100);
+  const yesCenterYPercent = 50 + ((Number(yesConfig.offsetYVideoHeightRatio) || 0) * 100);
+  const yesWidth = Math.max(0, (Number(yesConfig.widthVideoHeightRatio) || 0) * viewportHeight);
+  const yesHeight = Math.max(0, (Number(yesConfig.heightVideoHeightRatio) || 0) * viewportHeight);
+  const noCenterXPercent = 50 + ((Number(noConfig.offsetXVideoHeightRatio) || 0) * 100);
+  const noCenterYPercent = 50 + ((Number(noConfig.offsetYVideoHeightRatio) || 0) * 100);
+  const noWidth = Math.max(0, (Number(noConfig.widthVideoHeightRatio) || 0) * viewportHeight);
+  const noHeight = Math.max(0, (Number(noConfig.heightVideoHeightRatio) || 0) * viewportHeight);
+  const confirmCenterXPercent = 50 + ((Number(confirmConfig.offsetXVideoHeightRatio) || 0) * 100);
+  const confirmCenterYPercent = 50 + ((Number(confirmConfig.offsetYVideoHeightRatio) || 0) * 100);
+  const confirmWidth = Math.max(0, (Number(confirmConfig.widthVideoHeightRatio) || 0) * viewportHeight);
+  const confirmHeight = Math.max(0, (Number(confirmConfig.heightVideoHeightRatio) || 0) * viewportHeight);
   const debugEnabled = debugConfig.enabled === true;
   const debugStrokeColor = (
     typeof debugConfig.strokeColor === 'string' && debugConfig.strokeColor.trim().length > 0
@@ -6444,8 +6498,8 @@ function syncRsvpLayer(nowMs = performance.now()) {
   const showConfirmButtonRect = debugConfig.showConfirmButtonRect !== false;
   syncRsvpDebugRect(
     rsvpNameDebugRect,
-    nameCenterX,
-    nameCenterY,
+    nameCenterXPercent,
+    nameCenterYPercent,
     nameWidth,
     nameHeight,
     debugEnabled && debugConfig.showNameFieldRect !== false,
@@ -6454,8 +6508,8 @@ function syncRsvpLayer(nowMs = performance.now()) {
   );
   syncRsvpDebugRect(
     rsvpYesDebugRect,
-    yesCenterX,
-    yesCenterY,
+    yesCenterXPercent,
+    yesCenterYPercent,
     yesWidth,
     yesHeight,
     debugEnabled && debugConfig.showButtonRects !== false,
@@ -6464,8 +6518,8 @@ function syncRsvpLayer(nowMs = performance.now()) {
   );
   syncRsvpDebugRect(
     rsvpNoDebugRect,
-    noCenterX,
-    noCenterY,
+    noCenterXPercent,
+    noCenterYPercent,
     noWidth,
     noHeight,
     debugEnabled && debugConfig.showButtonRects !== false,
@@ -6474,8 +6528,8 @@ function syncRsvpLayer(nowMs = performance.now()) {
   );
   syncRsvpDebugRect(
     rsvpConfirmDebugRect,
-    confirmCenterX,
-    confirmCenterY,
+    confirmCenterXPercent,
+    confirmCenterYPercent,
     confirmWidth,
     confirmHeight,
     debugEnabled && debugConfig.showButtonRects !== false && showConfirmButtonRect && confirmEnabled,
@@ -6483,16 +6537,16 @@ function syncRsvpLayer(nowMs = performance.now()) {
     debugLineWidthPx,
   );
 
-  rsvpYesButton.style.left = `${yesCenterX}px`;
-  rsvpYesButton.style.top = `${yesCenterY}px`;
+  rsvpYesButton.style.left = `${yesCenterXPercent}%`;
+  rsvpYesButton.style.top = `${yesCenterYPercent}%`;
   rsvpYesButton.style.width = `${yesWidth}px`;
   rsvpYesButton.style.height = `${yesHeight}px`;
-  rsvpNoButton.style.left = `${noCenterX}px`;
-  rsvpNoButton.style.top = `${noCenterY}px`;
+  rsvpNoButton.style.left = `${noCenterXPercent}%`;
+  rsvpNoButton.style.top = `${noCenterYPercent}%`;
   rsvpNoButton.style.width = `${noWidth}px`;
   rsvpNoButton.style.height = `${noHeight}px`;
-  rsvpConfirmButton.style.left = `${confirmCenterX}px`;
-  rsvpConfirmButton.style.top = `${confirmCenterY}px`;
+  rsvpConfirmButton.style.left = `${confirmCenterXPercent}%`;
+  rsvpConfirmButton.style.top = `${confirmCenterYPercent}%`;
   rsvpConfirmButton.style.width = `${confirmWidth}px`;
   rsvpConfirmButton.style.height = `${confirmHeight}px`;
   rsvpYesButton.style.pointerEvents = 'auto';
@@ -6549,25 +6603,25 @@ function syncSection2ButtonLayer(nowMs = performance.now()) {
     ? videoRect.height
     : resolveHeroVideoRenderedHeightPx();
   
-  if (!(videoHeight > 0)) {
+  // Use viewport height for zoom-insensitive scaling like the video
+  const viewportHeight = STATE.viewportHeight || window.innerHeight;
+  
+  if (!(viewportHeight > 0)) {
     hideSection2ButtonLayer();
     return;
   }
   
-  const videoLeft = videoRect ? Number.isFinite(videoRect.left) ? videoRect.left : 0 : 0;
-  const videoTop = videoRect ? Number.isFinite(videoRect.top) ? videoRect.top : 0 : 0;
-  const centerX = videoLeft + videoRect.width * 0.5;
-  const centerY = videoTop + videoRect.height * 0.5;
-  
+  // Use percentage-based positioning to match video centering
+  // Since the container is now centered like the video, we use relative positioning
   const buttonConfig = section2.button || {};
   if (!buttonConfig.enabled) {
     hideSection2ButtonLayer();
     return;
   }
-  const buttonCenterX = centerX + (Number(buttonConfig.offsetXVideoHeightRatio) || 0) * videoHeight;
-  const buttonCenterY = centerY + (Number(buttonConfig.offsetYVideoHeightRatio) || 0) * videoHeight;
-  const buttonWidth = Math.max(0, (Number(buttonConfig.widthVideoHeightRatio) || 0) * videoHeight);
-  const buttonHeight = Math.max(0, (Number(buttonConfig.heightVideoHeightRatio) || 0) * videoHeight);
+  const buttonCenterXPercent = 50 + ((Number(buttonConfig.offsetXVideoHeightRatio) || 0) * 100);
+  const buttonCenterYPercent = 50 + ((Number(buttonConfig.offsetYVideoHeightRatio) || 0) * 100);
+  const buttonWidth = Math.max(0, (Number(buttonConfig.widthVideoHeightRatio) || 0) * viewportHeight);
+  const buttonHeight = Math.max(0, (Number(buttonConfig.heightVideoHeightRatio) || 0) * viewportHeight);
   
   if (buttonWidth <= 0 || buttonHeight <= 0) {
     hideSection2ButtonLayer();
@@ -6584,8 +6638,8 @@ function syncSection2ButtonLayer(nowMs = performance.now()) {
   
   section2Button.textContent = hasPng ? '' : buttonLabel;
   section2Button.setAttribute('aria-label', buttonLabel);
-  section2Button.style.left = `${buttonCenterX}px`;
-  section2Button.style.top = `${buttonCenterY}px`;
+  section2Button.style.left = `${buttonCenterXPercent}%`;
+  section2Button.style.top = `${buttonCenterYPercent}%`;
   section2Button.style.width = `${buttonWidth}px`;
   section2Button.style.height = `${buttonHeight}px`;
   section2Button.style.transform = 'translate(-50%, -50%)';
@@ -6717,19 +6771,20 @@ function syncSection1LabelLayer(nowMs = performance.now()) {
     ? videoRect.height
     : resolveHeroVideoRenderedHeightPx();
 
-  if (!(videoHeight > 0)) {
+  // Use viewport height for zoom-insensitive scaling like the video
+  const viewportHeight = STATE.viewportHeight || window.innerHeight;
+
+  if (!(viewportHeight > 0)) {
     hideSection1LabelLayer();
     return;
   }
 
-  const videoLeft = videoRect ? (Number.isFinite(videoRect.left) ? videoRect.left : 0) : 0;
-  const videoTop = videoRect ? (Number.isFinite(videoRect.top) ? videoRect.top : 0) : 0;
-  const centerX = videoLeft + videoRect.width * 0.5;
-  const centerY = videoTop + videoRect.height * 0.5;
-  const labelCenterX = centerX + (Number(labelConfig.offsetXVideoHeightRatio) || 0) * videoHeight;
-  const labelCenterY = centerY + (Number(labelConfig.offsetYVideoHeightRatio) || 0) * videoHeight;
-  const labelWidth = Math.max(0, (Number(labelConfig.widthVideoHeightRatio) || 0) * videoHeight);
-  const fontSize = Math.max(0, (Number(labelConfig.fontSizeVideoHeightRatio) || 0) * videoHeight);
+  // Use percentage-based positioning to match video centering
+  // Since the container is now centered like the video, we use relative positioning
+  const labelCenterXPercent = 50 + ((Number(labelConfig.offsetXVideoHeightRatio) || 0) * 100);
+  const labelCenterYPercent = 50 + ((Number(labelConfig.offsetYVideoHeightRatio) || 0) * 100);
+  const labelWidth = Math.max(0, (Number(labelConfig.widthVideoHeightRatio) || 0) * viewportHeight);
+  const fontSize = Math.max(0, (Number(labelConfig.fontSizeVideoHeightRatio) || 0) * viewportHeight);
   const daysLeft = resolveSection1DaysLeft();
   const labelText = `Save the date,\nonly ${daysLeft} days left!`;
 
@@ -6741,8 +6796,8 @@ function syncSection1LabelLayer(nowMs = performance.now()) {
   section1LabelLayer.setAttribute('aria-hidden', 'true');
 
   section1LabelEl.textContent = labelText;
-  section1LabelEl.style.left = `${labelCenterX}px`;
-  section1LabelEl.style.top = `${labelCenterY}px`;
+  section1LabelEl.style.left = `${labelCenterXPercent}%`;
+  section1LabelEl.style.top = `${labelCenterYPercent}%`;
   section1LabelEl.style.width = `${labelWidth}px`;
   section1LabelEl.style.transform = 'translate(-50%, -50%)';
   section1LabelEl.style.fontFamily = labelConfig.fontFamily || 'inherit';
@@ -7042,18 +7097,30 @@ function resolveHeroPlaybackOpenButtonHitCircle(gateConfig = resolveHeroPlayback
   }
   const buttonConfig = gateConfig.openButton;
   const videoSizePx = Math.min(rect.width, rect.height);
-  if (!Number.isFinite(videoSizePx) || videoSizePx <= 0) {
+  
+  // Use viewport height for zoom-insensitive scaling like the video.
+  const viewportHeight = window.innerHeight;
+  if (!Number.isFinite(viewportHeight) || viewportHeight <= 0) {
     return null;
   }
-  const baseDiameterPx = videoSizePx * buttonConfig.diameterRatio;
+  const baseDiameterPx = viewportHeight * buttonConfig.diameterRatio;
   const expandedDiameterPx = baseDiameterPx * (1 + buttonConfig.hitMarginPercentOfButtonSize / 100);
   const baseRadiusPx = Math.max(0, baseDiameterPx * 0.5);
   const radiusPx = Math.max(0, expandedDiameterPx * 0.5);
-  const centerX = rect.left + (rect.width * buttonConfig.centerXRatio);
-  const centerY = rect.top + (rect.height * buttonConfig.centerYRatio);
+  
+  // Use viewport-based positioning for zoom insensitivity.
+  const viewportWidth = window.innerWidth;
+  const centerXPercent = 50 + ((buttonConfig.centerXRatio - 0.5) * 100);
+  const centerYPercent = 50 + ((buttonConfig.centerYRatio - 0.5) * 100);
+  
+  const centerX = viewportWidth * buttonConfig.centerXRatio;
+  const centerY = viewportHeight * buttonConfig.centerYRatio;
+  
   return {
     centerX,
     centerY,
+    centerXPercent,
+    centerYPercent,
     baseRadiusPx,
     radiusPx,
     videoSizePx,
@@ -7080,21 +7147,32 @@ function resolveHeroPlaybackWiggleButtonHitRect(gateConfig = resolveHeroPlayback
   }
   const buttonConfig = gateConfig.wiggleButton;
   const videoSizePx = Math.min(rect.width, rect.height);
-  if (!Number.isFinite(videoSizePx) || videoSizePx <= 0) {
+  
+  // Use viewport height for zoom-insensitive scaling like the video.
+  const viewportHeight = window.innerHeight;
+  if (!Number.isFinite(viewportHeight) || viewportHeight <= 0) {
     return null;
   }
-  const widthPx = Math.max(0, videoSizePx * buttonConfig.sizeXRatio);
-  const heightPx = Math.max(0, videoSizePx * buttonConfig.sizeYRatio);
+  const widthPx = Math.max(0, viewportHeight * buttonConfig.sizeXRatio);
+  const heightPx = Math.max(0, viewportHeight * buttonConfig.sizeYRatio);
   if (widthPx <= 1e-6 || heightPx <= 1e-6) {
     return null;
   }
-  const centerX = rect.left + (rect.width * buttonConfig.centerXRatio);
-  const centerY = rect.top + (rect.height * buttonConfig.centerYRatio);
+  // Use viewport-based positioning for zoom insensitivity.
+  const viewportWidth = window.innerWidth;
+  const centerXPercent = 50 + ((buttonConfig.centerXRatio - 0.5) * 100);
+  const centerYPercent = 50 + ((buttonConfig.centerYRatio - 0.5) * 100);
+  
+  const centerX = viewportWidth * buttonConfig.centerXRatio;
+  const centerY = viewportHeight * buttonConfig.centerYRatio;
   const left = centerX - widthPx * 0.5;
   const top = centerY - heightPx * 0.5;
+  
   return {
     centerX,
     centerY,
+    centerXPercent,
+    centerYPercent,
     widthPx,
     heightPx,
     left,
@@ -8496,12 +8574,48 @@ function getFlowersRuntimeConfig() {
   const swayMode = resolveGlobalSwayMode();
   const adaptivePatch = getFlowersAdaptiveRuntimePatch(flowersConfig, swayMode);
   const floralScale = resolveResponsiveFoliageScale();
+  const compositionScaleConfig = resolveFoliageCompositionScaleConfig();
+  const heroRect = getHeroVideoRenderedRect();
+  const currentHeroHeightPx = (
+    heroRect
+    && Number.isFinite(heroRect.height)
+    && heroRect.height > 0
+  )
+    ? heroRect.height
+    : (
+      Number.isFinite(STATE.viewportHeight) && STATE.viewportHeight > 0
+        ? STATE.viewportHeight
+        : (Number.isFinite(window.innerHeight) && window.innerHeight > 0 ? window.innerHeight : 0)
+    );
+  const referenceHeightPxRaw = Number.isFinite(compositionScaleConfig.fixedReferenceHeightPx)
+    ? compositionScaleConfig.fixedReferenceHeightPx
+    : (
+      Number.isFinite(Number(CONFIG.foliageExportViewportHeight))
+      && Number(CONFIG.foliageExportViewportHeight) > 0
+        ? Number(CONFIG.foliageExportViewportHeight)
+        : 949
+    );
+  const referenceHeightPx = Math.max(1, referenceHeightPxRaw);
+  const lilyPairDisplacementScaleUnclamped = currentHeroHeightPx > 0
+    ? (currentHeroHeightPx / referenceHeightPx)
+    : 1;
+  const lilyPairDisplacementScaleFactor = (
+    Number.isFinite(lilyPairDisplacementScaleUnclamped)
+    && lilyPairDisplacementScaleUnclamped > 0
+  )
+    ? clamp(
+      lilyPairDisplacementScaleUnclamped,
+      compositionScaleConfig.minScaleFactor,
+      compositionScaleConfig.maxScaleFactor,
+    )
+    : 1;
   const runtimeConfig = {
     ...flowersConfig,
     ...(adaptivePatch || {}),
     swayMode,
     viewportCullingEnabled: isFlowerViewportCullingEnabled(),
     floralResponsiveScaleFactor: floralScale,
+    lilyPairDisplacementScaleFactor,
   };
   if (Math.abs(floralScale - 1) > 1e-6) {
     const drawSizeRaw = Number(runtimeConfig.drawSize);
@@ -11433,6 +11547,102 @@ function computeHeroRectDrift(prevRect, nextRect, thresholdPx = 0.5) {
   };
 }
 
+function captureActiveBranchGrowthStateForRemap() {
+  const animationState = STATE.branchGrowth;
+  if (!animationState || animationState.running !== true) {
+    return null;
+  }
+  const elapsedSec = Number(animationState.elapsedSec);
+  return {
+    running: true,
+    elapsedSec: Number.isFinite(elapsedSec) ? Math.max(0, elapsedSec) : 0,
+  };
+}
+
+function restoreActiveBranchGrowthStateAfterRemap(snapshot) {
+  if (!snapshot || snapshot.running !== true) {
+    return;
+  }
+  const animationState = STATE.branchGrowth;
+  if (!animationState) {
+    return;
+  }
+  const elapsedSec = Number(snapshot.elapsedSec);
+  const safeElapsedSec = Number.isFinite(elapsedSec) ? Math.max(0, elapsedSec) : 0;
+  animationState.elapsedSec = safeElapsedSec;
+  animationState.running = true;
+  animationState.startTimeMs = performance.now() - safeElapsedSec * 1000;
+  animationState.lastGrowthRenderMs = 0;
+  if (animationState.rafId !== null) {
+    cancelAnimationFrame(animationState.rafId);
+    animationState.rafId = null;
+  }
+  scheduleBranchAnimationFrame();
+}
+
+function syncSeedPacketToCurrentHeroRect(options = {}) {
+  const safeOptions = isPlainObjectLiteral(options) ? options : {};
+  const thresholdPx = Number.isFinite(Number(safeOptions.thresholdPx))
+    ? Math.max(0, Number(safeOptions.thresholdPx))
+    : 0.5;
+  const reason = typeof safeOptions.reason === 'string' && safeOptions.reason.length > 0
+    ? safeOptions.reason
+    : 'unspecified';
+  const forceRectRefresh = safeOptions.forceRectRefresh !== false;
+  const preserveActiveGrowth = safeOptions.preserveActiveGrowth !== false;
+  if (!STATE.branchGarden) {
+    return { applied: false, reason: `${reason}:no-branch-garden` };
+  }
+
+  if (!STATE.heroRectAtSeedBuild || !STATE.canonicalSeedPacket) {
+    refreshSeedCanonicalBaselineFromLastPacket({ forceRectRefresh: true });
+  }
+
+  const previousRect = STATE.heroRectAtSeedBuild
+    ? { ...STATE.heroRectAtSeedBuild }
+    : null;
+  const nextRect = forceRectRefresh
+    ? refreshHeroVideoReferenceRect({ force: true })
+    : getHeroVideoRenderedRect();
+
+  if (!isValidHeroRectForSeedMapping(nextRect)) {
+    return { applied: false, reason: `${reason}:invalid-next-rect` };
+  }
+
+  if (!isValidHeroRectForSeedMapping(previousRect)) {
+    if (STATE.lastSeedPacket) {
+      updateSeedCanonicalBaselineFromPacket(STATE.lastSeedPacket, nextRect);
+    }
+    return { applied: false, reason: `${reason}:baseline-refreshed` };
+  }
+
+  const drift = computeHeroRectDrift(previousRect, nextRect, thresholdPx);
+  if (!drift.valid || drift.drifted !== true) {
+    return { applied: false, reason: `${reason}:no-drift`, drift };
+  }
+
+  const growthSnapshot = preserveActiveGrowth
+    ? captureActiveBranchGrowthStateForRemap()
+    : null;
+  const remappedSeedPacket = STATE.canonicalSeedPacket
+    ? remapSeedPacketFromHeroRectSpace(STATE.canonicalSeedPacket, nextRect)
+    : null;
+  if (remappedSeedPacket) {
+    STATE.lastSeedPacket = remappedSeedPacket;
+    plantSeeds(remappedSeedPacket, { clearFirst: true });
+    updateSeedCanonicalBaselineFromPacket(remappedSeedPacket, nextRect);
+    restoreActiveBranchGrowthStateAfterRemap(growthSnapshot);
+    return { applied: true, reason: `${reason}:remapped`, drift };
+  }
+
+  STATE.branchGarden.rebuildBranches({ regenerateRoots: true, resetRootTimeCursor: true });
+  if (STATE.lastSeedPacket) {
+    updateSeedCanonicalBaselineFromPacket(STATE.lastSeedPacket, nextRect);
+  }
+  restoreActiveBranchGrowthStateAfterRemap(growthSnapshot);
+  return { applied: true, reason: `${reason}:rebuilt`, drift };
+}
+
 function updateSeedCanonicalBaselineFromPacket(seedPacket, heroRect) {
   if (!seedPacket || !isValidHeroRectForSeedMapping(heroRect)) {
     return false;
@@ -11724,9 +11934,45 @@ function getBranchTangentDegAtDistance(branch, distanceOnPath) {
   const flowersConfig = CONFIG.flowers || {};
   const tailLengthInput = Number(flowersConfig.endpointDirectionTailLengthPx);
   const sampleCountInput = Number(flowersConfig.endpointDirectionSampleCount);
-  const tailLength = Number.isFinite(tailLengthInput)
+  const compositionScaleConfig = resolveFoliageCompositionScaleConfig();
+  const heroRect = getHeroVideoRenderedRect();
+  const currentHeroHeightPx = (
+    heroRect
+    && Number.isFinite(heroRect.height)
+    && heroRect.height > 0
+  )
+    ? heroRect.height
+    : (
+      Number.isFinite(STATE.viewportHeight) && STATE.viewportHeight > 0
+        ? STATE.viewportHeight
+        : (Number.isFinite(window.innerHeight) && window.innerHeight > 0 ? window.innerHeight : 0)
+    );
+  const referenceHeightPxRaw = Number.isFinite(compositionScaleConfig.fixedReferenceHeightPx)
+    ? compositionScaleConfig.fixedReferenceHeightPx
+    : (
+      Number.isFinite(Number(CONFIG.foliageExportViewportHeight))
+      && Number(CONFIG.foliageExportViewportHeight) > 0
+        ? Number(CONFIG.foliageExportViewportHeight)
+        : 949
+    );
+  const referenceHeightPx = Math.max(1, referenceHeightPxRaw);
+  const heroScaleUnclamped = currentHeroHeightPx > 0
+    ? (currentHeroHeightPx / referenceHeightPx)
+    : 1;
+  const heroScaleFactor = (
+    Number.isFinite(heroScaleUnclamped)
+    && heroScaleUnclamped > 0
+  )
+    ? clamp(
+      heroScaleUnclamped,
+      compositionScaleConfig.minScaleFactor,
+      compositionScaleConfig.maxScaleFactor,
+    )
+    : 1;
+  const tailLengthBasePx = Number.isFinite(tailLengthInput)
     ? Math.max(0, tailLengthInput)
     : 26;
+  const tailLength = tailLengthBasePx * heroScaleFactor;
   const sampleCount = Number.isFinite(sampleCountInput)
     ? Math.max(1, Math.floor(sampleCountInput))
     : 5;
@@ -13282,11 +13528,13 @@ function drawOpenButtonArrowHint(
   if (!rect) {
     return;
   }
-  const videoSizePx = Math.min(rect.width, rect.height);
-  if (!Number.isFinite(videoSizePx) || videoSizePx <= 0) {
+  
+  // Use viewport height for zoom-insensitive scaling like the video.
+  const viewportHeight = window.innerHeight;
+  if (!Number.isFinite(viewportHeight) || viewportHeight <= 0) {
     return;
   }
-  const baseWidthPx = videoSizePx * arrowConfig.sizeRatio;
+  const baseWidthPx = viewportHeight * arrowConfig.sizeRatio;
   if (!Number.isFinite(baseWidthPx) || baseWidthPx <= 0) {
     return;
   }
@@ -13320,8 +13568,13 @@ function drawOpenButtonArrowHint(
     return;
   }
 
-  const centerX = rect.left + rect.width * arrowConfig.centerXRatio;
-  const centerY = rect.top + rect.height * arrowConfig.centerYRatio;
+  // Use viewport-based positioning for zoom insensitivity.
+  const viewportWidth = window.innerWidth;
+  const centerXPercent = 50 + ((arrowConfig.centerXRatio - 0.5) * 100);
+  const centerYPercent = 50 + ((arrowConfig.centerYRatio - 0.5) * 100);
+  
+  const centerX = viewportWidth * arrowConfig.centerXRatio;
+  const centerY = viewportHeight * arrowConfig.centerYRatio;
   const drawX = centerX - drawWidthPx * 0.5;
   const drawY = centerY - drawHeightPx * 0.5;
 
@@ -15887,6 +16140,9 @@ function resolveSwipeSectionsRsvpConfig(
   return {
     enabled: safeConfig.enabled === true,
     sectionId,
+    zIndex: Number.isFinite(Number(safeConfig.zIndex))
+      ? Math.max(0, Number(safeConfig.zIndex))
+      : 5000,
     nameField: {
       offsetXVideoHeightRatio: Number.isFinite(Number(nameFieldRaw.offsetXVideoHeightRatio))
         ? Number(nameFieldRaw.offsetXVideoHeightRatio)
@@ -16683,17 +16939,15 @@ function syncSwipeSectionsScrollHintLayer(nowMs = performance.now()) {
   }
 
   const videoRect = getHeroVideoRenderedRect();
-  const viewportWidth = Number.isFinite(STATE.viewportWidth) && STATE.viewportWidth > 0
-    ? STATE.viewportWidth
-    : (Number.isFinite(window.innerWidth) ? window.innerWidth : 0);
-  const centerX = videoRect && Number.isFinite(videoRect.left) && Number.isFinite(videoRect.width)
-    ? videoRect.left + (videoRect.width * 0.5) + (scrollHintConfig.offsetXVideoHeightRatio * (Number.isFinite(videoRect.height) ? videoRect.height : 0))
-    : viewportWidth * 0.5;
   const videoHeight = videoRect && Number.isFinite(videoRect.height) ? videoRect.height : 0;
-  const videoBottom = videoRect && Number.isFinite(videoRect.top) && Number.isFinite(videoRect.height)
-    ? videoRect.top + videoRect.height
-    : (Number.isFinite(STATE.viewportHeight) && STATE.viewportHeight > 0 ? STATE.viewportHeight : (Number.isFinite(window.innerHeight) ? window.innerHeight : 0));
-  const extraOffsetY = videoHeight * scrollHintConfig.offsetYVideoHeightRatio;
+  
+  // Use viewport height for zoom-insensitive scaling like the video
+  const viewportHeight = STATE.viewportHeight || window.innerHeight;
+  
+  // Use percentage-based positioning to match video centering
+  // Since the container is now centered like the video, we use relative positioning
+  const centerXPercent = 50 + (scrollHintConfig.offsetXVideoHeightRatio * 100); // Convert ratio to percentage offset
+  const bottomPositionPercent = 50 + (50 * scrollHintConfig.offsetYVideoHeightRatio); // Position from center + offset
 
   let jumpOffsetPx = 0;
   if (swipeState && swipeState.scrollHint && swipeState.scrollHint.jumpAnimation) {
@@ -16710,7 +16964,7 @@ function syncSwipeSectionsScrollHintLayer(nowMs = performance.now()) {
   }
 
   const widthPx = Number.isFinite(scrollHintConfig.widthVideoHeightRatio) && scrollHintConfig.widthVideoHeightRatio > 0
-    ? videoHeight * scrollHintConfig.widthVideoHeightRatio
+    ? viewportHeight * scrollHintConfig.widthVideoHeightRatio
     : Math.max(0, Number(scrollHintConfig.maxWidthPx) || 48);
   const scale = scrollHintConfig.scale;
   const scaledWidthPx = widthPx * scale;
@@ -16719,11 +16973,15 @@ function syncSwipeSectionsScrollHintLayer(nowMs = performance.now()) {
   const aspectRatio = naturalWidthPx > 0 ? naturalHeightPx / naturalWidthPx : 1;
   const scaledHeightPx = scaledWidthPx * aspectRatio;
 
-  swipeSectionsScrollHintLayer.style.left = `${centerX}px`;
-  swipeSectionsScrollHintLayer.style.top = `${videoBottom - extraOffsetY - jumpOffsetPx}px`;
+  // Use percentage-based positioning within the centered container
+  swipeSectionsScrollHintLayer.style.left = `${centerXPercent}%`;
+  swipeSectionsScrollHintLayer.style.top = `${bottomPositionPercent}%`;
   swipeSectionsScrollHintLayer.style.bottom = '';
-  swipeSectionsScrollHintLayer.style.transform = `translateX(-50%) translateY(-100%) scale(${scale})`;
-  swipeSectionsScrollHintLayer.style.transformOrigin = 'top center';
+  
+  // Apply jump animation as pixel offset within the percentage-based positioning
+  const jumpTransform = jumpOffsetPx !== 0 ? ` translateY(${-jumpOffsetPx}px)` : '';
+  swipeSectionsScrollHintLayer.style.transform = `translate(-50%, -50%) scale(${scale})${jumpTransform}`;
+  swipeSectionsScrollHintLayer.style.transformOrigin = 'center center';
   swipeSectionsScrollHintLayer.style.width = `${widthPx}px`;
   swipeSectionsScrollHintLayer.style.height = 'auto';
   swipeSectionsScrollHintLayer.style.display = 'block';
@@ -16749,10 +17007,11 @@ function syncSwipeSectionsScrollHintLayer(nowMs = performance.now()) {
   // Debug rect
   const debugEnabled = scrollHintConfig.debug && scrollHintConfig.debug.enabled === true;
   if (debugEnabled) {
-    swipeSectionsScrollHintDebugRect.style.left = `${centerX}px`;
-    swipeSectionsScrollHintDebugRect.style.top = `${videoBottom - extraOffsetY - jumpOffsetPx - scaledHeightPx}px`;
+    swipeSectionsScrollHintDebugRect.style.left = `${centerXPercent}%`;
+    swipeSectionsScrollHintDebugRect.style.top = `${bottomPositionPercent}%`;
     swipeSectionsScrollHintDebugRect.style.bottom = '';
-    swipeSectionsScrollHintDebugRect.style.transform = `translateX(-50%)`;
+    const jumpTransformDebug = jumpOffsetPx !== 0 ? ` translateY(${-jumpOffsetPx}px)` : '';
+    swipeSectionsScrollHintDebugRect.style.transform = `translate(-50%, -50%)${jumpTransformDebug}`;
     swipeSectionsScrollHintDebugRect.style.width = `${scaledWidthPx}px`;
     swipeSectionsScrollHintDebugRect.style.height = `${scaledHeightPx}px`;
     swipeSectionsScrollHintDebugRect.style.display = 'block';
@@ -18494,11 +18753,17 @@ function applyViewportLayoutMode(mode, options = {}) {
   ensureScrollStageLayoutStructure();
   ensureRootBackgroundLayoutStructure();
   applyBodyFixedLayoutModeIfNeeded();
-  const previousFloralScale = Number.isFinite(STATE.lastFloralResponsiveScaleFactor)
-    ? STATE.lastFloralResponsiveScaleFactor
-    : null;
+  const previousFoliageScale = Number.isFinite(STATE.lastAppliedGlobalFoliageScale)
+    ? STATE.lastAppliedGlobalFoliageScale
+    : resolveResponsiveFoliageScale();
   resizeCanvasToViewport();
-  refreshHeroVideoReferenceRect();
+  refreshHeroVideoReferenceRect({ force: true });
+  syncSeedPacketToCurrentHeroRect({
+    reason: 'viewport-layout-resync',
+    forceRectRefresh: false,
+    thresholdPx: 0.5,
+    preserveActiveGrowth: true,
+  });
   applyHeroVideoWiggleAnchor(resolveHeroPlaybackGateConfig());
   if (STATE.flowerSystem && typeof STATE.flowerSystem.setPixiSurfaces === 'function') {
     STATE.flowerSystem.setPixiSurfaces({
@@ -18508,8 +18773,8 @@ function applyViewportLayoutMode(mode, options = {}) {
   }
   invalidateCompletedBranchLayer();
   resetOverlayWrapPromotionState();
-  const nextFloralScale = resolveFloralResponsiveScaleFactor();
-  if (previousFloralScale === null || Math.abs(nextFloralScale - previousFloralScale) > 1e-6) {
+  const nextFoliageScale = resolveResponsiveFoliageScale();
+  if (!Number.isFinite(previousFoliageScale) || Math.abs(nextFoliageScale - previousFoliageScale) > 1e-6) {
     refreshBranchEndpointsAndFlowerSystem();
   }
   renderScene({ skipAutoStart: true });
@@ -20516,7 +20781,9 @@ function onResize() {
 }
 
 function onHeroVideoMetadataLoaded() {
-  STATE.foliageLoad.videoReady = true;
+  if (STATE.foliageLoad) {
+    STATE.foliageLoad.videoReady = true;
+  }
   refreshHeroVideoReferenceRect({ force: true });
   applyHeroVideoWiggleAnchor(resolveHeroPlaybackGateConfig());
   renderScene({ skipAutoStart: true });

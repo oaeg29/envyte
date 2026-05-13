@@ -386,7 +386,7 @@
       delayAfterIntroPauseMs: 0,
     },
     openButton: {
-      centerXRatio: 0.498, // 49.8% of rendered video width
+      centerXRatio: 0.5, // 49.8% of rendered video width
       centerYRatio: 0.7497135, // 78.97135% of rendered video height
       diameterRatio: 0.092, // 6.2% of rendered video size (min(width,height))
       hitMarginPercentOfButtonSize: 200, // 0..100 extra size percentage
@@ -775,13 +775,14 @@
     rsvp: {
       enabled: true,
       sectionId: 'section-3',
+      zIndex: 5000, // Above video (z-index: 1) but below upper canvas (z-index: 10000)
       initialState: {
         name: '',
         response: null, // yes | no | null
       },
       nameField: {
         offsetXVideoHeightRatio: 0,
-        offsetYVideoHeightRatio: -0.11,
+        offsetYVideoHeightRatio: 0,
         widthVideoHeightRatio: 0.36,
         heightVideoHeightRatio: 0.088,
         fontFamily: 'ZeinaRsvpScript',
@@ -813,14 +814,14 @@
         spriteCols: 2,
         spriteRows: 2,
         yes: {
-          offsetXVideoHeightRatio: -0.081,
-          offsetYVideoHeightRatio: 0.098,
+          offsetXVideoHeightRatio: 0,
+          offsetYVideoHeightRatio: 0,
           widthVideoHeightRatio: 0.11,
           heightVideoHeightRatio: 0.11,
         },
         no: {
-          offsetXVideoHeightRatio: 0.081,
-          offsetYVideoHeightRatio: 0.098,
+          offsetXVideoHeightRatio: 0,
+          offsetYVideoHeightRatio: 0,
           widthVideoHeightRatio: 0.11,
           heightVideoHeightRatio: 0.11,
         },
@@ -864,6 +865,15 @@
         },
       },
     },
+  },
+
+  foliageExportViewportHeight: 949,
+
+  foliageCompositionScale: {
+    enabled: true,
+    mode: 'fixedReference949', // fixedReference949 | dynamicHeroVsInitialHero
+    fixedReferenceHeightPx: 949,
+    clamp: [0.25, 4],
   },
 
   floralResponsiveScale: {
