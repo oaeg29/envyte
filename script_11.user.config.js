@@ -1297,6 +1297,22 @@
       ],
       playbackRate: 0.75,
       playbackAdvanceTimeoutMs: 360, // when using video renderer, wait this long for currentTime to advance before showing sparkle
+      startup: {
+        readyWaitMs: 90, // cold-start media readiness wait budget
+        sameSourceReadyWaitMs: 0, // same-source fast path budget (0 = don't block)
+        seekWaitMs: 70, // seek settle wait after currentTime reset
+        fastPathSameSourceEnabled: true,
+        instantBudgetMs: 120, // threshold used by telemetry for "instant" startup
+      },
+      warmMode: {
+        policy: 'adaptive', // off | adaptive | alwaysAfterFirstGesture
+        adaptiveMissThreshold: 2,
+        adaptiveWindowMs: 4000,
+        disableAfterSuccessCount: 4,
+        probeAdvanceTimeoutMs: 140,
+        probeCooldownMs: 1400,
+        probeWarmTtlMs: 5000,
+      },
       fps: 30,
       blendMode: 'normal',
       widthVideoHeightRatio: 0.27,

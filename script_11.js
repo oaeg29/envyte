@@ -4050,6 +4050,15 @@ const STATE = {
     lastBackLayerVisible: false,
     lastFrontLayerVisible: false,
     lastEffectiveRenderer: '',
+    lastPreloadSignature: '',
+    userGestureUnlocked: false,
+    adaptiveWarmModeActive: false,
+    startupWindowStartMs: 0,
+    startupMissCount: 0,
+    startupSuccessStreak: 0,
+    lastStartupOutcome: '',
+    lastStartupLatencyMs: Number.NaN,
+    pendingWarmProbeCount: 0,
   },
   swipeSections: {
     activeSectionIndex: -1,
@@ -23983,6 +23992,8 @@ function resolveJumpSparkleConfig(flowersConfig = CONFIG.flowers || {}) {
   const safeConfig = isPlainObjectLiteral(safeFlowersConfig.jumpSparkle)
     ? safeFlowersConfig.jumpSparkle
     : {};
+  const startupRaw = isPlainObjectLiteral(safeConfig.startup) ? safeConfig.startup : {};
+  const warmModeRaw = isPlainObjectLiteral(safeConfig.warmMode) ? safeConfig.warmMode : {};
   const debugRaw = isPlainObjectLiteral(safeConfig.debug) ? safeConfig.debug : {};
   const videoBlendPlateRaw = isPlainObjectLiteral(debugRaw.videoBlendPlate) ? debugRaw.videoBlendPlate : {};
   const variantsRaw = Array.isArray(safeConfig.variants) ? safeConfig.variants : ['./sparkle.001'];
@@ -24039,6 +24050,13 @@ function resolveJumpSparkleConfig(flowersConfig = CONFIG.flowers || {}) {
     effectiveRenderer = 'canvas';
     iosRendererSafetyApplied = true;
   }
+  const warmModePolicy = (
+    warmModeRaw.policy === 'off'
+    || warmModeRaw.policy === 'adaptive'
+    || warmModeRaw.policy === 'alwaysAfterFirstGesture'
+  )
+    ? warmModeRaw.policy
+    : 'adaptive';
   const rendererSwitchForced = effectiveRenderer !== configuredRenderer;
   const debugConfig = {
     enabled: debugRaw.enabled === true,
@@ -24077,6 +24095,19 @@ function resolveJumpSparkleConfig(flowersConfig = CONFIG.flowers || {}) {
     playbackAdvanceTimeoutMs: Number.isFinite(Number(safeConfig.playbackAdvanceTimeoutMs))
       ? Math.max(0, Number(safeConfig.playbackAdvanceTimeoutMs))
       : 360,
+    startupReadyWaitMs: Number.isFinite(Number(startupRaw.readyWaitMs))
+      ? Math.max(0, Number(startupRaw.readyWaitMs))
+      : 90,
+    startupSameSourceReadyWaitMs: Number.isFinite(Number(startupRaw.sameSourceReadyWaitMs))
+      ? Math.max(0, Number(startupRaw.sameSourceReadyWaitMs))
+      : 0,
+    startupSeekWaitMs: Number.isFinite(Number(startupRaw.seekWaitMs))
+      ? Math.max(0, Number(startupRaw.seekWaitMs))
+      : 70,
+    startupFastPathSameSourceEnabled: startupRaw.fastPathSameSourceEnabled !== false,
+    startupInstantBudgetMs: Number.isFinite(Number(startupRaw.instantBudgetMs))
+      ? Math.max(0, Number(startupRaw.instantBudgetMs))
+      : 120,
     fps: Number.isFinite(Number(safeConfig.fps))
       ? Math.max(1, Number(safeConfig.fps))
       : 30,
@@ -24135,6 +24166,27 @@ function resolveJumpSparkleConfig(flowersConfig = CONFIG.flowers || {}) {
           ? Math.max(0, Number(weightedRaw.proximityWindowVideoHeightRatio))
           : 0.045,
       },
+    },
+    warmMode: {
+      policy: warmModePolicy,
+      adaptiveMissThreshold: Number.isFinite(Number(warmModeRaw.adaptiveMissThreshold))
+        ? Math.max(1, Math.floor(Number(warmModeRaw.adaptiveMissThreshold)))
+        : 2,
+      adaptiveWindowMs: Number.isFinite(Number(warmModeRaw.adaptiveWindowMs))
+        ? Math.max(250, Number(warmModeRaw.adaptiveWindowMs))
+        : 4000,
+      disableAfterSuccessCount: Number.isFinite(Number(warmModeRaw.disableAfterSuccessCount))
+        ? Math.max(1, Math.floor(Number(warmModeRaw.disableAfterSuccessCount)))
+        : 4,
+      probeAdvanceTimeoutMs: Number.isFinite(Number(warmModeRaw.probeAdvanceTimeoutMs))
+        ? Math.max(30, Number(warmModeRaw.probeAdvanceTimeoutMs))
+        : 140,
+      probeCooldownMs: Number.isFinite(Number(warmModeRaw.probeCooldownMs))
+        ? Math.max(0, Number(warmModeRaw.probeCooldownMs))
+        : 1400,
+      probeWarmTtlMs: Number.isFinite(Number(warmModeRaw.probeWarmTtlMs))
+        ? Math.max(100, Number(warmModeRaw.probeWarmTtlMs))
+        : 5000,
     },
     debug: debugConfig,
   };
@@ -24326,6 +24378,15 @@ function getJumpSparkleRuntimeState() {
       lastBackLayerVisible: false,
       lastFrontLayerVisible: false,
       lastEffectiveRenderer: '',
+      lastPreloadSignature: '',
+      userGestureUnlocked: false,
+      adaptiveWarmModeActive: false,
+      startupWindowStartMs: 0,
+      startupMissCount: 0,
+      startupSuccessStreak: 0,
+      lastStartupOutcome: '',
+      lastStartupLatencyMs: Number.NaN,
+      pendingWarmProbeCount: 0,
     };
   }
   if (!Array.isArray(STATE.jumpSparkle.instances)) {
@@ -24349,7 +24410,202 @@ function getJumpSparkleRuntimeState() {
   if (typeof STATE.jumpSparkle.lastEffectiveRenderer !== 'string') {
     STATE.jumpSparkle.lastEffectiveRenderer = '';
   }
+  if (typeof STATE.jumpSparkle.lastPreloadSignature !== 'string') {
+    STATE.jumpSparkle.lastPreloadSignature = '';
+  }
+  if (typeof STATE.jumpSparkle.userGestureUnlocked !== 'boolean') {
+    STATE.jumpSparkle.userGestureUnlocked = false;
+  }
+  if (typeof STATE.jumpSparkle.adaptiveWarmModeActive !== 'boolean') {
+    STATE.jumpSparkle.adaptiveWarmModeActive = false;
+  }
+  if (!Number.isFinite(Number(STATE.jumpSparkle.startupWindowStartMs))) {
+    STATE.jumpSparkle.startupWindowStartMs = 0;
+  }
+  if (!Number.isFinite(Number(STATE.jumpSparkle.startupMissCount))) {
+    STATE.jumpSparkle.startupMissCount = 0;
+  }
+  if (!Number.isFinite(Number(STATE.jumpSparkle.startupSuccessStreak))) {
+    STATE.jumpSparkle.startupSuccessStreak = 0;
+  }
+  if (typeof STATE.jumpSparkle.lastStartupOutcome !== 'string') {
+    STATE.jumpSparkle.lastStartupOutcome = '';
+  }
+  if (!Number.isFinite(Number(STATE.jumpSparkle.lastStartupLatencyMs))) {
+    STATE.jumpSparkle.lastStartupLatencyMs = Number.NaN;
+  }
+  if (!Number.isFinite(Number(STATE.jumpSparkle.pendingWarmProbeCount))) {
+    STATE.jumpSparkle.pendingWarmProbeCount = 0;
+  }
   return STATE.jumpSparkle;
+}
+
+function resolveJumpSparkleCurrentSourcePath(videoEl) {
+  if (!videoEl) {
+    return '';
+  }
+  const fromDataPath = String(videoEl.getAttribute('data-jump-sparkle-source-path') || '').trim();
+  if (fromDataPath.length > 0) {
+    return fromDataPath;
+  }
+  return String(videoEl.currentSrc || videoEl.src || '').trim();
+}
+
+function isJumpSparkleWarmModeEnabled(sparkleConfig, runtime = getJumpSparkleRuntimeState()) {
+  const warmModeConfig = sparkleConfig && sparkleConfig.warmMode ? sparkleConfig.warmMode : {};
+  const policy = warmModeConfig.policy;
+  if (policy === 'off') {
+    return false;
+  }
+  if (runtime.userGestureUnlocked !== true) {
+    return false;
+  }
+  if (policy === 'alwaysAfterFirstGesture') {
+    return true;
+  }
+  if (policy === 'adaptive') {
+    return runtime.adaptiveWarmModeActive === true;
+  }
+  return false;
+}
+
+function recordJumpSparkleStartupOutcome(instance, sparkleConfig, outcome, details = {}) {
+  const runtime = getJumpSparkleRuntimeState();
+  const warmModeConfig = sparkleConfig && sparkleConfig.warmMode ? sparkleConfig.warmMode : {};
+  const nowMs = Number.isFinite(Number(details.nowMs)) ? Number(details.nowMs) : performance.now();
+  const startupLatencyMs = Number.isFinite(Number(details.startupLatencyMs))
+    ? Math.max(0, Number(details.startupLatencyMs))
+    : Number.NaN;
+  runtime.lastStartupOutcome = typeof outcome === 'string' ? outcome : '';
+  runtime.lastStartupLatencyMs = startupLatencyMs;
+
+  if (warmModeConfig.policy === 'adaptive') {
+    const windowMs = Number.isFinite(Number(warmModeConfig.adaptiveWindowMs))
+      ? Math.max(250, Number(warmModeConfig.adaptiveWindowMs))
+      : 4000;
+    const missThreshold = Number.isFinite(Number(warmModeConfig.adaptiveMissThreshold))
+      ? Math.max(1, Math.floor(Number(warmModeConfig.adaptiveMissThreshold)))
+      : 2;
+    const disableAfterSuccessCount = Number.isFinite(Number(warmModeConfig.disableAfterSuccessCount))
+      ? Math.max(1, Math.floor(Number(warmModeConfig.disableAfterSuccessCount)))
+      : 4;
+    const elapsedSinceWindowStart = Number.isFinite(Number(runtime.startupWindowStartMs))
+      ? Math.max(0, nowMs - Number(runtime.startupWindowStartMs))
+      : Number.POSITIVE_INFINITY;
+    if (!Number.isFinite(elapsedSinceWindowStart) || elapsedSinceWindowStart > windowMs) {
+      runtime.startupWindowStartMs = nowMs;
+      runtime.startupMissCount = 0;
+      runtime.startupSuccessStreak = 0;
+    }
+    const isSuccessOutcome = outcome === 'instant' || outcome === 'warm_hit';
+    if (isSuccessOutcome) {
+      runtime.startupSuccessStreak = Math.max(0, Number(runtime.startupSuccessStreak) || 0) + 1;
+      runtime.startupMissCount = Math.max(0, (Number(runtime.startupMissCount) || 0) - 1);
+      if (runtime.adaptiveWarmModeActive === true && runtime.startupSuccessStreak >= disableAfterSuccessCount) {
+        runtime.adaptiveWarmModeActive = false;
+      }
+    } else {
+      runtime.startupSuccessStreak = 0;
+      runtime.startupMissCount = Math.max(0, Number(runtime.startupMissCount) || 0) + 1;
+      if (runtime.startupMissCount >= missThreshold) {
+        runtime.adaptiveWarmModeActive = true;
+      }
+    }
+  }
+
+  logJumpSparkleDebug('startup_outcome', sparkleConfig, {
+    instanceId: instance && Number.isFinite(instance.id) ? instance.id : null,
+    outcome,
+    startupLatencyMs,
+    mediaState: instance && typeof instance.mediaState === 'string' ? instance.mediaState : '',
+    sourcePath: instance && instance.videoEl ? resolveJumpSparkleCurrentSourcePath(instance.videoEl) : '',
+    adaptiveWarmModeActive: runtime.adaptiveWarmModeActive === true,
+    startupMissCount: Number(runtime.startupMissCount) || 0,
+    startupSuccessStreak: Number(runtime.startupSuccessStreak) || 0,
+    pendingWarmProbeCount: Number(runtime.pendingWarmProbeCount) || 0,
+  }, {
+    nowMs,
+    throttleKey: `startup_outcome:${outcome}`,
+  });
+}
+
+function maybeKickJumpSparkleWarmProbe(instance, sparkleConfig, reason = 'unknown') {
+  if (!instance || !instance.videoEl || instance.active === true) {
+    return;
+  }
+  const runtime = getJumpSparkleRuntimeState();
+  if (!isJumpSparkleWarmModeEnabled(sparkleConfig, runtime)) {
+    return;
+  }
+  const warmModeConfig = sparkleConfig && sparkleConfig.warmMode ? sparkleConfig.warmMode : {};
+  const nowMs = performance.now();
+  const probeCooldownMs = Number.isFinite(Number(warmModeConfig.probeCooldownMs))
+    ? Math.max(0, Number(warmModeConfig.probeCooldownMs))
+    : 1400;
+  const lastProbeAtMs = Number(instance.lastWarmProbeAtMs);
+  if (Number.isFinite(lastProbeAtMs) && (nowMs - lastProbeAtMs) < probeCooldownMs) {
+    return;
+  }
+  const sourcePath = resolveJumpSparkleCurrentSourcePath(instance.videoEl);
+  if (sourcePath.length <= 0) {
+    return;
+  }
+  if (instance.warmProbeInFlight === true) {
+    return;
+  }
+
+  instance.warmProbeInFlight = true;
+  instance.lastWarmProbeAtMs = nowMs;
+  runtime.pendingWarmProbeCount = Math.max(0, Number(runtime.pendingWarmProbeCount) || 0) + 1;
+  const probeTimeoutMs = Number.isFinite(Number(warmModeConfig.probeAdvanceTimeoutMs))
+    ? Math.max(30, Number(warmModeConfig.probeAdvanceTimeoutMs))
+    : 140;
+  const sourcePathAtProbeStart = sourcePath;
+  Promise.resolve()
+    .then(async () => {
+      try {
+        const playPromise = instance.videoEl.play();
+        if (playPromise && typeof playPromise.then === 'function') {
+          await playPromise;
+        }
+      } catch (_error) {
+        return false;
+      }
+      const advanced = await waitForJumpSparklePlaybackAdvance(instance.videoEl, probeTimeoutMs);
+      try {
+        instance.videoEl.pause();
+      } catch (_error) {
+        // Ignore pause errors for warm probe.
+      }
+      try {
+        instance.videoEl.currentTime = 0;
+      } catch (_error) {
+        // Ignore seek errors for warm probe.
+      }
+      return advanced;
+    })
+    .then((advanced) => {
+      if (advanced === true) {
+        instance.lastWarmProbeSuccessMs = performance.now();
+        instance.lastReadySourcePath = sourcePathAtProbeStart;
+      }
+      logJumpSparkleDebug('warm_probe_result', sparkleConfig, {
+        instanceId: instance.id,
+        reason,
+        advanced: advanced === true,
+        sourcePath: sourcePathAtProbeStart,
+      }, {
+        nowMs: performance.now(),
+        throttleKey: `warm_probe_result:${instance.id}:${reason}`,
+      });
+    })
+    .catch(() => {
+      // Ignore warm probe failures; adaptive mode will keep sampling.
+    })
+    .finally(() => {
+      instance.warmProbeInFlight = false;
+      runtime.pendingWarmProbeCount = Math.max(0, (Number(runtime.pendingWarmProbeCount) || 1) - 1);
+    });
 }
 
 function syncJumpSparkleBlendPlateState(sparkleConfig, backVisible, frontVisible) {
@@ -24582,19 +24838,54 @@ function waitForJumpSparklePlaybackAdvance(videoEl, timeoutMs = 360) {
   });
 }
 
-async function primeJumpSparkleInstanceAtStartFrame(instance) {
+async function primeJumpSparkleInstanceAtStartFrame(
+  instance,
+  sparkleConfig = resolveJumpSparkleConfig(),
+  options = {},
+) {
   if (!instance || !instance.videoEl || instance.active !== true) {
     return false;
   }
   const activationNonce = Number(instance.activationNonce);
   const videoEl = instance.videoEl;
+  const sourcePath = typeof options.sourcePath === 'string' ? options.sourcePath.trim() : '';
+  const currentSourcePath = resolveJumpSparkleCurrentSourcePath(videoEl);
+  const sameSource = sourcePath.length > 0 && currentSourcePath === sourcePath;
+  const fastPathAllowed = sparkleConfig.startupFastPathSameSourceEnabled === true && sameSource;
   instance.mediaState = 'loading';
   instance.primed = false;
   videoEl.style.display = 'none';
   videoEl.style.visibility = 'hidden';
 
+  const isWarmReady = (
+    fastPathAllowed
+    && typeof instance.lastReadySourcePath === 'string'
+    && instance.lastReadySourcePath === sourcePath
+    && videoEl.readyState >= 1
+  );
+  if (isWarmReady) {
+    try {
+      videoEl.pause();
+    } catch (_error) {
+      // Ignore pause failures during fast-path priming.
+    }
+    try {
+      videoEl.currentTime = 0;
+    } catch (_error) {
+      // Ignore seek failures for fast-path priming.
+    }
+    instance.primed = true;
+    instance.mediaState = 'primed';
+    return true;
+  }
+
   if (videoEl.readyState < 2) {
-    await waitForJumpSparkleVideoEvent(videoEl, ['loadeddata', 'canplay'], 900);
+    const readyWaitMs = sameSource
+      ? sparkleConfig.startupSameSourceReadyWaitMs
+      : sparkleConfig.startupReadyWaitMs;
+    if (readyWaitMs > 0) {
+      await waitForJumpSparkleVideoEvent(videoEl, ['loadeddata', 'canplay'], readyWaitMs);
+    }
   }
   if (instance.active !== true || Number(instance.activationNonce) !== activationNonce) {
     return false;
@@ -24613,13 +24904,18 @@ async function primeJumpSparkleInstanceAtStartFrame(instance) {
   } catch (_error) {
     // iOS can reject early seeks; we'll still wait and re-check state.
   }
-  await waitForJumpSparkleVideoEvent(videoEl, ['seeked', 'timeupdate', 'loadeddata'], 500);
+  if (sparkleConfig.startupSeekWaitMs > 0) {
+    await waitForJumpSparkleVideoEvent(videoEl, ['seeked', 'timeupdate', 'loadeddata'], sparkleConfig.startupSeekWaitMs);
+  }
   if (instance.active !== true || Number(instance.activationNonce) !== activationNonce) {
     return false;
   }
-  if (videoEl.readyState < 2) {
+  if (videoEl.readyState < 1) {
     instance.mediaState = 'failed';
     return false;
+  }
+  if (sourcePath.length > 0) {
+    instance.lastReadySourcePath = sourcePath;
   }
   instance.primed = true;
   instance.mediaState = 'primed';
@@ -24628,10 +24924,11 @@ async function primeJumpSparkleInstanceAtStartFrame(instance) {
 
 async function runJumpSparkleInstancePlayback(instance, sparkleConfig) {
   if (!instance || !instance.videoEl || !sparkleConfig || sparkleConfig.enabled !== true) {
-    return false;
+    return { success: false, outcome: 'invalid' };
   }
   const activationNonce = Number(instance.activationNonce);
   const suppressAlternateFallback = isLikelyIOSDevice();
+  const runtime = getJumpSparkleRuntimeState();
   const sources = [instance.preferredPath];
   if (
     suppressAlternateFallback !== true
@@ -24644,13 +24941,13 @@ async function runJumpSparkleInstancePlayback(instance, sparkleConfig) {
   for (let i = 0; i < sources.length; i += 1) {
     const sourcePath = sources[i];
     if (!sourcePath || instance.active !== true || Number(instance.activationNonce) !== activationNonce) {
-      return false;
+      return { success: false, outcome: 'canceled' };
     }
     if (!setJumpSparkleInstanceSource(instance, sourcePath, { forceReload: false })) {
       continue;
     }
     instance.fallbackAttempted = i > 0;
-    const primed = await primeJumpSparkleInstanceAtStartFrame(instance);
+    const primed = await primeJumpSparkleInstanceAtStartFrame(instance, sparkleConfig, { sourcePath });
     if (!primed) {
       continue;
     }
@@ -24660,7 +24957,7 @@ async function runJumpSparkleInstancePlayback(instance, sparkleConfig) {
         await playPromise;
       }
       if (instance.active !== true || Number(instance.activationNonce) !== activationNonce) {
-        return false;
+        return { success: false, outcome: 'canceled' };
       }
       const playbackAdvanced = await waitForJumpSparklePlaybackAdvance(
         instance.videoEl,
@@ -24670,9 +24967,36 @@ async function runJumpSparkleInstancePlayback(instance, sparkleConfig) {
         instance.mediaState = 'failed';
         continue;
       }
+      const nowMs = performance.now();
+      const startupLatencyMs = Number.isFinite(Number(instance.startedAtMs))
+        ? Math.max(0, nowMs - Number(instance.startedAtMs))
+        : Number.NaN;
+      const warmTtlMs = Number.isFinite(Number(sparkleConfig.warmMode && sparkleConfig.warmMode.probeWarmTtlMs))
+        ? Math.max(100, Number(sparkleConfig.warmMode.probeWarmTtlMs))
+        : 5000;
+      const warmHit = (
+        Number.isFinite(Number(instance.lastWarmProbeSuccessMs))
+        && (nowMs - Number(instance.lastWarmProbeSuccessMs)) <= warmTtlMs
+      );
+      const outcome = (
+        Number.isFinite(startupLatencyMs)
+        && startupLatencyMs <= sparkleConfig.startupInstantBudgetMs
+      )
+        ? (warmHit ? 'warm_hit' : 'instant')
+        : 'late_start';
       instance.mediaState = 'playing';
+      instance.lastReadySourcePath = sourcePath;
+      instance.lastPlaybackAdvancedAtMs = nowMs;
+      recordJumpSparkleStartupOutcome(instance, sparkleConfig, outcome, {
+        nowMs,
+        startupLatencyMs,
+      });
       syncJumpSparkleLayer(performance.now());
-      return true;
+      return {
+        success: true,
+        outcome,
+        startupLatencyMs,
+      };
     } catch (_error) {
       instance.mediaState = 'failed';
       continue;
@@ -24681,7 +25005,16 @@ async function runJumpSparkleInstancePlayback(instance, sparkleConfig) {
   if (instance.active === true && Number(instance.activationNonce) === activationNonce) {
     deactivateJumpSparkleInstance(instance);
   }
-  return false;
+  recordJumpSparkleStartupOutcome(instance, sparkleConfig, 'failed_start', {
+    nowMs: performance.now(),
+    startupLatencyMs: Number.isFinite(Number(instance.startedAtMs))
+      ? Math.max(0, performance.now() - Number(instance.startedAtMs))
+      : Number.NaN,
+  });
+  if (isJumpSparkleWarmModeEnabled(sparkleConfig, runtime)) {
+    maybeKickJumpSparkleWarmProbe(instance, sparkleConfig, 'failed_start');
+  }
+  return { success: false, outcome: 'failed_start' };
 }
 
 function moveJumpSparkleInstanceToLayer(instance, layerName) {
@@ -24725,6 +25058,11 @@ function createJumpSparkleInstance() {
     renderHeightPx: 0,
     debugFirstCanvasFrameLogged: false,
     debugFirstVideoFrameLogged: false,
+    lastReadySourcePath: '',
+    lastPlaybackAdvancedAtMs: 0,
+    lastWarmProbeAtMs: 0,
+    lastWarmProbeSuccessMs: 0,
+    warmProbeInFlight: false,
   };
   videoEl.id = `jumpSparkleVideo-${instanceId}`;
   videoEl.className = 'jumpSparkleVideo';
@@ -24782,7 +25120,8 @@ function ensureJumpSparkleInstancePool(sparkleConfig) {
     }
   }
   const variants = Array.isArray(safeConfig.variants) ? safeConfig.variants : [];
-  if (variants.length > 0) {
+  const preloadSignature = `${safeConfig.effectiveRenderer}|${safeConfig.triggerMode}|${variants.join('||')}`;
+  if (variants.length > 0 && runtime.lastPreloadSignature !== preloadSignature) {
     for (let i = 0; i < variants.length; i += 1) {
       const variantPaths = resolveJumpSparkleVariantPaths(variants[i]);
       if (!variantPaths || !variantPaths.preferredPath) {
@@ -24794,6 +25133,17 @@ function ensureJumpSparkleInstancePool(sparkleConfig) {
         continue;
       }
       setJumpSparkleInstanceSource(preloadInstance, variantPaths.preferredPath, { forceReload: false });
+      maybeKickJumpSparkleWarmProbe(preloadInstance, safeConfig, 'preload_signature_refresh');
+    }
+    runtime.lastPreloadSignature = preloadSignature;
+  } else if (variants.length > 0 && isJumpSparkleWarmModeEnabled(safeConfig, runtime)) {
+    for (let i = 0; i < runtime.instances.length; i += 1) {
+      const idleInstance = runtime.instances[i];
+      if (!idleInstance || idleInstance.active === true) {
+        continue;
+      }
+      maybeKickJumpSparkleWarmProbe(idleInstance, safeConfig, 'warm_mode_idle_tick');
+      break;
     }
   }
   return runtime.instances;
@@ -25198,8 +25548,8 @@ function activateJumpSparkleInstance(target, sparkleConfig, nowMs = performance.
   });
   syncJumpSparkleLayer(nowMs);
   runJumpSparkleInstancePlayback(instance, sparkleConfig)
-    .then((success) => {
-      if (!success) {
+    .then((result) => {
+      if (!result || result.success !== true) {
         return;
       }
       if (instance.fallbackAttempted === true) {
@@ -25227,6 +25577,10 @@ function activateJumpSparkleInstance(target, sparkleConfig, nowMs = performance.
 
 function triggerJumpSparkleFromJumpResult(jumpResult, event, flowersConfig = CONFIG.flowers || {}) {
   const sparkleConfig = resolveJumpSparkleConfig(flowersConfig);
+  const runtime = getJumpSparkleRuntimeState();
+  if (runtime.userGestureUnlocked !== true) {
+    runtime.userGestureUnlocked = true;
+  }
   if (sparkleConfig.enabled !== true) {
     return false;
   }
@@ -25509,6 +25863,13 @@ function verifyJumpSparkleState() {
     forceCanvasRendererOnIOS: sparkleConfig.forceCanvasRendererOnIOS !== false,
     iosRendererSafetyApplied: sparkleConfig.iosRendererSafetyApplied === true,
     sourceFamily: USE_APPLE_VIDEO_SOURCE_FAMILY ? 'apple-mov-preferred' : 'webm-preferred',
+    userGestureUnlocked: runtime.userGestureUnlocked === true,
+    adaptiveWarmModeActive: runtime.adaptiveWarmModeActive === true,
+    startupMissCount: Number(runtime.startupMissCount) || 0,
+    startupSuccessStreak: Number(runtime.startupSuccessStreak) || 0,
+    lastStartupOutcome: typeof runtime.lastStartupOutcome === 'string' ? runtime.lastStartupOutcome : '',
+    lastStartupLatencyMs: Number(runtime.lastStartupLatencyMs),
+    pendingWarmProbeCount: Number(runtime.pendingWarmProbeCount) || 0,
     instanceCount: instanceSnapshots.length,
     instances: instanceSnapshots,
   };

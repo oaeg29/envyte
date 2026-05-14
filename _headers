@@ -1,0 +1,19 @@
+/*.webm
+  Content-Type: video/webm
+  Accept-Ranges: bytes
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.mov
+  Content-Type: video/quicktime
+  Accept-Ranges: bytes
+  Cache-Control: public, max-age=31536000, immutable
+
+/videos/*.webm
+  Content-Type: video/webm
+  Accept-Ranges: bytes
+  Cache-Control: public, max-age=31536000, immutable
+
+/videos/*.mov
+  Content-Type: video/quicktime
+  Accept-Ranges: bytes
+  Cache-Control: public, max-age=31536000, immutable
