@@ -820,7 +820,7 @@
         centerOverlayOffsetYVideoHeightRatio: -0.0520833333,
         sectionStyling: {
           background: {
-            color: 'rgb(165, 145, 131)',
+            color: 'rgb(223, 205, 193)',
             media: {
               type: 'image',
               path: './section_3_bg.png',
@@ -1219,8 +1219,8 @@
     // Maps swipe section IDs -> top bar/body tint color.
     bySectionId: {
       'section-1': 'rgb(255, 255, 255)',
-      'section-2': 'rgb(185, 210, 236)',
-      'section-3': 'rgb(193, 160, 133)',
+      'section-2': 'rgb(137, 184, 227)',
+      'section-3': 'rgb(222, 192, 168)',
       'section-4': 'rgb(7, 10, 22)',
     },
     // Optional override for meta[name="theme-color"] syncing. Null/omitted keeps iOS default behavior.
@@ -1298,7 +1298,7 @@
       playbackRate: 0.75,
       playbackAdvanceTimeoutMs: 360, // when using video renderer, wait this long for currentTime to advance before showing sparkle
       fps: 30,
-      blendMode: 'screen',
+      blendMode: 'normal',
       widthVideoHeightRatio: 0.27,
       offsetXVideoHeightRatio: 0,
       offsetYVideoHeightRatio: 0.05,
