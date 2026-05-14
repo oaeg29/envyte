@@ -283,6 +283,7 @@ const HERO_VIDEO_SOURCE_RUNTIME = {
 };
 let sectionStylingTopSlotPositionModeOverride = '';
 let sectionStylingTopSlotPositionModeApplied = '';
+let sectionStylingFeatureWasEnabledLastSync = false;
 let USE_APPLE_VIDEO_SOURCE_FAMILY = false;
 const FOLIAGE_VIDEO_SOURCE_RUNTIME = {
   lower: {
@@ -5773,8 +5774,38 @@ function clearSectionStylingBaseBackgroundSwapTimer(runtimeState = ensureSection
   runtimeState.swapTimerId = null;
 }
 
+function clearSectionStylingBaseBackgroundVisuals(options = {}) {
+  const safeOptions = isPlainObjectLiteral(options) ? options : {};
+  const runtimeState = ensureSectionStylingBaseBackgroundRuntimeState();
+  clearSectionStylingBaseBackgroundSwapTimer(runtimeState);
+  if (safeOptions.invalidatePendingAsync !== false) {
+    runtimeState.swapToken += 1;
+  }
+  if (sectionStylingBackgroundBaseLayer && sectionStylingBackgroundBaseLayer.style) {
+    sectionStylingBackgroundBaseLayer.style.backgroundColor = '';
+    sectionStylingBackgroundBaseLayer.style.backgroundImage = '';
+  }
+  if (sectionStylingBackgroundBaseImageLayer && sectionStylingBackgroundBaseImageLayer.style) {
+    sectionStylingBackgroundBaseImageLayer.style.opacity = '0';
+    sectionStylingBackgroundBaseImageLayer.style.visibility = 'hidden';
+    sectionStylingBackgroundBaseImageLayer.style.backgroundImage = 'none';
+  }
+  runtimeState.imagePath = '';
+  runtimeState.imageOpacity = 0;
+  return runtimeState;
+}
+
 function setSectionStylingBaseBackground(options = {}) {
   const runtimeState = ensureSectionStylingBaseBackgroundRuntimeState();
+  const swipeConfig = resolveSwipeSectionsConfig();
+  if (!isSectionStylingFeatureEnabled(swipeConfig)) {
+    clearSectionStylingBaseBackgroundVisuals();
+    return {
+      imagePath: runtimeState.imagePath,
+      imageOpacity: runtimeState.imageOpacity,
+      transitionMs: runtimeState.transitionMs,
+    };
+  }
   const safeOptions = isPlainObjectLiteral(options) ? options : {};
   const transitionMs = Number.isFinite(Number(safeOptions.transitionMs))
     ? Math.max(0, Number(safeOptions.transitionMs))
@@ -5920,10 +5951,17 @@ function preloadSwipeSectionsOverlayImages(swipeConfig = resolveSwipeSectionsCon
 }
 
 function isSectionStylingFeatureEnabled(swipeConfig = resolveSwipeSectionsConfig()) {
-  return Boolean(
+  const sectionStylingConfig = (
     swipeConfig
     && swipeConfig.sectionStyling
-    && swipeConfig.sectionStyling.enabled === true
+    && typeof swipeConfig.sectionStyling === 'object'
+  )
+    ? swipeConfig.sectionStyling
+    : null;
+  return Boolean(
+    sectionStylingConfig
+    && sectionStylingConfig.globalEnabled !== false
+    && sectionStylingConfig.enabled === true
   );
 }
 
@@ -6625,12 +6663,17 @@ function syncSectionStylingLayers(nowMs = performance.now(), currentFrame = null
   const swipeConfig = resolveSwipeSectionsConfig();
   syncSectionStylingTopSlotPositionMode(swipeConfig);
   if (!isSectionStylingFeatureEnabled(swipeConfig)) {
+    if (sectionStylingFeatureWasEnabledLastSync) {
+      clearSectionStylingBaseBackgroundVisuals();
+    }
+    sectionStylingFeatureWasEnabledLastSync = false;
     sectionStylingBackgroundLayer.style.display = 'none';
     sectionStylingBackgroundLayer.style.visibility = 'hidden';
     sectionStylingBackgroundLayer.setAttribute('aria-hidden', 'true');
     hideSectionStylingTopLayer();
     return;
   }
+  sectionStylingFeatureWasEnabledLastSync = true;
 
   sectionStylingBackgroundLayer.style.display = 'block';
   sectionStylingBackgroundLayer.style.visibility = 'visible';
@@ -6807,6 +6850,14 @@ function setSectionStylingTopSlotsPositionMode(mode = '') {
 
 function verifySectionStylingBlendMode() {
   const swipeConfig = resolveSwipeSectionsConfig();
+  const sectionStylingConfig = (
+    swipeConfig
+    && swipeConfig.sectionStyling
+    && typeof swipeConfig.sectionStyling === 'object'
+  )
+    ? swipeConfig.sectionStyling
+    : {};
+  const sectionStylingEnabledEffective = isSectionStylingFeatureEnabled(swipeConfig);
   const resolvedMode = resolveSectionStylingTopSlotPositionMode(swipeConfig);
   const slots = sectionStylingTopSlotElements.map((slot) => {
     const computed = (slot && typeof window !== 'undefined' && typeof window.getComputedStyle === 'function')
@@ -6832,14 +6883,11 @@ function verifySectionStylingBlendMode() {
   return {
     timestampMs: performance.now(),
     viewportLayoutMode: STATE.viewportLayoutMode,
-    sectionStylingEnabled: isSectionStylingFeatureEnabled(swipeConfig),
-    configuredTopSlotsPositionMode: (
-      swipeConfig
-      && swipeConfig.sectionStyling
-      && typeof swipeConfig.sectionStyling === 'object'
-    )
-      ? swipeConfig.sectionStyling.topSlotsPositionMode || null
-      : null,
+    sectionStylingEnabled: sectionStylingEnabledEffective,
+    sectionStylingEnabledEffective,
+    configuredSectionStylingEnabled: sectionStylingConfig.enabled === true,
+    configuredSectionStylingGlobalEnabled: sectionStylingConfig.globalEnabled !== false,
+    configuredTopSlotsPositionMode: sectionStylingConfig.topSlotsPositionMode || null,
     overrideTopSlotsPositionMode: sectionStylingTopSlotPositionModeOverride || null,
     resolvedTopSlotsPositionMode: resolvedMode,
     appliedTopSlotsPositionMode: sectionStylingTopSlotPositionModeApplied || null,
@@ -19077,6 +19125,7 @@ function resolveSwipeSectionsConfig(configCandidate = CONFIG.swipeSections) {
       ),
     },
     sectionStyling: {
+      globalEnabled: topLevelSectionStylingRaw.globalEnabled !== false,
       enabled: (
         topLevelSectionStylingRaw.enabled === true
         || hasExplicitSectionStyling === true
@@ -22657,6 +22706,10 @@ function syncSwipeSectionsStateWithConfig(options = {}) {
   }
   preloadSwipeSectionsOverlayImages(swipeConfig);
   preloadSwipeSectionsSectionStylingBackgroundImages(swipeConfig);
+  if (!isSectionStylingFeatureEnabled(swipeConfig)) {
+    clearSectionStylingBaseBackgroundVisuals();
+    sectionStylingFeatureWasEnabledLastSync = false;
+  }
   if (swipeConfig.scrollHint && swipeConfig.scrollHint.enabled === true && swipeConfig.scrollHint.spritePath.length > 0) {
     ensureCenterOverlayImagePreload(swipeConfig.scrollHint.spritePath).catch(() => {});
   }
@@ -23685,6 +23738,16 @@ function resolveEffectiveSparkleRenderer(
   return normalizedRenderer;
 }
 
+function canRenderJumpSparkleInstanceFrame(instance) {
+  if (!instance || instance.active !== true) {
+    return false;
+  }
+  if (instance.primed === true) {
+    return true;
+  }
+  return instance.mediaState === 'playing';
+}
+
 function resolveJumpSparkleCanvasCompositeOperation(blendMode = 'normal') {
   const normalized = canonicalizeJumpSparkleBlendModeToken(blendMode);
   let candidate = 'source-over';
@@ -23759,11 +23822,19 @@ function resolveJumpSparkleConfig(flowersConfig = CONFIG.flowers || {}) {
     : false;
   const blendMode = resolveJumpSparkleBlendMode(requestedBlendModeRaw);
   const blendModeFallbackToNormal = blendMode === 'normal' && requestedBlendModeNormalized !== 'normal';
-  const effectiveRenderer = resolveEffectiveSparkleRenderer(
+  const forceCanvasRendererOnIOS = safeConfig.forceCanvasRendererOnIOS !== false;
+  const runningOnIOS = isLikelyIOSDevice();
+  let effectiveRenderer = resolveEffectiveSparkleRenderer(
     configuredRenderer,
     blendMode,
     blendReliabilityPolicy,
   );
+  let iosRendererSafetyApplied = false;
+  if (runningOnIOS && forceCanvasRendererOnIOS && effectiveRenderer !== 'canvas') {
+    effectiveRenderer = 'canvas';
+    iosRendererSafetyApplied = true;
+  }
+  const rendererSwitchForced = effectiveRenderer !== configuredRenderer;
   const debugConfig = {
     enabled: debugRaw.enabled === true,
     logOnTrigger: debugRaw.logOnTrigger !== false,
@@ -23791,7 +23862,9 @@ function resolveJumpSparkleConfig(flowersConfig = CONFIG.flowers || {}) {
     renderer: configuredRenderer,
     effectiveRenderer,
     blendReliabilityPolicy,
-    rendererSwitchForced: effectiveRenderer !== configuredRenderer,
+    rendererSwitchForced,
+    forceCanvasRendererOnIOS,
+    iosRendererSafetyApplied,
     variants,
     playbackRate: Number.isFinite(Number(safeConfig.playbackRate))
       ? Math.max(0.01, Number(safeConfig.playbackRate))
@@ -24002,6 +24075,8 @@ function logJumpSparkleDebug(eventName, sparkleConfig, payload = {}, options = {
     resolvedBlendMode: safeConfig.blendMode,
     configuredRenderer: safeConfig.renderer,
     effectiveRenderer: safeConfig.effectiveRenderer,
+    forceCanvasRendererOnIOS: safeConfig.forceCanvasRendererOnIOS !== false,
+    iosRendererSafetyApplied: safeConfig.iosRendererSafetyApplied === true,
     blendReliabilityPolicy: safeConfig.blendReliabilityPolicy,
     rendererSwitchForced: safeConfig.rendererSwitchForced === true,
     cssSupportsRequestedBlendMode: safeConfig.cssSupportsRequestedBlendMode === true,
@@ -24152,8 +24227,14 @@ function deactivateJumpSparkleInstance(instance) {
     // Ignore pause errors during cleanup.
   }
   instance.active = false;
+  instance.activationNonce = Number(instance.activationNonce) + 1;
+  if (!Number.isFinite(instance.activationNonce)) {
+    instance.activationNonce = 1;
+  }
   instance.startedAtMs = 0;
   instance.fallbackAttempted = false;
+  instance.primed = false;
+  instance.mediaState = 'failed';
   instance.renderSceneX = Number.NaN;
   instance.renderSceneY = Number.NaN;
   instance.renderWidthPx = 0;
@@ -24164,22 +24245,29 @@ function deactivateJumpSparkleInstance(instance) {
   instance.videoEl.style.visibility = 'hidden';
 }
 
-function setJumpSparkleInstanceSource(instance, path) {
+function setJumpSparkleInstanceSource(instance, path, options = {}) {
   if (!instance || !instance.videoEl || typeof path !== 'string' || path.trim().length <= 0) {
     return false;
   }
+  const safeOptions = options && typeof options === 'object' ? options : {};
+  const forceReload = safeOptions.forceReload === true;
   const normalizedPath = normalizeHostedAssetPath(path.trim());
   if (typeof normalizedPath !== 'string' || normalizedPath.trim().length <= 0) {
     return false;
   }
   const nextPath = normalizedPath.trim();
   const currentPath = String(instance.videoEl.getAttribute('data-jump-sparkle-source-path') || '').trim();
-  if (currentPath === nextPath) {
+  if (currentPath === nextPath && !forceReload) {
     return true;
   }
-  instance.videoEl.setAttribute('data-jump-sparkle-source-path', nextPath);
-  instance.videoEl.setAttribute('src', nextPath);
-  instance.videoEl.src = nextPath;
+  if (currentPath !== nextPath) {
+    instance.videoEl.setAttribute('data-jump-sparkle-source-path', nextPath);
+    instance.videoEl.setAttribute('src', nextPath);
+    instance.videoEl.src = nextPath;
+  } else if (forceReload) {
+    instance.videoEl.setAttribute('src', nextPath);
+    instance.videoEl.src = nextPath;
+  }
   if (typeof instance.videoEl.load === 'function') {
     try {
       instance.videoEl.load();
@@ -24188,6 +24276,130 @@ function setJumpSparkleInstanceSource(instance, path) {
     }
   }
   return true;
+}
+
+function waitForJumpSparkleVideoEvent(videoEl, eventNames = [], timeoutMs = 450) {
+  const events = Array.isArray(eventNames) ? eventNames.filter((name) => typeof name === 'string' && name.length > 0) : [];
+  return new Promise((resolve) => {
+    let settled = false;
+    let timeoutId = null;
+    const onSettle = (eventType = 'timeout') => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      for (let i = 0; i < events.length; i += 1) {
+        videoEl.removeEventListener(events[i], onEvent);
+      }
+      videoEl.removeEventListener('error', onError);
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId);
+      }
+      resolve(eventType);
+    };
+    const onEvent = (event) => {
+      onSettle(event && event.type ? String(event.type) : 'event');
+    };
+    const onError = () => {
+      onSettle('error');
+    };
+    for (let i = 0; i < events.length; i += 1) {
+      videoEl.addEventListener(events[i], onEvent, { once: true });
+    }
+    videoEl.addEventListener('error', onError, { once: true });
+    timeoutId = setTimeout(() => {
+      onSettle('timeout');
+    }, Math.max(0, Number(timeoutMs) || 0));
+  });
+}
+
+async function primeJumpSparkleInstanceAtStartFrame(instance) {
+  if (!instance || !instance.videoEl || instance.active !== true) {
+    return false;
+  }
+  const activationNonce = Number(instance.activationNonce);
+  const videoEl = instance.videoEl;
+  instance.mediaState = 'loading';
+  instance.primed = false;
+  videoEl.style.display = 'none';
+  videoEl.style.visibility = 'hidden';
+
+  if (videoEl.readyState < 2) {
+    await waitForJumpSparkleVideoEvent(videoEl, ['loadeddata', 'canplay'], 900);
+  }
+  if (instance.active !== true || Number(instance.activationNonce) !== activationNonce) {
+    return false;
+  }
+  if (videoEl.readyState < 1) {
+    instance.mediaState = 'failed';
+    return false;
+  }
+  try {
+    videoEl.pause();
+  } catch (_error) {
+    // Ignore pause failures while priming.
+  }
+  try {
+    videoEl.currentTime = 0;
+  } catch (_error) {
+    // iOS can reject early seeks; we'll still wait and re-check state.
+  }
+  await waitForJumpSparkleVideoEvent(videoEl, ['seeked', 'timeupdate', 'loadeddata'], 500);
+  if (instance.active !== true || Number(instance.activationNonce) !== activationNonce) {
+    return false;
+  }
+  if (videoEl.readyState < 2) {
+    instance.mediaState = 'failed';
+    return false;
+  }
+  instance.primed = true;
+  instance.mediaState = 'primed';
+  return true;
+}
+
+async function runJumpSparkleInstancePlayback(instance, sparkleConfig) {
+  if (!instance || !instance.videoEl || !sparkleConfig || sparkleConfig.enabled !== true) {
+    return false;
+  }
+  const activationNonce = Number(instance.activationNonce);
+  const sources = [instance.preferredPath];
+  if (typeof instance.fallbackPath === 'string' && instance.fallbackPath.length > 0) {
+    sources.push(instance.fallbackPath);
+  }
+
+  for (let i = 0; i < sources.length; i += 1) {
+    const sourcePath = sources[i];
+    if (!sourcePath || instance.active !== true || Number(instance.activationNonce) !== activationNonce) {
+      return false;
+    }
+    if (!setJumpSparkleInstanceSource(instance, sourcePath, { forceReload: true })) {
+      continue;
+    }
+    instance.fallbackAttempted = i > 0;
+    const primed = await primeJumpSparkleInstanceAtStartFrame(instance);
+    if (!primed) {
+      continue;
+    }
+    try {
+      const playPromise = instance.videoEl.play();
+      if (playPromise && typeof playPromise.then === 'function') {
+        await playPromise;
+      }
+      if (instance.active !== true || Number(instance.activationNonce) !== activationNonce) {
+        return false;
+      }
+      instance.mediaState = 'playing';
+      syncJumpSparkleLayer(performance.now());
+      return true;
+    } catch (_error) {
+      instance.mediaState = 'failed';
+      continue;
+    }
+  }
+  if (instance.active === true && Number(instance.activationNonce) === activationNonce) {
+    deactivateJumpSparkleInstance(instance);
+  }
+  return false;
 }
 
 function moveJumpSparkleInstanceToLayer(instance, layerName) {
@@ -24216,6 +24428,9 @@ function createJumpSparkleInstance() {
     preferredPath: '',
     fallbackPath: '',
     fallbackAttempted: false,
+    primed: false,
+    mediaState: 'failed',
+    activationNonce: 0,
     intrinsicAspectRatio: 1,
     anchorSceneX: 0,
     anchorSceneY: 0,
@@ -24259,24 +24474,7 @@ function createJumpSparkleInstance() {
     if (!instance.active) {
       return;
     }
-    if (!instance.fallbackAttempted && typeof instance.fallbackPath === 'string' && instance.fallbackPath.length > 0) {
-      instance.fallbackAttempted = true;
-      if (setJumpSparkleInstanceSource(instance, instance.fallbackPath)) {
-        try {
-          videoEl.currentTime = 0;
-        } catch (_error) {
-          // Ignore seek errors before metadata is available.
-        }
-        const playPromise = videoEl.play();
-        if (playPromise && typeof playPromise.catch === 'function') {
-          playPromise.catch(() => {
-            deactivateJumpSparkleInstance(instance);
-          });
-        }
-        return;
-      }
-    }
-    deactivateJumpSparkleInstance(instance);
+    instance.mediaState = 'failed';
   });
   jumpSparkleBackLayer.appendChild(videoEl);
   return instance;
@@ -24345,7 +24543,7 @@ function drawJumpSparkleInstancesToCanvasLayer(targetCtx, layerName, instances, 
   let drewAny = false;
   for (let i = 0; i < instances.length; i += 1) {
     const instance = instances[i];
-    if (!instance || instance.active !== true || instance.layer !== layerName || !instance.videoEl) {
+    if (!instance || !canRenderJumpSparkleInstanceFrame(instance) || instance.layer !== layerName || !instance.videoEl) {
       continue;
     }
     if (instance.videoEl.readyState < 2) {
@@ -24674,23 +24872,19 @@ function activateJumpSparkleInstance(target, sparkleConfig, nowMs = performance.
   moveJumpSparkleInstanceToLayer(instance, layerName);
   instance.videoEl.style.mixBlendMode = sparkleConfig.blendMode;
   instance.videoEl.playbackRate = sparkleConfig.playbackRate;
-  if (!setJumpSparkleInstanceSource(instance, preferredPath)) {
+  if (!setJumpSparkleInstanceSource(instance, preferredPath, { forceReload: true })) {
     return false;
   }
-  if (sparkleConfig.effectiveRenderer === 'video') {
-    instance.videoEl.style.display = 'block';
-    instance.videoEl.style.visibility = 'visible';
-  } else {
-    instance.videoEl.style.display = 'none';
-    instance.videoEl.style.visibility = 'hidden';
-  }
+  instance.videoEl.style.display = 'none';
+  instance.videoEl.style.visibility = 'hidden';
   instance.active = true;
-  instance.startedAtMs = Number.isFinite(nowMs) ? nowMs : performance.now();
-  try {
-    instance.videoEl.currentTime = 0;
-  } catch (_error) {
-    // Ignore seek errors and rely on playback start below.
+  instance.primed = false;
+  instance.mediaState = 'loading';
+  instance.activationNonce = Number(instance.activationNonce) + 1;
+  if (!Number.isFinite(instance.activationNonce)) {
+    instance.activationNonce = 1;
   }
+  instance.startedAtMs = Number.isFinite(nowMs) ? nowMs : performance.now();
   logJumpSparkleDebug('instance_activated', sparkleConfig, {
     instanceId: instance.id,
     layer: layerName,
@@ -24706,40 +24900,28 @@ function activateJumpSparkleInstance(target, sparkleConfig, nowMs = performance.
     throttleKey: `instance_activated:${instance.id}:${layerName}`,
   });
   syncJumpSparkleLayer(nowMs);
-  const playPromise = instance.videoEl.play();
-  if (playPromise && typeof playPromise.catch === 'function') {
-    playPromise.catch(() => {
-      if (!instance.fallbackAttempted && instance.fallbackPath) {
-        instance.fallbackAttempted = true;
-        if (setJumpSparkleInstanceSource(instance, instance.fallbackPath)) {
-          try {
-            instance.videoEl.currentTime = 0;
-          } catch (_error) {
-            // Ignore seek errors and rely on fallback playback start.
-          }
-          const fallbackPlay = instance.videoEl.play();
-          if (fallbackPlay && typeof fallbackPlay.catch === 'function') {
-            fallbackPlay.catch(() => {
-              deactivateJumpSparkleInstance(instance);
-            });
-          }
-          logJumpSparkleDebug('source_fallback_attempt', sparkleConfig, {
-            instanceId: instance.id,
-            layer: instance.layer,
-            preferredSourcePath: instance.preferredPath,
-            fallbackSourcePath: instance.fallbackPath,
-            fallbackAttempted: true,
-            videoElement: instance.videoEl,
-          }, {
-            nowMs: performance.now(),
-            throttleKey: `source_fallback_attempt:${instance.id}`,
-          });
-          return;
-        }
+  runJumpSparkleInstancePlayback(instance, sparkleConfig)
+    .then((success) => {
+      if (!success) {
+        return;
       }
+      if (instance.fallbackAttempted === true) {
+        logJumpSparkleDebug('source_fallback_attempt', sparkleConfig, {
+          instanceId: instance.id,
+          layer: instance.layer,
+          preferredSourcePath: instance.preferredPath,
+          fallbackSourcePath: instance.fallbackPath,
+          fallbackAttempted: true,
+          videoElement: instance.videoEl,
+        }, {
+          nowMs: performance.now(),
+          throttleKey: `source_fallback_attempt:${instance.id}`,
+        });
+      }
+    })
+    .catch(() => {
       deactivateJumpSparkleInstance(instance);
     });
-  }
   if (!STATE.branchGrowth.running) {
     scheduleFlowerInteractionFrame(true);
   }
@@ -24774,6 +24956,8 @@ function triggerJumpSparkleFromJumpResult(jumpResult, event, flowersConfig = CON
     logJumpSparkleDebug('renderer_decision', sparkleConfig, {
       configuredRenderer: sparkleConfig.renderer,
       effectiveRenderer: sparkleConfig.effectiveRenderer,
+      forceCanvasRendererOnIOS: sparkleConfig.forceCanvasRendererOnIOS !== false,
+      iosRendererSafetyApplied: sparkleConfig.iosRendererSafetyApplied === true,
       blendReliabilityPolicy: sparkleConfig.blendReliabilityPolicy,
       rendererSwitchForced: sparkleConfig.rendererSwitchForced === true,
     }, {
@@ -24850,7 +25034,7 @@ function syncJumpSparkleLayer(nowMs = performance.now()) {
     if (!instance || !instance.videoEl) {
       continue;
     }
-    if (instance.active !== true) {
+    if (!canRenderJumpSparkleInstanceFrame(instance)) {
       instance.videoEl.style.display = 'none';
       instance.videoEl.style.visibility = 'hidden';
       continue;
@@ -24933,7 +25117,7 @@ function syncJumpSparkleLayer(nowMs = performance.now()) {
     if (drewBack || drewFront) {
       for (let i = 0; i < runtime.instances.length; i += 1) {
         const instance = runtime.instances[i];
-        if (!instance || instance.active !== true || !instance.videoEl) {
+        if (!instance || !canRenderJumpSparkleInstanceFrame(instance) || !instance.videoEl) {
           continue;
         }
         if (instance.videoEl.readyState < 2 || instance.debugFirstCanvasFrameLogged === true) {
@@ -24994,6 +25178,43 @@ function isJumpSparkleAnimationActive() {
     }
   }
   return false;
+}
+
+function verifyJumpSparkleState() {
+  const sparkleConfig = resolveJumpSparkleConfig();
+  const runtime = getJumpSparkleRuntimeState();
+  const instances = Array.isArray(runtime.instances) ? runtime.instances : [];
+  const instanceSnapshots = [];
+  for (let i = 0; i < instances.length; i += 1) {
+    const instance = instances[i];
+    if (!instance || !instance.videoEl) {
+      continue;
+    }
+    instanceSnapshots.push({
+      id: instance.id,
+      layer: instance.layer,
+      active: instance.active === true,
+      primed: instance.primed === true,
+      mediaState: typeof instance.mediaState === 'string' ? instance.mediaState : '',
+      sourcePath: String(instance.videoEl.getAttribute('data-jump-sparkle-source-path') || ''),
+      currentSrc: String(instance.videoEl.currentSrc || instance.videoEl.src || ''),
+      readyState: Number(instance.videoEl.readyState),
+      activationNonce: Number(instance.activationNonce) || 0,
+      fallbackAttempted: instance.fallbackAttempted === true,
+      renderable: canRenderJumpSparkleInstanceFrame(instance),
+    });
+  }
+  return {
+    enabled: sparkleConfig.enabled === true,
+    configuredRenderer: sparkleConfig.renderer,
+    effectiveRenderer: sparkleConfig.effectiveRenderer,
+    rendererSwitchForced: sparkleConfig.rendererSwitchForced === true,
+    forceCanvasRendererOnIOS: sparkleConfig.forceCanvasRendererOnIOS !== false,
+    iosRendererSafetyApplied: sparkleConfig.iosRendererSafetyApplied === true,
+    sourceFamily: USE_APPLE_VIDEO_SOURCE_FAMILY ? 'apple-mov-preferred' : 'webm-preferred',
+    instanceCount: instanceSnapshots.length,
+    instances: instanceSnapshots,
+  };
 }
 
 function onMouseMove(event) {
@@ -26475,6 +26696,10 @@ function exposeDevToolsApi() {
 
     verifySectionStylingBlendMode() {
       return verifySectionStylingBlendMode();
+    },
+
+    verifyJumpSparkleState() {
+      return verifyJumpSparkleState();
     },
 
     getRsvpState() {

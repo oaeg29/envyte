@@ -265,7 +265,7 @@
   foliageVideos: {
     enabled: true,
     startFrame: 270, // Hero video frame at which to start foliage videos
-    playbackSpeed: 2,
+    playbackSpeed: 1.45,
     fallbackToFoliageOnLoadError: true,
     syncEnabled: true, // enable/disable sync loop to keep videos in sync
     syncMethod: 'requestVideoFrameCallback', // 'auto' (try requestVideoFrameCallback first), 'requestVideoFrameCallback', 'raf'
@@ -653,6 +653,9 @@
 
   swipeSections: {
     enabled: true,
+    sectionStyling: {
+      globalEnabled: true,
+    },
 
     section1Label: {
       enabled: true,
@@ -817,11 +820,11 @@
         centerOverlayOffsetYVideoHeightRatio: -0.0520833333,
         sectionStyling: {
           background: {
-            color: 'rgb(189, 163, 145)',
+            color: 'rgb(165, 145, 131)',
             media: {
               type: 'image',
               path: './section_3_bg.png',
-              opacity: 0.45,
+              opacity: 0.35,
             },
           },
           upperLayers: [
@@ -1275,6 +1278,7 @@
     jumpSparkle: {
       enabled: true,
       renderer: 'canvas', // canvas | video
+      forceCanvasRendererOnIOS: true, // keep jump sparkle on canvas on iPhone/iPad unless explicitly disabled
       variants: [
         './sparkle_003.webm',
       ],
