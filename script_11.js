@@ -45,6 +45,17 @@ const foliageVideoUpper = document.createElement('video');
 let foliageSyncCallbackId = null;
 let foliageSyncRafId = null;
 let foliageSyncMaster = 'lower';
+const FOLIAGE_PLAYBACK_AUDIT_EVENTS = [
+  'loadedmetadata',
+  'canplay',
+  'play',
+  'playing',
+  'seeking',
+  'seeked',
+  'ratechange',
+  'pause',
+  'ended',
+];
 const FOLIAGE_VIDEO_INLINE_GEOMETRY_STYLE_PROPS = [
   'position',
   'top',
@@ -57,6 +68,8 @@ const FOLIAGE_VIDEO_INLINE_GEOMETRY_STYLE_PROPS = [
 ];
 const FOLIAGE_VIDEO_GEOMETRY_PARITY_EPSILON_PX = 0.5;
 const _foliageVideoGeometryInlineResetDone = new WeakSet();
+const _foliagePlaybackAuditListenersInstalled = new WeakSet();
+const _foliagePlaybackRateGuardState = new WeakMap();
 let _foliageVideoGeometryParityRafId = 0;
 const centerOverlayImageLayer = document.createElement('img');
 const centerOverlayImageLayerAlt = document.createElement('img');
@@ -2072,6 +2085,166 @@ function readFoliageVideoMediaErrorLabel(videoEl) {
   }
 }
 
+function isFoliagePlaybackAuditEnabled() {
+  return !!(
+    CONFIG
+    && CONFIG.debug
+    && CONFIG.debug.foliagePlaybackAudit === true
+  );
+}
+
+function resolveConfiguredFoliagePlaybackSpeed() {
+  const foliageConfig = CONFIG.foliageVideos || {};
+  return Number.isFinite(foliageConfig.playbackSpeed)
+    ? Math.max(0.1, foliageConfig.playbackSpeed)
+    : 1.0;
+}
+
+function getFoliageVideoPlaybackSnapshot(videoEl) {
+  if (!videoEl) {
+    return {
+      playbackRate: Number.NaN,
+      defaultPlaybackRate: Number.NaN,
+      currentTime: Number.NaN,
+      readyState: Number.NaN,
+      paused: true,
+      ended: false,
+    };
+  }
+  return {
+    playbackRate: Number(videoEl.playbackRate),
+    defaultPlaybackRate: Number(videoEl.defaultPlaybackRate),
+    currentTime: Number(videoEl.currentTime),
+    readyState: Number(videoEl.readyState),
+    paused: videoEl.paused === true,
+    ended: videoEl.ended === true,
+  };
+}
+
+function logFoliagePlaybackAudit(videoType, videoEl, eventName, extra = {}) {
+  if (!isFoliagePlaybackAuditEnabled()) {
+    return;
+  }
+  const label = videoType === 'lower' ? 'lower' : 'upper';
+  console.log('[FoliageRateAudit]', {
+    label,
+    event: eventName,
+    expectedRate: resolveConfiguredFoliagePlaybackSpeed(),
+    ...getFoliageVideoPlaybackSnapshot(videoEl),
+    ...extra,
+  });
+}
+
+function scheduleFoliagePlaybackAuditSnapshots(videoType, videoEl, reason = 'unknown') {
+  if (!isFoliagePlaybackAuditEnabled() || !videoEl) {
+    return;
+  }
+  requestAnimationFrame(() => {
+    logFoliagePlaybackAudit(videoType, videoEl, 'post-raf', { reason });
+  });
+  [0, 50, 250].forEach((delayMs) => {
+    setTimeout(() => {
+      logFoliagePlaybackAudit(videoType, videoEl, `post-timeout-${delayMs}ms`, { reason });
+    }, delayMs);
+  });
+}
+
+function applyFoliagePlaybackRate(videoType, videoEl, rateInput, reason = 'unknown') {
+  if (!videoEl) {
+    return Number.NaN;
+  }
+  const targetRate = Number.isFinite(rateInput) ? Math.max(0.1, rateInput) : 1.0;
+  const guardState = _foliagePlaybackRateGuardState.get(videoEl) || {
+    applying: false,
+    guardInstalled: false,
+    lastMismatchEnforceAtMs: 0,
+  };
+  _foliagePlaybackRateGuardState.set(videoEl, guardState);
+
+  const before = getFoliageVideoPlaybackSnapshot(videoEl);
+  guardState.applying = true;
+  try {
+    videoEl.defaultPlaybackRate = targetRate;
+  } catch (_error) {
+    // Ignore platforms that reject defaultPlaybackRate writes for this element state.
+  }
+  try {
+    videoEl.playbackRate = targetRate;
+  } catch (_error) {
+    // Ignore platforms that reject playbackRate writes for this element state.
+  }
+  guardState.applying = false;
+
+  const after = getFoliageVideoPlaybackSnapshot(videoEl);
+  logFoliagePlaybackAudit(videoType, videoEl, 'apply-rate', {
+    reason,
+    targetRate,
+    beforePlaybackRate: before.playbackRate,
+    beforeDefaultPlaybackRate: before.defaultPlaybackRate,
+    afterPlaybackRate: after.playbackRate,
+    afterDefaultPlaybackRate: after.defaultPlaybackRate,
+  });
+  scheduleFoliagePlaybackAuditSnapshots(videoType, videoEl, reason);
+  return targetRate;
+}
+
+function installFoliagePlaybackAuditListeners(videoType, videoEl) {
+  if (!videoEl || _foliagePlaybackAuditListenersInstalled.has(videoEl)) {
+    return;
+  }
+  FOLIAGE_PLAYBACK_AUDIT_EVENTS.forEach((eventName) => {
+    videoEl.addEventListener(eventName, () => {
+      logFoliagePlaybackAudit(videoType, videoEl, eventName);
+    });
+  });
+  _foliagePlaybackAuditListenersInstalled.add(videoEl);
+}
+
+function installFoliagePlaybackRateGuard(videoType, videoEl) {
+  if (!videoEl) {
+    return;
+  }
+  const guardState = _foliagePlaybackRateGuardState.get(videoEl) || {
+    applying: false,
+    guardInstalled: false,
+    lastMismatchEnforceAtMs: 0,
+  };
+  _foliagePlaybackRateGuardState.set(videoEl, guardState);
+  if (guardState.guardInstalled === true) {
+    return;
+  }
+  videoEl.addEventListener('ratechange', () => {
+    const latestGuardState = _foliagePlaybackRateGuardState.get(videoEl);
+    if (latestGuardState && latestGuardState.applying === true) {
+      return;
+    }
+    const expectedRate = resolveConfiguredFoliagePlaybackSpeed();
+    const currentRate = Number(videoEl.playbackRate);
+    const hasMismatch = Number.isFinite(currentRate) && Math.abs(currentRate - expectedRate) > 0.001;
+    logFoliagePlaybackAudit(videoType, videoEl, 'ratechange-guard', {
+      expectedRate,
+      hasMismatch,
+    });
+    if (!hasMismatch) {
+      return;
+    }
+    const nowMs = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+      ? performance.now()
+      : Date.now();
+    const previousEnforceMs = latestGuardState && Number.isFinite(latestGuardState.lastMismatchEnforceAtMs)
+      ? latestGuardState.lastMismatchEnforceAtMs
+      : 0;
+    if (nowMs - previousEnforceMs < 75) {
+      return;
+    }
+    if (latestGuardState) {
+      latestGuardState.lastMismatchEnforceAtMs = nowMs;
+    }
+    applyFoliagePlaybackRate(videoType, videoEl, expectedRate, 'ratechange-mismatch-enforce');
+  });
+  guardState.guardInstalled = true;
+}
+
 function tryAdvanceFoliageVideoSourceCandidate(videoType, reason = 'unknown') {
   const runtime = videoType === 'lower' ? FOLIAGE_VIDEO_SOURCE_RUNTIME.lower : FOLIAGE_VIDEO_SOURCE_RUNTIME.upper;
   const candidates = runtime.candidates;
@@ -2120,6 +2293,8 @@ function configureFoliageVideoElement(videoType) {
   videoEl.setAttribute('data-ignore', 'true');
   videoEl.setAttribute('data-no-controls', 'true');
   videoEl.style.visibility = 'hidden';
+  installFoliagePlaybackAuditListeners(videoType, videoEl);
+  installFoliagePlaybackRateGuard(videoType, videoEl);
 
   runtime.candidates = buildFoliageVideoSourceCandidates(videoType);
   runtime.activeIndex = -1;
@@ -2145,7 +2320,7 @@ function configureFoliageVideoElement(videoType) {
   }
 
   videoEl.addEventListener('ended', () => {
-    console.log(`[FoliageVideo${videoType}] Playback ended`);
+    // console.log(`[FoliageVideo${videoType}] Playback ended`);
     checkBothFoliageVideosEnded();
   });
 }
@@ -2194,7 +2369,7 @@ function startFoliageVideos() {
   if (!config || !config.enabled) {
     return;
   }
-  const playbackSpeed = Number.isFinite(config.playbackSpeed) ? Math.max(0.1, config.playbackSpeed) : 1.0;
+  const playbackSpeed = resolveConfiguredFoliagePlaybackSpeed();
 
   console.log('[FoliageVideos] Starting playback with speed:', playbackSpeed);
 
@@ -2217,18 +2392,13 @@ function startFoliageVideos() {
 
   if (foliageVideoLower) {
     foliageVideoLower.currentTime = 0;
-    foliageVideoLower.playbackRate = playbackSpeed;
     foliageVideoLower.style.display = 'block';
     foliageVideoLower.style.visibility = 'visible';
-    console.log('[FoliageVideos] Lower video source:', foliageVideoLower.currentSrc || foliageVideoLower.src);
-    console.log('[FoliageVideos] Lower video styles:', {
-      top: foliageVideoLower.style.top,
-      left: foliageVideoLower.style.left,
-      width: foliageVideoLower.style.width,
-      height: foliageVideoLower.style.height,
-      transform: foliageVideoLower.style.transform,
-    });
-    playPromises.push(foliageVideoLower.play().catch(err => {
+    applyFoliagePlaybackRate('lower', foliageVideoLower, playbackSpeed, 'start-pre-play');
+    playPromises.push(foliageVideoLower.play().then(() => {
+      applyFoliagePlaybackRate('lower', foliageVideoLower, playbackSpeed, 'start-post-play');
+      console.log('[FoliageVideos] Lower video playing, playbackRate set to:', foliageVideoLower.playbackRate);
+    }).catch(err => {
       console.warn('[FoliageVideos] Failed to play lower video:', err);
       if (config.fallbackToFoliageOnLoadError) {
         showFoliageCanvases();
@@ -2239,18 +2409,13 @@ function startFoliageVideos() {
 
   if (foliageVideoUpper) {
     foliageVideoUpper.currentTime = 0;
-    foliageVideoUpper.playbackRate = playbackSpeed;
     foliageVideoUpper.style.display = 'block';
     foliageVideoUpper.style.visibility = 'visible';
-    console.log('[FoliageVideos] Upper video source:', foliageVideoUpper.currentSrc || foliageVideoUpper.src);
-    console.log('[FoliageVideos] Upper video styles:', {
-      top: foliageVideoUpper.style.top,
-      left: foliageVideoUpper.style.left,
-      width: foliageVideoUpper.style.width,
-      height: foliageVideoUpper.style.height,
-      transform: foliageVideoUpper.style.transform,
-    });
-    playPromises.push(foliageVideoUpper.play().catch(err => {
+    applyFoliagePlaybackRate('upper', foliageVideoUpper, playbackSpeed, 'start-pre-play');
+    playPromises.push(foliageVideoUpper.play().then(() => {
+      applyFoliagePlaybackRate('upper', foliageVideoUpper, playbackSpeed, 'start-post-play');
+      console.log('[FoliageVideos] Upper video playing, playbackRate set to:', foliageVideoUpper.playbackRate);
+    }).catch(err => {
       console.warn('[FoliageVideos] Failed to play upper video:', err);
       if (config.fallbackToFoliageOnLoadError) {
         showFoliageCanvases();
@@ -2391,7 +2556,7 @@ function stopFoliageSyncLoop() {
     cancelAnimationFrame(foliageSyncRafId);
     foliageSyncRafId = null;
   }
-  console.log('[FoliageVideos] Sync loop stopped');
+  // console.log('[FoliageVideos] Sync loop stopped');
 }
 
 function startFoliageSyncLoop() {
@@ -2414,19 +2579,25 @@ function startFoliageSyncLoop() {
   foliageSyncMaster = syncConfig.master;
   const driftThresholdSec = calculateDriftThresholdSeconds(syncConfig.driftThresholdFrames);
 
-  console.log('[FoliageVideos] Starting sync loop:', {
-    method: syncConfig.method,
-    master: syncConfig.master,
-    driftThresholdFrames: syncConfig.driftThresholdFrames,
-    driftThresholdSec: driftThresholdSec.toFixed(3),
-  });
+  // console.log('[FoliageVideos] Starting sync loop:', {
+  //   method: syncConfig.method,
+  //   master: syncConfig.master,
+  //   driftThresholdFrames: syncConfig.driftThresholdFrames,
+  //   driftThresholdSec: driftThresholdSec.toFixed(3),
+  // });
 
   const useVideoFrameCallback = syncConfig.method === 'auto' || syncConfig.method === 'requestVideoFrameCallback';
   const hasVideoFrameCallback = typeof masterVideo.requestVideoFrameCallback === 'function';
 
+  // Capture configured playback speed to re-apply after currentTime corrections
+  const configuredPlaybackSpeed = resolveConfiguredFoliagePlaybackSpeed();
+
+  applyFoliagePlaybackRate(syncConfig.master, masterVideo, configuredPlaybackSpeed, 'sync-start-master');
+  applyFoliagePlaybackRate(syncConfig.master === 'lower' ? 'upper' : 'lower', slaveVideo, configuredPlaybackSpeed, 'sync-start-slave');
+
   if (useVideoFrameCallback && hasVideoFrameCallback) {
     // Use requestVideoFrameCallback for frame-accurate sync
-    foliageSyncCallbackId = masterVideo.requestVideoFrameCallback((now, metadata) => {
+    const syncStep = (_now, _metadata) => {
       if (!masterVideo || !slaveVideo || masterVideo.paused || slaveVideo.paused ||
           masterVideo.ended || slaveVideo.ended) {
         stopFoliageSyncLoop();
@@ -2439,12 +2610,15 @@ function startFoliageSyncLoop() {
 
       if (drift > driftThresholdSec) {
         slaveVideo.currentTime = masterTime;
-        console.log('[FoliageVideos] Corrected drift (rVFC):', drift.toFixed(3), 'seconds');
+        applyFoliagePlaybackRate(syncConfig.master, masterVideo, configuredPlaybackSpeed, 'sync-drift-master-rvfc');
+        applyFoliagePlaybackRate(syncConfig.master === 'lower' ? 'upper' : 'lower', slaveVideo, configuredPlaybackSpeed, 'sync-drift-slave-rvfc');
+        // console.log('[FoliageVideos] Corrected drift (rVFC):', drift.toFixed(3), 'seconds');
       }
 
-      foliageSyncCallbackId = masterVideo.requestVideoFrameCallback(arguments.callee);
-    });
-    console.log('[FoliageVideos] Using requestVideoFrameCallback');
+      foliageSyncCallbackId = masterVideo.requestVideoFrameCallback(syncStep);
+    };
+    foliageSyncCallbackId = masterVideo.requestVideoFrameCallback(syncStep);
+    // console.log('[FoliageVideos] Using requestVideoFrameCallback');
   } else {
     // Fall back to requestAnimationFrame
     function syncStep() {
@@ -2460,14 +2634,16 @@ function startFoliageSyncLoop() {
 
       if (drift > driftThresholdSec) {
         slaveVideo.currentTime = masterTime;
-        console.log('[FoliageVideos] Corrected drift (RAF):', drift.toFixed(3), 'seconds');
+        applyFoliagePlaybackRate(syncConfig.master, masterVideo, configuredPlaybackSpeed, 'sync-drift-master-raf');
+        applyFoliagePlaybackRate(syncConfig.master === 'lower' ? 'upper' : 'lower', slaveVideo, configuredPlaybackSpeed, 'sync-drift-slave-raf');
+        // console.log('[FoliageVideos] Corrected drift (RAF):', drift.toFixed(3), 'seconds', 'playbackRate reset to:', slaveVideo.playbackRate);
       }
 
       foliageSyncRafId = requestAnimationFrame(syncStep);
     }
 
     foliageSyncRafId = requestAnimationFrame(syncStep);
-    console.log('[FoliageVideos] Using requestAnimationFrame fallback');
+    // console.log('[FoliageVideos] Using requestAnimationFrame fallback');
   }
 }
 
@@ -6922,10 +7098,15 @@ function syncRsvpLayer(nowMs = performance.now()) {
   const confirmGlowConfig = rsvpConfig.confirmGlow || {};
   const completionState = resolveRsvpCompletionState(runtime);
   
-  // Use percentage-based positioning to match video centering
-  // Since the container is now centered like the video, we use relative positioning
-  const nameCenterXPercent = 50 + ((Number(nameFieldConfig.offsetXVideoHeightRatio) || 0) * 100);
-  const nameCenterYPercent = 50 + ((Number(nameFieldConfig.offsetYVideoHeightRatio) || 0) * 100);
+  // Compute overlay dimensions and use viewport-height-based pixel positioning
+  // so X offsets are scaled by viewport height (not overlay width).
+  const overlayWidth = Number.isFinite(STATE.viewportWidth) && STATE.viewportWidth > 0
+    ? STATE.viewportWidth
+    : (Number.isFinite(window.innerWidth) ? window.innerWidth : 0);
+  const overlayHeight = viewportHeight;
+
+  const nameCenterXPx = (overlayWidth * 0.5) + ((Number(nameFieldConfig.offsetXVideoHeightRatio) || 0) * viewportHeight);
+  const nameCenterYPx = (overlayHeight * 0.5) + ((Number(nameFieldConfig.offsetYVideoHeightRatio) || 0) * viewportHeight);
   const nameWidth = Math.max(0, (Number(nameFieldConfig.widthVideoHeightRatio) || 0) * viewportHeight);
   const nameHeight = Math.max(0, (Number(nameFieldConfig.heightVideoHeightRatio) || 0) * viewportHeight);
   const nameFontSize = Math.max(0, (Number(nameFieldConfig.fontSizeVideoHeightRatio) || 0) * viewportHeight);
@@ -6938,8 +7119,8 @@ function syncRsvpLayer(nowMs = performance.now()) {
   runtime.visible = true;
   runtime.sectionId = rsvpConfig.sectionId;
 
-  rsvpNameInput.style.left = `${nameCenterXPercent}%`;
-  rsvpNameInput.style.top = `${nameCenterYPercent}%`;
+  rsvpNameInput.style.left = `${nameCenterXPx}px`;
+  rsvpNameInput.style.top = `${nameCenterYPx}px`;
   rsvpNameInput.style.width = `${nameWidth}px`;
   rsvpNameInput.style.height = `${nameHeight}px`;
   rsvpNameInput.style.fontFamily = nameFieldConfig.fontFamily || '';
@@ -6967,17 +7148,17 @@ function syncRsvpLayer(nowMs = performance.now()) {
   const confirmConfig = buttonsConfig.confirm || {};
   const confirmEnabled = confirmConfig.enabled !== false;
   
-  // Use percentage-based positioning to match video centering
-  const yesCenterXPercent = 50 + ((Number(yesConfig.offsetXVideoHeightRatio) || 0) * 100);
-  const yesCenterYPercent = 50 + ((Number(yesConfig.offsetYVideoHeightRatio) || 0) * 100);
+  // Compute centers in px so X offsets use viewport-height scaling
+  const yesCenterXPx = (overlayWidth * 0.5) + ((Number(yesConfig.offsetXVideoHeightRatio) || 0) * viewportHeight);
+  const yesCenterYPx = (overlayHeight * 0.5) + ((Number(yesConfig.offsetYVideoHeightRatio) || 0) * viewportHeight);
   const yesWidth = Math.max(0, (Number(yesConfig.widthVideoHeightRatio) || 0) * viewportHeight);
   const yesHeight = Math.max(0, (Number(yesConfig.heightVideoHeightRatio) || 0) * viewportHeight);
-  const noCenterXPercent = 50 + ((Number(noConfig.offsetXVideoHeightRatio) || 0) * 100);
-  const noCenterYPercent = 50 + ((Number(noConfig.offsetYVideoHeightRatio) || 0) * 100);
+  const noCenterXPx = (overlayWidth * 0.5) + ((Number(noConfig.offsetXVideoHeightRatio) || 0) * viewportHeight);
+  const noCenterYPx = (overlayHeight * 0.5) + ((Number(noConfig.offsetYVideoHeightRatio) || 0) * viewportHeight);
   const noWidth = Math.max(0, (Number(noConfig.widthVideoHeightRatio) || 0) * viewportHeight);
   const noHeight = Math.max(0, (Number(noConfig.heightVideoHeightRatio) || 0) * viewportHeight);
-  const confirmCenterXPercent = 50 + ((Number(confirmConfig.offsetXVideoHeightRatio) || 0) * 100);
-  const confirmCenterYPercent = 50 + ((Number(confirmConfig.offsetYVideoHeightRatio) || 0) * 100);
+  const confirmCenterXPx = (overlayWidth * 0.5) + ((Number(confirmConfig.offsetXVideoHeightRatio) || 0) * viewportHeight);
+  const confirmCenterYPx = (overlayHeight * 0.5) + ((Number(confirmConfig.offsetYVideoHeightRatio) || 0) * viewportHeight);
   const confirmWidth = Math.max(0, (Number(confirmConfig.widthVideoHeightRatio) || 0) * viewportHeight);
   const confirmHeight = Math.max(0, (Number(confirmConfig.heightVideoHeightRatio) || 0) * viewportHeight);
   const debugEnabled = debugConfig.enabled === true;
@@ -6992,8 +7173,8 @@ function syncRsvpLayer(nowMs = performance.now()) {
   const showConfirmButtonRect = debugConfig.showConfirmButtonRect !== false;
   syncRsvpDebugRect(
     rsvpNameDebugRect,
-    nameCenterXPercent,
-    nameCenterYPercent,
+    nameCenterXPx,
+    nameCenterYPx,
     nameWidth,
     nameHeight,
     debugEnabled && debugConfig.showNameFieldRect !== false,
@@ -7002,8 +7183,8 @@ function syncRsvpLayer(nowMs = performance.now()) {
   );
   syncRsvpDebugRect(
     rsvpYesDebugRect,
-    yesCenterXPercent,
-    yesCenterYPercent,
+    yesCenterXPx,
+    yesCenterYPx,
     yesWidth,
     yesHeight,
     debugEnabled && debugConfig.showButtonRects !== false,
@@ -7012,8 +7193,8 @@ function syncRsvpLayer(nowMs = performance.now()) {
   );
   syncRsvpDebugRect(
     rsvpNoDebugRect,
-    noCenterXPercent,
-    noCenterYPercent,
+    noCenterXPx,
+    noCenterYPx,
     noWidth,
     noHeight,
     debugEnabled && debugConfig.showButtonRects !== false,
@@ -7022,8 +7203,8 @@ function syncRsvpLayer(nowMs = performance.now()) {
   );
   syncRsvpDebugRect(
     rsvpConfirmDebugRect,
-    confirmCenterXPercent,
-    confirmCenterYPercent,
+    confirmCenterXPx,
+    confirmCenterYPx,
     confirmWidth,
     confirmHeight,
     debugEnabled && debugConfig.showButtonRects !== false && showConfirmButtonRect && confirmEnabled,
@@ -7031,16 +7212,16 @@ function syncRsvpLayer(nowMs = performance.now()) {
     debugLineWidthPx,
   );
 
-  rsvpYesButton.style.left = `${yesCenterXPercent}%`;
-  rsvpYesButton.style.top = `${yesCenterYPercent}%`;
+  rsvpYesButton.style.left = `${yesCenterXPx}px`;
+  rsvpYesButton.style.top = `${yesCenterYPx}px`;
   rsvpYesButton.style.width = `${yesWidth}px`;
   rsvpYesButton.style.height = `${yesHeight}px`;
-  rsvpNoButton.style.left = `${noCenterXPercent}%`;
-  rsvpNoButton.style.top = `${noCenterYPercent}%`;
+  rsvpNoButton.style.left = `${noCenterXPx}px`;
+  rsvpNoButton.style.top = `${noCenterYPx}px`;
   rsvpNoButton.style.width = `${noWidth}px`;
   rsvpNoButton.style.height = `${noHeight}px`;
-  rsvpConfirmButton.style.left = `${confirmCenterXPercent}%`;
-  rsvpConfirmButton.style.top = `${confirmCenterYPercent}%`;
+  rsvpConfirmButton.style.left = `${confirmCenterXPx}px`;
+  rsvpConfirmButton.style.top = `${confirmCenterYPx}px`;
   rsvpConfirmButton.style.width = `${confirmWidth}px`;
   rsvpConfirmButton.style.height = `${confirmHeight}px`;
   rsvpYesButton.style.pointerEvents = 'auto';
@@ -7084,14 +7265,14 @@ function syncRsvpLayer(nowMs = performance.now()) {
   );
   const missingNameConfig = missingIndicatorsConfig.name || {};
   const missingResponseConfig = missingIndicatorsConfig.response || {};
-  const nameIndicatorCenterXPercent = 50 + ((Number(missingNameConfig.offsetXVideoHeightRatio) || 0) * 100);
-  const nameIndicatorCenterYPercent = 50 + ((Number(missingNameConfig.offsetYVideoHeightRatio) || 0) * 100);
-  const responseIndicatorCenterXPercent = 50 + ((Number(missingResponseConfig.offsetXVideoHeightRatio) || 0) * 100);
-  const responseIndicatorCenterYPercent = 50 + ((Number(missingResponseConfig.offsetYVideoHeightRatio) || 0) * 100);
-  const applyMissingIndicatorStyles = (el, centerXPercent, centerYPercent, shouldShow) => {
+  const nameIndicatorCenterXPx = (overlayWidth * 0.5) + ((Number(missingNameConfig.offsetXVideoHeightRatio) || 0) * viewportHeight);
+  const nameIndicatorCenterYPx = (overlayHeight * 0.5) + ((Number(missingNameConfig.offsetYVideoHeightRatio) || 0) * viewportHeight);
+  const responseIndicatorCenterXPx = (overlayWidth * 0.5) + ((Number(missingResponseConfig.offsetXVideoHeightRatio) || 0) * viewportHeight);
+  const responseIndicatorCenterYPx = (overlayHeight * 0.5) + ((Number(missingResponseConfig.offsetYVideoHeightRatio) || 0) * viewportHeight);
+  const applyMissingIndicatorStyles = (el, centerXPx, centerYPx, shouldShow) => {
     el.textContent = missingIndicatorText;
-    el.style.left = `${centerXPercent}%`;
-    el.style.top = `${centerYPercent}%`;
+    el.style.left = `${centerXPx}px`;
+    el.style.top = `${centerYPx}px`;
     el.style.color = missingIndicatorColor;
     el.style.fontFamily = missingIndicatorFontFamily;
     el.style.fontWeight = missingIndicatorFontWeight;
@@ -7102,14 +7283,14 @@ function syncRsvpLayer(nowMs = performance.now()) {
   };
   applyMissingIndicatorStyles(
     rsvpNameMissingIndicator,
-    nameIndicatorCenterXPercent,
-    nameIndicatorCenterYPercent,
+    nameIndicatorCenterXPx,
+    nameIndicatorCenterYPx,
     nameIndicatorVisible,
   );
   applyMissingIndicatorStyles(
     rsvpResponseMissingIndicator,
-    responseIndicatorCenterXPercent,
-    responseIndicatorCenterYPercent,
+    responseIndicatorCenterXPx,
+    responseIndicatorCenterYPx,
     responseIndicatorVisible,
   );
 
@@ -7119,12 +7300,12 @@ function syncRsvpLayer(nowMs = performance.now()) {
     && confirmEnabled
   );
   if (confirmGlowEnabled) {
-    const glowCenterXPercent = confirmCenterXPercent + ((Number(confirmGlowConfig.offsetXVideoHeightRatio) || 0) * 100);
-    const glowCenterYPercent = confirmCenterYPercent + ((Number(confirmGlowConfig.offsetYVideoHeightRatio) || 0) * 100);
+    const glowCenterXPx = confirmCenterXPx + ((Number(confirmGlowConfig.offsetXVideoHeightRatio) || 0) * viewportHeight);
+    const glowCenterYPx = confirmCenterYPx + ((Number(confirmGlowConfig.offsetYVideoHeightRatio) || 0) * viewportHeight);
     const glowWidth = Math.max(0, (Number(confirmGlowConfig.widthVideoHeightRatio) || 0) * viewportHeight);
     const glowHeight = Math.max(0, (Number(confirmGlowConfig.heightVideoHeightRatio) || 0) * viewportHeight);
-    rsvpConfirmGlowLayer.style.left = `${glowCenterXPercent}%`;
-    rsvpConfirmGlowLayer.style.top = `${glowCenterYPercent}%`;
+    rsvpConfirmGlowLayer.style.left = `${glowCenterXPx}px`;
+    rsvpConfirmGlowLayer.style.top = `${glowCenterYPx}px`;
     rsvpConfirmGlowLayer.style.width = `${glowWidth}px`;
     rsvpConfirmGlowLayer.style.height = `${glowHeight}px`;
     applyRsvpConfirmGlowStyleFromConfig(rsvpConfig);
@@ -7520,10 +7701,9 @@ function syncSection1LabelLayer(nowMs = performance.now()) {
     return;
   }
 
-  // Use percentage-based positioning to match video centering
-  // Since the container is now centered like the video, we use relative positioning
-  const labelCenterXPercent = 50 + ((Number(labelConfig.offsetXVideoHeightRatio) || 0) * 100);
-  const labelCenterYPercent = 50 + ((Number(labelConfig.offsetYVideoHeightRatio) || 0) * 100);
+  // Compute centers in px so X offsets use viewport-height scaling
+  const labelCenterXPx = (STATE.viewportWidth * 0.5) + ((Number(labelConfig.offsetXVideoHeightRatio) || 0) * viewportHeight);
+  const labelCenterYPx = (viewportHeight * 0.5) + ((Number(labelConfig.offsetYVideoHeightRatio) || 0) * viewportHeight);
   const labelWidth = Math.max(0, (Number(labelConfig.widthVideoHeightRatio) || 0) * viewportHeight);
   const fontSize = Math.max(0, (Number(labelConfig.fontSizeVideoHeightRatio) || 0) * viewportHeight);
   const daysLeft = resolveSection1DaysLeft();
@@ -7537,8 +7717,8 @@ function syncSection1LabelLayer(nowMs = performance.now()) {
   section1LabelLayer.setAttribute('aria-hidden', 'true');
 
   section1LabelEl.textContent = labelText;
-  section1LabelEl.style.left = `${labelCenterXPercent}%`;
-  section1LabelEl.style.top = `${labelCenterYPercent}%`;
+  section1LabelEl.style.left = `${labelCenterXPx}px`;
+  section1LabelEl.style.top = `${labelCenterYPx}px`;
   section1LabelEl.style.width = `${labelWidth}px`;
   section1LabelEl.style.transform = 'translate(-50%, -50%)';
   section1LabelEl.style.fontFamily = labelConfig.fontFamily || 'inherit';

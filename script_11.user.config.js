@@ -255,7 +255,7 @@
   foliageVideos: {
     enabled: true,
     startFrame: 270, // Hero video frame at which to start foliage videos
-    playbackSpeed: 4,
+    playbackSpeed: 2.3,
     fallbackToFoliageOnLoadError: true,
     syncEnabled: true, // enable/disable sync loop to keep videos in sync
     syncMethod: 'requestVideoFrameCallback', // 'auto' (try requestVideoFrameCallback first), 'requestVideoFrameCallback', 'raf'
@@ -647,7 +647,7 @@
     section1Label: {
       enabled: true,
       sectionId: 'section-1',
-      offsetXVideoHeightRatio: -0.0164,
+      offsetXVideoHeightRatio: -0.014,
       offsetYVideoHeightRatio: 0.251,
       widthVideoHeightRatio: 0.55,
       fontFamily: 'ZeinaDidotScript',  
@@ -888,13 +888,13 @@
         spriteCols: 2,
         spriteRows: 2,
         yes: {
-          offsetXVideoHeightRatio: -0.088,
+          offsetXVideoHeightRatio: -0.075,
           offsetYVideoHeightRatio: 0.07,
           widthVideoHeightRatio: 0.11,
           heightVideoHeightRatio: 0.11,
         },
         no: {
-          offsetXVideoHeightRatio: 0.088,
+          offsetXVideoHeightRatio: 0.075,
           offsetYVideoHeightRatio: 0.07,
           widthVideoHeightRatio: 0.11,
           heightVideoHeightRatio: 0.11,
@@ -1009,7 +1009,7 @@
     swayPerfLogEnabled: false,
 
     wind: {
-      enabled: false,
+      enabled: true,
       sweepSpeedPxPerSec: 140,      // horizontal travel speed in canvas px/sec
       yAmplitudeRatio: 0.5,        // sin-wave Y amplitude as fraction of canvas height (0..1)
       yFrequencyHz: 0.05,           // Y oscillation cycles per second
@@ -1019,7 +1019,7 @@
         // { phaseShiftX: 0.5, phaseShiftY: 0.25 },   // second influencer (uncomment to enable)
       ],
       debug: {
-        enabled: false,
+        enabled: true,
         drawOnFrontLayer: true,
         strokeStyle: 'rgba(80, 180, 255, 0.9)',
         fillStyle: 'rgba(80, 180, 255, 0.12)',
@@ -1315,7 +1315,8 @@
   },
 
   debug: {
-    // enabled: true,
+    enabled: false,
+    foliagePlaybackAudit: false,
     showStripBounds: false,
     showStripCenters: true,
     showPathOutline: true,
