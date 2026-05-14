@@ -45,6 +45,16 @@
   },
 
   backgroundColor: gradient,
+  pageBackground: {
+    mode: 'solid', // gradient | solid
+    pureWhite: false, // quick override: forces pure white background regardless of mode
+    solidColor: '#ffffff', // used when mode === 'solid'
+    gradient: {
+      top: 'hsl(205, 15%, 100%)',
+      mid: 'hsl(208, 15%, 89%)',
+      bottom: 'hsl(208, 20%, 82%)',
+    },
+  },
   globalFoliageScale: 0.85, // global foliage multiplier (branches + stems + leaves + flowers)
 
   noise: {
@@ -255,7 +265,7 @@
   foliageVideos: {
     enabled: true,
     startFrame: 270, // Hero video frame at which to start foliage videos
-    playbackSpeed: 2.3,
+    playbackSpeed: 2,
     fallbackToFoliageOnLoadError: true,
     syncEnabled: true, // enable/disable sync loop to keep videos in sync
     syncMethod: 'requestVideoFrameCallback', // 'auto' (try requestVideoFrameCallback first), 'requestVideoFrameCallback', 'raf'
@@ -676,6 +686,43 @@
         // Optional per-section Y placement override for centerOverlayImage.
         // Ratio uses the same video-size basis as centerOverlayImage.offsetYMode='videoSizeRatio'.
         centerOverlayOffsetYVideoHeightRatio: -0.0520833333,
+        sectionStyling: {
+          background: {
+            color: 'rgb(255, 255, 255)',
+            media: {
+              type: 'image',
+              path: '0',
+              opacity: 0.14,
+            },
+          },
+          upperLayers: [
+            {
+              color: 'rgba(82, 112, 148, 0)',
+              opacity: 0,
+              blendMode: 'soft-light',
+              mask: {
+                enabled: true,
+                centerXRatio: 0.5,
+                centerYRatio: 0.36,
+                innerRadiusRatio: 0.18,
+                outerRadiusRatio: 0.86,
+                opacity: 1,
+                centerColor: 'rgba(255, 255, 255, 0)',
+                outerColor: 'rgba(255, 255, 255, 0)',
+              },
+            },
+            {
+              color: 'rgba(255, 255, 255, 0)',
+              opacity: 0,
+              blendMode: 'soft-light',
+              mask: {
+                enabled: false,
+                centerColor: 'rgba(255, 255, 255, 1)',
+                outerColor: 'rgba(255, 255, 255, 0)',
+              },
+            },
+          ],
+        },
       },
       {
         id: 'section-2',
@@ -683,6 +730,48 @@
         pageIndex: 2,
         // centerOverlayOffsetYVideoHeightRatio: -0.0520833333 + -0.095, // example of a per-section Y offset tweak
         centerOverlayOffsetYVideoHeightRatio: -0.0520833333, // example of a per-section Y offset tweak
+        sectionStyling: {
+          background: {
+            color: 'rgba(156, 179, 195, 0.85)',
+            media: {
+              type: 'image',
+              path: './section_2_bg.png',
+              opacity: 0.6,
+            },
+          },
+          upperLayers: [
+            {
+              color: 'rgba(156, 179, 195)',
+              opacity: 0.3,
+              blendMode: 'soft-light',
+              mask: {
+                enabled: false,
+                centerXRatio: 0.5,
+                centerYRatio: 0.5,
+                innerRadiusRatio: 0.2,
+                outerRadiusRatio: 0.88,
+                opacity: 1,
+                centerColor: 'rgba(255, 255, 255, 1)',
+                outerColor: 'rgba(255, 255, 255, 0)',
+              },
+            },
+            {
+              color: 'rgba(144, 177, 225)',
+              opacity: 0.7,
+              blendMode: 'soft-light',
+              mask: {
+                enabled: true,
+                centerXRatio: 0.5,
+                centerYRatio: 0.5,
+                innerRadiusRatio: 0.2,
+                outerRadiusRatio: 0.82,
+                opacity: 1,
+                centerColor: 'rgba(255, 255, 255, 0)',
+                outerColor: 'rgb(255, 255, 255)',
+              },
+            },
+          ],
+        },
 
         button: {
           enabled: true,
@@ -726,12 +815,91 @@
         frame: 327,
         pageIndex: 3,
         centerOverlayOffsetYVideoHeightRatio: -0.0520833333,
+        sectionStyling: {
+          background: {
+            color: 'rgb(189, 163, 145)',
+            media: {
+              type: 'image',
+              path: './section_3_bg.png',
+              opacity: 0.45,
+            },
+          },
+          upperLayers: [
+            {
+              color: 'rgb(181, 151, 135)',
+              opacity: 0.82,
+              blendMode: 'soft-light',
+              mask: {
+                enabled: true,
+                centerXRatio: 0.5,
+                centerYRatio: 0.5,
+                innerRadiusRatio: 0.26,
+                outerRadiusRatio: 0.76,
+                opacity: 1,
+                centerColor: 'rgba(255, 255, 255, 0)',
+                outerColor: 'rgba(255, 255, 255, 1)',
+              },
+            },
+            {
+              color: 'rgb(200, 133, 95)',
+              opacity: 0.42,
+              blendMode: 'soft-light',
+              mask: {
+                enabled: false,
+                centerColor: 'rgba(255, 255, 255, 1)',
+                outerColor: 'rgba(255, 255, 255, 0)',
+              },
+            },
+          ],
+        },
       },
       {
         id: 'section-4',
         frame: 354,
         pageIndex: 4,
         centerOverlayOffsetYVideoHeightRatio: -0.0520833333,
+        sectionStyling: {
+          background: {
+            color: 'rgba(30, 42, 76, 1)',
+            media: {
+              type: 'image', // keep as image for now; switch to video type later without schema change
+              path: 'section_4_bg.png',
+              opacity: 0.8,
+            },
+          },
+          upperLayers: [
+            {
+              color: 'rgba(41, 47, 65, 1)',
+              opacity: 0.7,
+              blendMode: 'soft-light',
+              mask: {
+                enabled: true,
+                centerXRatio: 0.5,
+                centerYRatio: 0.48,
+                innerRadiusRatio: 0.2,
+                outerRadiusRatio: 0.8,
+                opacity: 1,
+                centerColor: 'rgba(255, 255, 255, 0)',
+                outerColor: 'rgba(255, 255, 255, 1)',
+              },
+            },
+            {
+              color: 'rgba(41, 47, 65, 1)',
+              opacity: 0.5,
+              blendMode: 'soft-light',
+              mask: {
+                enabled: false,
+                centerXRatio: 0.5,
+                centerYRatio: 0.72,
+                innerRadiusRatio: 0.16,
+                outerRadiusRatio: 0.56,
+                opacity: 1,
+                centerColor: 'rgba(255, 255, 255, 1)',
+                outerColor: 'rgba(255, 255, 255, 0)',
+              },
+            },
+          ],
+        },
       },
     ],
     input: {
@@ -770,11 +938,11 @@
       widthVideoHeightRatio: 0.07,
       scale: 2,
       offsetXVideoHeightRatio: 0,
-      offsetYVideoHeightRatio: 0.7,
+      offsetYVideoHeightRatio: 0.73,
       bottomMarginPx: 10,
-      jumpDelayMs: 3000,
-      jumpDistancePx: 7,
-      jumpDurationMs: 250,
+      jumpDelayMs: 4200,
+      jumpDistancePx: 5,
+      jumpDurationMs: 150,
       visibleSectionIds: ['section-1', 'section-2', 'section-3'],
       debug: {
         enabled: false,
@@ -1010,16 +1178,16 @@
 
     wind: {
       enabled: true,
-      sweepSpeedPxPerSec: 140,      // horizontal travel speed in canvas px/sec
-      yAmplitudeRatio: 0.5,        // sin-wave Y amplitude as fraction of canvas height (0..1)
-      yFrequencyHz: 0.05,           // Y oscillation cycles per second
-      radiusFactor: 3.1,            // influence radius = flowers.drawSize * radiusFactor
+      sweepSpeedPxPerSec: 75,      // horizontal travel speed in canvas px/sec
+      yAmplitudeRatio: 0.4,        // sin-wave Y amplitude as fraction of canvas height (0..1)
+      yFrequencyHz: 0.02,           // Y oscillation cycles per second
+      radiusFactor: 2.5,            // influence radius = flowers.drawSize * radiusFactor
       influencers: [
         { phaseShiftX: 0, phaseShiftY: 0 },           // first influencer
-        // { phaseShiftX: 0.5, phaseShiftY: 0.25 },   // second influencer (uncomment to enable)
+        // { phaseShiftX: 0.75, phaseShiftY: 0.25 },   // second influencer (uncomment to enable)
       ],
       debug: {
-        enabled: true,
+        enabled: false,
         drawOnFrontLayer: true,
         strokeStyle: 'rgba(80, 180, 255, 0.9)',
         fillStyle: 'rgba(80, 180, 255, 0.12)',
@@ -1064,7 +1232,7 @@
       mobileMaxHardwareConcurrency: 6,
       mobileMinDevicePixelRatio: 2,
       mobileMaxViewportWidth: 1024,
-      influenceDynamicCapRange: [14, 20], // [min, max] chosen by device budget
+      influenceDynamicCapRange: [25, 40], // [min, max] chosen by device budget
       influenceNoPointerFallBoostRange: [3.0, 4.0], // [min, max]
       mouseSpeedSwayAffectRange: [0.1, 0.2], // [min, max]
       interactionRadiusScaleRange: [0.82, 1.0], // [min, max] multiplier on swayInteractionRadiusFactor
@@ -1082,11 +1250,11 @@
     drawSize: 75,
     swayInteractionRadiusFactor: 3.1,
     swayRiseSpeed: 5.5,
-    swayFallSpeed: 0.1,
+    swayFallSpeed: 0.6,
     swayEpsilon: 0.0008,
     mouseSpeedSwayAffect: 0.7,
     influenceDynamicCapEnabled: true,
-    influenceDynamicCap: 28,
+    influenceDynamicCap: 40,
     influenceNoPointerFallBoost: 1.2,
     influenceJumpCountsTowardCap: true,
     alwaysAnimatedCacheEnabled: true,
@@ -1110,7 +1278,7 @@
       variants: [
         './sparkle_003.webm',
       ],
-      playbackRate: 0.5,
+      playbackRate: 0.75,
       fps: 30,
       blendMode: 'screen',
       widthVideoHeightRatio: 0.27,
@@ -1126,16 +1294,16 @@
       },
       inputDedupe: {
         enabled: true,
-        windowMs: 120,
+        windowMs: 400,
         radiusPx: 24,
         applyTo: 'sparkleOnly',
       },
       targetSelection: {
-        mode: 'nearest', // nearest | weightedTopAware
+        mode: 'weightedTopAware', // nearest | weightedTopAware
         weightedTopAware: {
-          distanceWeight: 0.72,
-          upperLayerWeight: 0.2,
-          drawOrderWeight: 0.08,
+          distanceWeight: 0.3,
+          upperLayerWeight: 0.8,
+          drawOrderWeight: 0.8,
           proximityWindowVideoHeightRatio: 0.045,
         },
       },

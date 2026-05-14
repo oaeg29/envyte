@@ -193,6 +193,42 @@ const jumpSparkleBackCanvas = document.createElement('canvas');
 const jumpSparkleFrontCanvas = document.createElement('canvas');
 const jumpSparkleBackBlendPlate = document.createElement('div');
 const jumpSparkleFrontBlendPlate = document.createElement('div');
+const sectionStylingBackgroundLayer = document.createElement('div');
+const sectionStylingBackgroundBaseLayer = document.createElement('div');
+const sectionStylingBackgroundBaseImageLayer = document.createElement('div');
+const sectionStylingBackgroundSlotA = document.createElement('div');
+const sectionStylingBackgroundSlotAColor = document.createElement('div');
+const sectionStylingBackgroundSlotAImage = document.createElement('div');
+const sectionStylingBackgroundSlotB = document.createElement('div');
+const sectionStylingBackgroundSlotBColor = document.createElement('div');
+const sectionStylingBackgroundSlotBImage = document.createElement('div');
+const sectionStylingTopLayer = document.createElement('div');
+const sectionStylingTopLayer1SlotA = document.createElement('div');
+const sectionStylingTopLayer1SlotB = document.createElement('div');
+const sectionStylingTopLayer2SlotA = document.createElement('div');
+const sectionStylingTopLayer2SlotB = document.createElement('div');
+const sectionStylingBackgroundSlots = [
+  {
+    slot: sectionStylingBackgroundSlotA,
+    colorEl: sectionStylingBackgroundSlotAColor,
+    imageEl: sectionStylingBackgroundSlotAImage,
+  },
+  {
+    slot: sectionStylingBackgroundSlotB,
+    colorEl: sectionStylingBackgroundSlotBColor,
+    imageEl: sectionStylingBackgroundSlotBImage,
+  },
+];
+const sectionStylingTopSlotsByLayer = [
+  [sectionStylingTopLayer1SlotA, sectionStylingTopLayer1SlotB],
+  [sectionStylingTopLayer2SlotA, sectionStylingTopLayer2SlotB],
+];
+const sectionStylingTopSlotElements = [
+  sectionStylingTopLayer1SlotA,
+  sectionStylingTopLayer1SlotB,
+  sectionStylingTopLayer2SlotA,
+  sectionStylingTopLayer2SlotB,
+];
 
 // =========================
 // 2) Config
@@ -201,6 +237,41 @@ let valScaling = 0.01;
 const defaultCountPerSide = 2;
 const FILTER_CACHE_HUE_STEP_DEG = 2;
 const FILTER_CACHE_BRIGHTNESS_STEP = 0.02;
+const SECTION_STYLING_SUPPORTED_BLEND_MODES = new Set([
+  'normal',
+  'multiply',
+  'screen',
+  'overlay',
+  'darken',
+  'lighten',
+  'color-dodge',
+  'color-burn',
+  'hard-light',
+  'soft-light',
+  'difference',
+  'exclusion',
+  'hue',
+  'saturation',
+  'color',
+  'luminosity',
+  'plus-lighter',
+  'plus-darker',
+]);
+const SECTION_STYLING_BACKGROUND_RETRY_COOLDOWN_MS = 2200;
+const SECTION_STYLING_BASE_BG_TRANSITION_MS_DEFAULT = 260;
+const SECTION_STYLING_BASE_BG_TRANSITION_EASING = 'cubic-bezier(0.22, 1, 0.36, 1)';
+const SECTION_STYLING_TOP_SLOT_POSITION_MODE_FIXED = 'fixed';
+const SECTION_STYLING_TOP_SLOT_POSITION_MODE_ABSOLUTE = 'absolute';
+const SECTION_STYLING_TOP_SLOT_ALLOWED_POSITION_MODES = new Set([
+  SECTION_STYLING_TOP_SLOT_POSITION_MODE_FIXED,
+  SECTION_STYLING_TOP_SLOT_POSITION_MODE_ABSOLUTE,
+]);
+const PAGE_BACKGROUND_MODE_GRADIENT = 'gradient';
+const PAGE_BACKGROUND_MODE_SOLID = 'solid';
+const PAGE_BACKGROUND_ALLOWED_MODES = new Set([
+  PAGE_BACKGROUND_MODE_GRADIENT,
+  PAGE_BACKGROUND_MODE_SOLID,
+]);
 const HERO_VIDEO_PATH_DEFAULT = './hero_final_keyed.webm';
 const HERO_VIDEO_PATH_APPLE_SAFARI = './hero_final_foriOS.mov';
 const HERO_VIDEO_SOURCE_RUNTIME = {
@@ -210,6 +281,8 @@ const HERO_VIDEO_SOURCE_RUNTIME = {
   errorEvents: 0,
   errorListenerInstalled: false,
 };
+let sectionStylingTopSlotPositionModeOverride = '';
+let sectionStylingTopSlotPositionModeApplied = '';
 let USE_APPLE_VIDEO_SOURCE_FAMILY = false;
 const FOLIAGE_VIDEO_SOURCE_RUNTIME = {
   lower: {
@@ -1598,14 +1671,30 @@ function parseCssColorToRgb(colorValue) {
 function setPageBackgroundGradientColors(topColor, midColor, bottomColor) {
   if (document && document.documentElement && document.documentElement.style) {
     const rootStyle = document.documentElement.style;
+    const topToken = (typeof topColor === 'string' && topColor.trim().length > 0)
+      ? topColor.trim()
+      : '';
+    const midToken = (typeof midColor === 'string' && midColor.trim().length > 0)
+      ? midColor.trim()
+      : '';
+    const bottomToken = (typeof bottomColor === 'string' && bottomColor.trim().length > 0)
+      ? bottomColor.trim()
+      : '';
     if (typeof topColor === 'string' && topColor.trim().length > 0) {
-      rootStyle.setProperty('--app-page-bg-top', topColor.trim());
+      rootStyle.setProperty('--app-page-bg-top', topToken);
+      rootStyle.setProperty('--app-page-bg-solid', topToken);
     }
     if (typeof midColor === 'string' && midColor.trim().length > 0) {
-      rootStyle.setProperty('--app-page-bg-mid', midColor.trim());
+      rootStyle.setProperty('--app-page-bg-mid', midToken);
     }
     if (typeof bottomColor === 'string' && bottomColor.trim().length > 0) {
-      rootStyle.setProperty('--app-page-bg-bottom', bottomColor.trim());
+      rootStyle.setProperty('--app-page-bg-bottom', bottomToken);
+    }
+    if (topToken.length > 0 && midToken.length > 0 && bottomToken.length > 0) {
+      rootStyle.setProperty(
+        '--app-page-bg-gradient',
+        `linear-gradient(180deg, ${topToken} 0%, ${midToken} 50%, ${bottomToken} 100%)`,
+      );
     }
   }
 
@@ -1626,6 +1715,80 @@ function setPageBackgroundGradientColors(topColor, midColor, bottomColor) {
   if (stops.length > 0) {
     lastSafariTopTint = '';
   }
+}
+
+function sanitizePageBackgroundMode(rawValue, fallback = PAGE_BACKGROUND_MODE_GRADIENT) {
+  const normalized = String(rawValue || '').trim().toLowerCase();
+  if (PAGE_BACKGROUND_ALLOWED_MODES.has(normalized)) {
+    return normalized;
+  }
+  return PAGE_BACKGROUND_ALLOWED_MODES.has(fallback)
+    ? fallback
+    : PAGE_BACKGROUND_MODE_GRADIENT;
+}
+
+function resolvePageBackgroundConfig(configCandidate = CONFIG && CONFIG.pageBackground) {
+  const safeConfig = isPlainConfigObject(configCandidate) ? configCandidate : {};
+  const gradientConfig = isPlainConfigObject(safeConfig.gradient) ? safeConfig.gradient : {};
+  const pureWhite = safeConfig.pureWhite === true;
+  let mode = sanitizePageBackgroundMode(safeConfig.mode, PAGE_BACKGROUND_MODE_GRADIENT);
+  if (pureWhite) {
+    mode = PAGE_BACKGROUND_MODE_SOLID;
+  }
+
+  const solidColorCandidate = (
+    typeof safeConfig.solidColor === 'string'
+    && safeConfig.solidColor.trim().length > 0
+  )
+    ? safeConfig.solidColor.trim()
+    : '#ffffff';
+  const solidColor = pureWhite ? '#ffffff' : solidColorCandidate;
+
+  return {
+    mode,
+    pureWhite,
+    solidColor,
+    gradient: {
+      top: (
+        typeof gradientConfig.top === 'string'
+        && gradientConfig.top.trim().length > 0
+      )
+        ? gradientConfig.top.trim()
+        : DEFAULT_PAGE_BACKGROUND_TOP_COLOR,
+      mid: (
+        typeof gradientConfig.mid === 'string'
+        && gradientConfig.mid.trim().length > 0
+      )
+        ? gradientConfig.mid.trim()
+        : DEFAULT_PAGE_BACKGROUND_MID_COLOR,
+      bottom: (
+        typeof gradientConfig.bottom === 'string'
+        && gradientConfig.bottom.trim().length > 0
+      )
+        ? gradientConfig.bottom.trim()
+        : DEFAULT_PAGE_BACKGROUND_BOTTOM_COLOR,
+    },
+  };
+}
+
+function applyConfiguredPageBackground(configCandidate = CONFIG && CONFIG.pageBackground) {
+  const config = resolvePageBackgroundConfig(configCandidate);
+  if (config.mode === PAGE_BACKGROUND_MODE_SOLID) {
+    setPageBackgroundGradientColors(config.solidColor, config.solidColor, config.solidColor);
+    if (document && document.documentElement && document.documentElement.style) {
+      const rootStyle = document.documentElement.style;
+      rootStyle.setProperty('--app-page-bg-gradient', 'none');
+      rootStyle.setProperty('--app-page-bg-solid', config.solidColor);
+    }
+  } else {
+    setPageBackgroundGradientColors(
+      config.gradient.top,
+      config.gradient.mid,
+      config.gradient.bottom,
+    );
+  }
+  updateSafariTopTintFromGradient();
+  return config;
 }
 
 function resolvePageBackgroundGradientStopsFromCssVariables() {
@@ -2301,7 +2464,7 @@ function configureFoliageVideoElement(videoType) {
   runtime.fallbackUsed = false;
   setFoliageVideoSourceByIndex(videoType, 0, { forceLoad: true });
 
-  console.log(`[FoliageVideo${videoType}] Configured with sources:`, runtime.candidates);
+  // console.log(`[FoliageVideo${videoType}] Configured with sources:`, runtime.candidates);
 
   if (!runtime.errorListenerInstalled) {
     videoEl.addEventListener('error', () => {
@@ -2357,7 +2520,7 @@ let foliageVideosEndedCount = 0;
 function checkBothFoliageVideosEnded() {
   foliageVideosEndedCount += 1;
   if (foliageVideosEndedCount >= 2) {
-    console.log('[FoliageVideos] Both videos ended, showing foliage canvases');
+    // console.log('[FoliageVideos] Both videos ended, showing foliage canvases');
     hideFoliageVideos();
     showFoliageCanvases();
     foliageVideosEndedCount = 0;
@@ -2371,7 +2534,7 @@ function startFoliageVideos() {
   }
   const playbackSpeed = resolveConfiguredFoliagePlaybackSpeed();
 
-  console.log('[FoliageVideos] Starting playback with speed:', playbackSpeed);
+  // console.log('[FoliageVideos] Starting playback with speed:', playbackSpeed);
 
   // Keep seeds anchored to the current hero rect when foliage videos start.
   const seedSyncResult = syncSeedPacketToCurrentHeroRect({
@@ -2397,7 +2560,7 @@ function startFoliageVideos() {
     applyFoliagePlaybackRate('lower', foliageVideoLower, playbackSpeed, 'start-pre-play');
     playPromises.push(foliageVideoLower.play().then(() => {
       applyFoliagePlaybackRate('lower', foliageVideoLower, playbackSpeed, 'start-post-play');
-      console.log('[FoliageVideos] Lower video playing, playbackRate set to:', foliageVideoLower.playbackRate);
+      // console.log('[FoliageVideos] Lower video playing, playbackRate set to:', foliageVideoLower.playbackRate);
     }).catch(err => {
       console.warn('[FoliageVideos] Failed to play lower video:', err);
       if (config.fallbackToFoliageOnLoadError) {
@@ -2414,7 +2577,7 @@ function startFoliageVideos() {
     applyFoliagePlaybackRate('upper', foliageVideoUpper, playbackSpeed, 'start-pre-play');
     playPromises.push(foliageVideoUpper.play().then(() => {
       applyFoliagePlaybackRate('upper', foliageVideoUpper, playbackSpeed, 'start-post-play');
-      console.log('[FoliageVideos] Upper video playing, playbackRate set to:', foliageVideoUpper.playbackRate);
+      // console.log('[FoliageVideos] Upper video playing, playbackRate set to:', foliageVideoUpper.playbackRate);
     }).catch(err => {
       console.warn('[FoliageVideos] Failed to play upper video:', err);
       if (config.fallbackToFoliageOnLoadError) {
@@ -2429,7 +2592,7 @@ function startFoliageVideos() {
   // Start both videos simultaneously and then start sync loop
   if (playPromises.length > 0) {
     Promise.all(playPromises).then(() => {
-      console.log('[FoliageVideos] Both videos started, initiating sync loop');
+      // console.log('[FoliageVideos] Both videos started, initiating sync loop');
       startFoliageSyncLoop();
     }).catch(err => {
       console.warn('[FoliageVideos] One or more videos failed to start:', err);
@@ -3191,8 +3354,50 @@ jumpSparkleBackLayer.appendChild(jumpSparkleBackCanvas);
 jumpSparkleFrontLayer.appendChild(jumpSparkleFrontCanvas);
 jumpSparkleBackLayer.appendChild(jumpSparkleBackBlendPlate);
 jumpSparkleFrontLayer.appendChild(jumpSparkleFrontBlendPlate);
+sectionStylingBackgroundLayer.id = 'sectionStylingBackgroundLayer';
+sectionStylingBackgroundLayer.setAttribute('aria-hidden', 'true');
+sectionStylingBackgroundBaseLayer.id = 'sectionStylingBackgroundBaseLayer';
+sectionStylingBackgroundBaseImageLayer.id = 'sectionStylingBackgroundBaseImageLayer';
+sectionStylingBackgroundSlotA.id = 'sectionStylingBackgroundSlotA';
+sectionStylingBackgroundSlotA.className = 'sectionStylingBackgroundSlot';
+sectionStylingBackgroundSlotAColor.className = 'sectionStylingBackgroundColor';
+sectionStylingBackgroundSlotAImage.className = 'sectionStylingBackgroundImage';
+sectionStylingBackgroundSlotB.id = 'sectionStylingBackgroundSlotB';
+sectionStylingBackgroundSlotB.className = 'sectionStylingBackgroundSlot';
+sectionStylingBackgroundSlotBColor.className = 'sectionStylingBackgroundColor';
+sectionStylingBackgroundSlotBImage.className = 'sectionStylingBackgroundImage';
+sectionStylingBackgroundSlotA.appendChild(sectionStylingBackgroundSlotAColor);
+sectionStylingBackgroundSlotA.appendChild(sectionStylingBackgroundSlotAImage);
+sectionStylingBackgroundSlotB.appendChild(sectionStylingBackgroundSlotBColor);
+sectionStylingBackgroundSlotB.appendChild(sectionStylingBackgroundSlotBImage);
+sectionStylingBackgroundBaseLayer.appendChild(sectionStylingBackgroundBaseImageLayer);
+sectionStylingBackgroundLayer.appendChild(sectionStylingBackgroundBaseLayer);
+sectionStylingBackgroundLayer.appendChild(sectionStylingBackgroundSlotA);
+sectionStylingBackgroundLayer.appendChild(sectionStylingBackgroundSlotB);
+sectionStylingTopLayer.id = 'sectionStylingTopLayer';
+sectionStylingTopLayer.setAttribute('aria-hidden', 'true');
+sectionStylingTopLayer.style.display = 'none';
+sectionStylingTopLayer.style.visibility = 'hidden';
+sectionStylingTopLayer1SlotA.id = 'sectionStylingTopLayer1SlotA';
+sectionStylingTopLayer1SlotA.className = 'sectionStylingTopSlot';
+sectionStylingTopLayer1SlotA.setAttribute('aria-hidden', 'true');
+sectionStylingTopLayer1SlotB.id = 'sectionStylingTopLayer1SlotB';
+sectionStylingTopLayer1SlotB.className = 'sectionStylingTopSlot';
+sectionStylingTopLayer1SlotB.setAttribute('aria-hidden', 'true');
+sectionStylingTopLayer2SlotA.id = 'sectionStylingTopLayer2SlotA';
+sectionStylingTopLayer2SlotA.className = 'sectionStylingTopSlot';
+sectionStylingTopLayer2SlotA.setAttribute('aria-hidden', 'true');
+sectionStylingTopLayer2SlotB.id = 'sectionStylingTopLayer2SlotB';
+sectionStylingTopLayer2SlotB.className = 'sectionStylingTopSlot';
+sectionStylingTopLayer2SlotB.setAttribute('aria-hidden', 'true');
 // video.height = window.innerHeight;   // Set height in pixels
 
+const initialMainElement = document.querySelector('main');
+if (initialMainElement && initialMainElement.parentNode === document.body) {
+  document.body.insertBefore(sectionStylingBackgroundLayer, initialMainElement);
+} else {
+  document.body.appendChild(sectionStylingBackgroundLayer);
+}
 document.body.appendChild(flowersBackCanvas);
 document.body.appendChild(heroHintCanvas);
 document.body.appendChild(wash1Layer);
@@ -3219,6 +3424,10 @@ document.body.appendChild(section1LabelLayer);
 document.body.appendChild(frontCanvas);
 document.body.appendChild(flowersFrontCanvas);
 document.body.appendChild(jumpSparkleFrontLayer);
+document.body.appendChild(sectionStylingTopLayer1SlotA);
+document.body.appendChild(sectionStylingTopLayer1SlotB);
+document.body.appendChild(sectionStylingTopLayer2SlotA);
+document.body.appendChild(sectionStylingTopLayer2SlotB);
 
 // Initialize section control for canvas visibility and debug console
 initSectionControl();
@@ -3350,7 +3559,15 @@ let gradient = ctx.createLinearGradient(0, 0, 0, window.innerHeight );
 gradient.addColorStop(0, color1);
 gradient.addColorStop(0.5, color2);
 gradient.addColorStop(1, color3);
-setPageBackgroundGradientColors(color1, color2, color3);
+const DEFAULT_PAGE_BACKGROUND_TOP_COLOR = color1;
+const DEFAULT_PAGE_BACKGROUND_MID_COLOR = color2;
+const DEFAULT_PAGE_BACKGROUND_BOTTOM_COLOR = color3;
+setPageBackgroundGradientColors(
+  DEFAULT_PAGE_BACKGROUND_TOP_COLOR,
+  DEFAULT_PAGE_BACKGROUND_MID_COLOR,
+  DEFAULT_PAGE_BACKGROUND_BOTTOM_COLOR,
+);
+
 
 
 // Apply as a string to the backgroundColor property
@@ -3374,6 +3591,7 @@ if (!CONFIG) {
 }
 
 applyLoadingScreenConfig(CONFIG.loadingScreen);
+applyConfiguredPageBackground(CONFIG.pageBackground);
 
 // Backward compatibility: `animation` now maps to `branchGrowth`.
 CONFIG.animation = CONFIG.branchGrowth;
@@ -3429,6 +3647,14 @@ const STATE = {
   centerOverlayImagePendingPath: '',
   centerOverlayImageLoadPromise: null,
   centerOverlayImagePreloadEntries: new Map(),
+  sectionStylingBackgroundRetryByPath: new Map(),
+  sectionStylingBaseBackground: {
+    imagePath: '',
+    imageOpacity: 0,
+    swapToken: 0,
+    swapTimerId: null,
+    transitionMs: SECTION_STYLING_BASE_BG_TRANSITION_MS_DEFAULT,
+  },
   centerOverlayImageIsLoaded: false,
   centerOverlayImageFailedPath: '',
   centerOverlayImageVisibleSinceMs: 0,
@@ -3648,6 +3874,8 @@ const STATE = {
     centerOverlayImagePathOverride: '',
     overlayOpacityMultiplier: 1,
     overlayOutgoingOpacityMultiplier: 0,
+    sectionStylingOpacityMultiplier: 1,
+    sectionStylingOutgoingOpacityMultiplier: 0,
     overlayTransitionMode: 'none',
     overlayTransitionSwapProgress: 0.85,
     overlayTransitionFadeOutRatio: 0.3,
@@ -5470,6 +5698,198 @@ function ensureCenterOverlayImagePreload(path, options = {}) {
   return loadPromise;
 }
 
+function ensureSectionStylingBackgroundRetryMap() {
+  if (!(STATE.sectionStylingBackgroundRetryByPath instanceof Map)) {
+    STATE.sectionStylingBackgroundRetryByPath = new Map();
+  }
+  return STATE.sectionStylingBackgroundRetryByPath;
+}
+
+function requestSectionStylingBackgroundImagePreload(path, options = {}) {
+  const normalizedPath = normalizeCenterOverlayImagePath(path);
+  if (normalizedPath.length <= 0) {
+    return Promise.resolve(null);
+  }
+  const safeOptions = isPlainObjectLiteral(options) ? options : {};
+  const forceRetry = safeOptions.forceRetry === true;
+  const entry = getCenterOverlayImagePreloadEntry(normalizedPath);
+  if (entry && entry.status === 'loaded' && entry.image) {
+    return Promise.resolve(entry.image);
+  }
+  if (entry && entry.status === 'loading' && entry.promise) {
+    return entry.promise;
+  }
+  const shouldRetry = forceRetry || Boolean(entry && entry.status === 'failed');
+  if (shouldRetry) {
+    const retryMap = ensureSectionStylingBackgroundRetryMap();
+    const nowMs = performance.now();
+    const lastAttemptMs = Number(retryMap.get(normalizedPath));
+    if (
+      !forceRetry
+      && Number.isFinite(lastAttemptMs)
+      && (nowMs - lastAttemptMs) < SECTION_STYLING_BACKGROUND_RETRY_COOLDOWN_MS
+    ) {
+      return Promise.resolve(null);
+    }
+    retryMap.set(normalizedPath, nowMs);
+  }
+  return ensureCenterOverlayImagePreload(normalizedPath, { retry: shouldRetry }).catch(() => null);
+}
+
+function ensureSectionStylingBaseBackgroundRuntimeState() {
+  const defaultState = {
+    imagePath: '',
+    imageOpacity: 0,
+    swapToken: 0,
+    swapTimerId: null,
+    transitionMs: SECTION_STYLING_BASE_BG_TRANSITION_MS_DEFAULT,
+  };
+  if (!isPlainObjectLiteral(STATE.sectionStylingBaseBackground)) {
+    STATE.sectionStylingBaseBackground = { ...defaultState };
+  }
+  const runtimeState = STATE.sectionStylingBaseBackground;
+  runtimeState.imagePath = normalizeCenterOverlayImagePath(runtimeState.imagePath);
+  runtimeState.imageOpacity = clamp(
+    Number.isFinite(Number(runtimeState.imageOpacity)) ? Number(runtimeState.imageOpacity) : 0,
+    0,
+    1,
+  );
+  runtimeState.swapToken = Number.isFinite(Number(runtimeState.swapToken))
+    ? Math.max(0, Math.floor(Number(runtimeState.swapToken)))
+    : 0;
+  runtimeState.swapTimerId = Number.isFinite(Number(runtimeState.swapTimerId))
+    ? Number(runtimeState.swapTimerId)
+    : null;
+  runtimeState.transitionMs = Number.isFinite(Number(runtimeState.transitionMs))
+    ? Math.max(0, Number(runtimeState.transitionMs))
+    : SECTION_STYLING_BASE_BG_TRANSITION_MS_DEFAULT;
+  return runtimeState;
+}
+
+function clearSectionStylingBaseBackgroundSwapTimer(runtimeState = ensureSectionStylingBaseBackgroundRuntimeState()) {
+  if (Number.isFinite(Number(runtimeState.swapTimerId))) {
+    clearTimeout(runtimeState.swapTimerId);
+  }
+  runtimeState.swapTimerId = null;
+}
+
+function setSectionStylingBaseBackground(options = {}) {
+  const runtimeState = ensureSectionStylingBaseBackgroundRuntimeState();
+  const safeOptions = isPlainObjectLiteral(options) ? options : {};
+  const transitionMs = Number.isFinite(Number(safeOptions.transitionMs))
+    ? Math.max(0, Number(safeOptions.transitionMs))
+    : runtimeState.transitionMs;
+  runtimeState.transitionMs = transitionMs;
+  const transitionToken = `${transitionMs}ms ${SECTION_STYLING_BASE_BG_TRANSITION_EASING}`;
+
+  if (sectionStylingBackgroundBaseLayer && sectionStylingBackgroundBaseLayer.style) {
+    sectionStylingBackgroundBaseLayer.style.transition = `background-color ${transitionToken}, background-image ${transitionToken}`;
+    if (Object.prototype.hasOwnProperty.call(safeOptions, 'color')) {
+      const colorCandidate = (
+        typeof safeOptions.color === 'string'
+      )
+        ? safeOptions.color.trim()
+        : '';
+      if (colorCandidate.length > 0) {
+        sectionStylingBackgroundBaseLayer.style.backgroundColor = colorCandidate;
+        sectionStylingBackgroundBaseLayer.style.backgroundImage = 'none';
+      } else {
+        sectionStylingBackgroundBaseLayer.style.backgroundColor = '';
+        sectionStylingBackgroundBaseLayer.style.backgroundImage = '';
+      }
+    }
+  }
+
+  const hasImagePathOption = Object.prototype.hasOwnProperty.call(safeOptions, 'imagePath');
+  const hasImageOpacityOption = Object.prototype.hasOwnProperty.call(safeOptions, 'imageOpacity');
+  let targetImagePath = runtimeState.imagePath;
+  let targetImageOpacity = runtimeState.imageOpacity;
+
+  if (hasImagePathOption) {
+    targetImagePath = normalizeCenterOverlayImagePath(
+      typeof safeOptions.imagePath === 'string' ? safeOptions.imagePath : '',
+    );
+  }
+  if (hasImageOpacityOption) {
+    targetImageOpacity = clamp(
+      Number.isFinite(Number(safeOptions.imageOpacity)) ? Number(safeOptions.imageOpacity) : runtimeState.imageOpacity,
+      0,
+      1,
+    );
+  }
+  if (targetImagePath.length <= 0) {
+    targetImageOpacity = 0;
+  }
+
+  const imageLayer = sectionStylingBackgroundBaseImageLayer;
+  if (!imageLayer || !imageLayer.style) {
+    runtimeState.imagePath = targetImagePath;
+    runtimeState.imageOpacity = targetImageOpacity;
+    return {
+      imagePath: runtimeState.imagePath,
+      imageOpacity: runtimeState.imageOpacity,
+      transitionMs: runtimeState.transitionMs,
+    };
+  }
+  imageLayer.style.transition = `opacity ${transitionToken}`;
+
+  clearSectionStylingBaseBackgroundSwapTimer(runtimeState);
+  runtimeState.swapToken += 1;
+  const swapToken = runtimeState.swapToken;
+  const previousPath = runtimeState.imagePath;
+
+  const applyImageState = () => {
+    if (runtimeState.swapToken !== swapToken) {
+      return;
+    }
+    if (targetImagePath.length <= 0) {
+      imageLayer.style.opacity = '0';
+      imageLayer.style.visibility = 'hidden';
+      imageLayer.style.backgroundImage = 'none';
+      runtimeState.imagePath = '';
+      runtimeState.imageOpacity = 0;
+      return;
+    }
+
+    runtimeState.imagePath = targetImagePath;
+    runtimeState.imageOpacity = targetImageOpacity;
+    imageLayer.style.visibility = 'visible';
+    imageLayer.style.backgroundImage = `url("${targetImagePath}")`;
+    imageLayer.style.opacity = String(targetImageOpacity);
+
+    requestSectionStylingBackgroundImagePreload(targetImagePath, { forceRetry: true })
+      .then((image) => {
+        if (
+          runtimeState.swapToken !== swapToken
+          || !image
+          || !image.src
+          || runtimeState.imagePath !== targetImagePath
+        ) {
+          return;
+        }
+        imageLayer.style.backgroundImage = `url("${image.src}")`;
+      })
+      .catch(() => {});
+  };
+
+  if (targetImagePath !== previousPath && previousPath.length > 0 && transitionMs > 0) {
+    imageLayer.style.visibility = 'visible';
+    imageLayer.style.opacity = '0';
+    runtimeState.swapTimerId = setTimeout(() => {
+      runtimeState.swapTimerId = null;
+      applyImageState();
+    }, transitionMs);
+  } else {
+    applyImageState();
+  }
+
+  return {
+    imagePath: runtimeState.imagePath,
+    imageOpacity: runtimeState.imageOpacity,
+    transitionMs: runtimeState.transitionMs,
+  };
+}
+
 function preloadSwipeSectionsOverlayImages(swipeConfig = resolveSwipeSectionsConfig()) {
   const sections = swipeConfig && Array.isArray(swipeConfig.sections) ? swipeConfig.sections : [];
   const pages = swipeConfig && Array.isArray(swipeConfig.pages) ? swipeConfig.pages : [];
@@ -5497,6 +5917,72 @@ function preloadSwipeSectionsOverlayImages(swipeConfig = resolveSwipeSectionsCon
     }
     ensureCenterOverlayImagePreload(path).catch(() => {});
   });
+}
+
+function isSectionStylingFeatureEnabled(swipeConfig = resolveSwipeSectionsConfig()) {
+  return Boolean(
+    swipeConfig
+    && swipeConfig.sectionStyling
+    && swipeConfig.sectionStyling.enabled === true
+  );
+}
+
+function preloadSwipeSectionsSectionStylingBackgroundImages(
+  swipeConfig = resolveSwipeSectionsConfig(),
+) {
+  if (!isSectionStylingFeatureEnabled(swipeConfig)) {
+    return;
+  }
+  const sections = swipeConfig && Array.isArray(swipeConfig.sections) ? swipeConfig.sections : [];
+  if (sections.length <= 0) {
+    return;
+  }
+  const uniquePaths = new Set();
+  for (let i = 0; i < sections.length; i += 1) {
+    const section = sections[i];
+    const sectionStyling = section && section.sectionStyling ? section.sectionStyling : null;
+    const background = sectionStyling && sectionStyling.background ? sectionStyling.background : null;
+    const media = background && background.media ? background.media : null;
+    if (!media || media.type !== 'image') {
+      continue;
+    }
+    const normalizedPath = normalizeCenterOverlayImagePath(media.path);
+    if (normalizedPath.length > 0) {
+      uniquePaths.add(normalizedPath);
+    }
+  }
+  uniquePaths.forEach((path) => {
+    const entry = getCenterOverlayImagePreloadEntry(path);
+    if (entry && (entry.status === 'loaded' || entry.status === 'loading')) {
+      return;
+    }
+    requestSectionStylingBackgroundImagePreload(path).catch(() => {});
+  });
+}
+
+function resolveSectionStylingForSection(section) {
+  const raw = section && section.sectionStyling ? section.sectionStyling : {};
+  return resolveSectionStylingConfig(raw);
+}
+
+function findActiveSwipeSectionIndexForFrame(
+  swipeConfig = resolveSwipeSectionsConfig(),
+  frame = getCurrentHeroVideoFrame(resolveHeroPlaybackGateConfig()),
+) {
+  const swipeState = STATE && STATE.swipeSections ? STATE.swipeSections : null;
+  const sections = swipeConfig && Array.isArray(swipeConfig.sections) ? swipeConfig.sections : [];
+  if (sections.length <= 0) {
+    return -1;
+  }
+  if (
+    swipeState
+    && Number.isFinite(swipeState.activeSectionIndex)
+    && swipeState.activeSectionIndex >= 0
+    && swipeState.activeSectionIndex < sections.length
+  ) {
+    return swipeState.activeSectionIndex;
+  }
+  return findClosestSwipeSectionIndexToFrame(frame, swipeConfig);
 }
 
 function resolveSwipeSectionCenterOverlayOffsetYVideoHeightRatio(
@@ -5854,6 +6340,519 @@ function syncCenterOverlayImageLayer(nowMs = performance.now(), currentFrame = n
     ? STATE.centerOverlayImageLayerVisibleSinceMs[steadyLayerIndex]
     : 0;
   STATE.centerOverlayImageLastShouldBeVisible = hasPrimaryLayerVisible;
+}
+
+function clearSectionStylingMaskFromElement(element) {
+  if (!element || !element.style) {
+    return;
+  }
+  element.style.maskImage = 'none';
+  element.style.webkitMaskImage = 'none';
+  element.style.maskRepeat = '';
+  element.style.webkitMaskRepeat = '';
+  element.style.maskPosition = '';
+  element.style.webkitMaskPosition = '';
+  element.style.maskSize = '';
+  element.style.webkitMaskSize = '';
+}
+
+function applySectionStylingMaskToElement(element, maskConfig) {
+  if (!element || !element.style) {
+    return;
+  }
+  const safeMask = isPlainObjectLiteral(maskConfig) ? maskConfig : {};
+  if (safeMask.enabled !== true) {
+    clearSectionStylingMaskFromElement(element);
+    return;
+  }
+  const centerXPercent = clamp(
+    Number.isFinite(Number(safeMask.centerXRatio)) ? Number(safeMask.centerXRatio) : 0.5,
+    0,
+    1,
+  ) * 100;
+  const centerYPercent = clamp(
+    Number.isFinite(Number(safeMask.centerYRatio)) ? Number(safeMask.centerYRatio) : 0.5,
+    0,
+    1,
+  ) * 100;
+  const innerPercent = clamp(
+    Number.isFinite(Number(safeMask.innerRadiusRatio)) ? Number(safeMask.innerRadiusRatio) : 0.22,
+    0,
+    1,
+  ) * 100;
+  const outerPercent = clamp(
+    Math.max(
+      (Number.isFinite(Number(safeMask.outerRadiusRatio)) ? Number(safeMask.outerRadiusRatio) : 0.82),
+      (innerPercent / 100) + 0.02,
+    ),
+    0.02,
+    1,
+  ) * 100;
+  const centerColor = (
+    typeof safeMask.centerColor === 'string'
+    && safeMask.centerColor.trim().length > 0
+  )
+    ? safeMask.centerColor.trim()
+    : 'rgba(255, 255, 255, 1)';
+  const outerColor = (
+    typeof safeMask.outerColor === 'string'
+    && safeMask.outerColor.trim().length > 0
+  )
+    ? safeMask.outerColor.trim()
+    : 'rgba(255, 255, 255, 0)';
+  const gradient = (
+    `radial-gradient(circle at ${centerXPercent}% ${centerYPercent}%, `
+    + `${centerColor} ${innerPercent}%, `
+    + `${outerColor} ${outerPercent}%)`
+  );
+  element.style.maskImage = gradient;
+  element.style.webkitMaskImage = gradient;
+  element.style.maskRepeat = 'no-repeat';
+  element.style.webkitMaskRepeat = 'no-repeat';
+  element.style.maskPosition = 'center center';
+  element.style.webkitMaskPosition = 'center center';
+  element.style.maskSize = '100% 100%';
+  element.style.webkitMaskSize = '100% 100%';
+}
+
+function hideSectionStylingBackgroundSlot(slotEntry) {
+  if (!slotEntry || !slotEntry.slot) {
+    return;
+  }
+  const slot = slotEntry.slot;
+  const colorEl = slotEntry.colorEl;
+  const imageEl = slotEntry.imageEl;
+  slot.style.opacity = '0';
+  slot.style.visibility = 'hidden';
+  if (colorEl && colorEl.style) {
+    colorEl.style.backgroundColor = 'transparent';
+  }
+  if (imageEl && imageEl.style) {
+    imageEl.style.backgroundImage = 'none';
+    imageEl.style.opacity = '0';
+    imageEl.style.visibility = 'hidden';
+  }
+}
+
+function applySectionStylingBackgroundSlot(
+  slotEntry,
+  sectionStyling,
+  transitionOpacityMultiplier = 0,
+) {
+  if (!slotEntry || !slotEntry.slot || !slotEntry.colorEl || !slotEntry.imageEl) {
+    return false;
+  }
+  const slot = slotEntry.slot;
+  const colorEl = slotEntry.colorEl;
+  const imageEl = slotEntry.imageEl;
+  const slotOpacity = clamp(
+    Number.isFinite(Number(transitionOpacityMultiplier)) ? Number(transitionOpacityMultiplier) : 0,
+    0,
+    1,
+  );
+  if (slotOpacity <= 1e-6) {
+    hideSectionStylingBackgroundSlot(slotEntry);
+    return false;
+  }
+  const safeSectionStyling = resolveSectionStylingConfig(sectionStyling);
+  const background = safeSectionStyling.background || resolveSectionStylingBackgroundConfig({});
+  const media = background.media || {};
+  const mediaType = media.type === 'video' ? 'video' : 'image';
+  const mediaPath = normalizeCenterOverlayImagePath(media.path);
+  const mediaOpacity = clamp(
+    Number.isFinite(Number(media.opacity)) ? Number(media.opacity) : 1,
+    0,
+    1,
+  );
+
+  colorEl.style.backgroundColor = background.color || 'transparent';
+  imageEl.style.backgroundImage = 'none';
+  imageEl.style.opacity = '0';
+  imageEl.style.visibility = 'hidden';
+
+  if (mediaType === 'image' && mediaPath.length > 0 && mediaOpacity > 1e-6) {
+    const preloadEntry = getCenterOverlayImagePreloadEntry(mediaPath);
+    if (preloadEntry && preloadEntry.status === 'loaded' && preloadEntry.image) {
+      imageEl.style.backgroundImage = `url("${preloadEntry.image.src}")`;
+      imageEl.style.opacity = String(mediaOpacity);
+      imageEl.style.visibility = 'visible';
+    } else {
+      const shouldForceRetry = Boolean(preloadEntry && preloadEntry.status === 'failed');
+      requestSectionStylingBackgroundImagePreload(mediaPath, { forceRetry: shouldForceRetry }).catch(() => {});
+    }
+  } else if (mediaType === 'video' && mediaPath.length > 0) {
+    // Future-ready shape: video is parsed now but intentionally not rendered yet.
+  }
+
+  slot.style.opacity = String(slotOpacity);
+  slot.style.visibility = 'visible';
+  return true;
+}
+
+function hideSectionStylingTopSlot(slotElement) {
+  if (!slotElement || !slotElement.style) {
+    return;
+  }
+  slotElement.style.display = 'none';
+  slotElement.style.opacity = '0';
+  slotElement.style.visibility = 'hidden';
+  slotElement.style.backgroundColor = 'transparent';
+  slotElement.style.mixBlendMode = 'normal';
+  slotElement.setAttribute('aria-hidden', 'true');
+  clearSectionStylingMaskFromElement(slotElement);
+}
+
+function getSectionStylingTopSlotTargetParent() {
+  if (!document || !document.body) {
+    return null;
+  }
+  if (STATE.viewportLayoutMode === VIEWPORT_LAYOUT_MODE_SCROLL_STAGE) {
+    const stage = document.getElementById(VIEWPORT_LAYOUT_SCROLL_STAGE_ID);
+    if (stage && stage.parentNode) {
+      return stage;
+    }
+  }
+  return document.body;
+}
+
+function ensureSectionStylingTopSlotsOnTop() {
+  const targetParent = getSectionStylingTopSlotTargetParent();
+  if (!targetParent) {
+    return;
+  }
+  for (let i = 0; i < sectionStylingTopSlotElements.length; i += 1) {
+    const slot = sectionStylingTopSlotElements[i];
+    if (!slot) {
+      continue;
+    }
+    targetParent.appendChild(slot);
+  }
+}
+
+function applySectionStylingTopSlotPositionMode(mode = SECTION_STYLING_TOP_SLOT_POSITION_MODE_FIXED) {
+  const safeMode = sanitizeSectionStylingTopSlotPositionMode(
+    mode,
+    SECTION_STYLING_TOP_SLOT_POSITION_MODE_FIXED,
+  );
+  if (safeMode === sectionStylingTopSlotPositionModeApplied) {
+    return safeMode;
+  }
+  for (let i = 0; i < sectionStylingTopSlotElements.length; i += 1) {
+    const slot = sectionStylingTopSlotElements[i];
+    if (!slot || !slot.style) {
+      continue;
+    }
+    if (safeMode === SECTION_STYLING_TOP_SLOT_POSITION_MODE_ABSOLUTE) {
+      slot.style.position = SECTION_STYLING_TOP_SLOT_POSITION_MODE_ABSOLUTE;
+    } else {
+      // In default mode, defer positioning to CSS so layout-mode selectors can still switch fixed->absolute.
+      slot.style.position = '';
+    }
+  }
+  sectionStylingTopSlotPositionModeApplied = safeMode;
+  return safeMode;
+}
+
+function resolveSectionStylingTopSlotPositionMode(swipeConfig = resolveSwipeSectionsConfig()) {
+  const swipeSectionStyling = (
+    swipeConfig
+    && swipeConfig.sectionStyling
+    && typeof swipeConfig.sectionStyling === 'object'
+  )
+    ? swipeConfig.sectionStyling
+    : {};
+  const configMode = swipeSectionStyling.topSlotsPositionMode;
+  const rawMode = sectionStylingTopSlotPositionModeOverride || configMode;
+  return sanitizeSectionStylingTopSlotPositionMode(
+    rawMode,
+    SECTION_STYLING_TOP_SLOT_POSITION_MODE_FIXED,
+  );
+}
+
+function syncSectionStylingTopSlotPositionMode(swipeConfig = resolveSwipeSectionsConfig()) {
+  const mode = resolveSectionStylingTopSlotPositionMode(swipeConfig);
+  return applySectionStylingTopSlotPositionMode(mode);
+}
+
+function applySectionStylingTopSlot(
+  slotElement,
+  upperLayerConfig,
+  transitionOpacityMultiplier = 0,
+) {
+  if (!slotElement || !slotElement.style) {
+    return false;
+  }
+  const safeLayer = resolveSectionStylingUpperLayerConfig(upperLayerConfig);
+  const transitionOpacity = clamp(
+    Number.isFinite(Number(transitionOpacityMultiplier)) ? Number(transitionOpacityMultiplier) : 0,
+    0,
+    1,
+  );
+  const layerOpacity = clamp(
+    Number.isFinite(Number(safeLayer.opacity)) ? Number(safeLayer.opacity) : 0,
+    0,
+    1,
+  );
+  const opacity = transitionOpacity * layerOpacity;
+  if (opacity <= 1e-6) {
+    hideSectionStylingTopSlot(slotElement);
+    return false;
+  }
+  slotElement.style.display = 'block';
+  slotElement.style.backgroundColor = safeLayer.color || 'transparent';
+  slotElement.style.mixBlendMode = resolveSectionStylingBlendMode(safeLayer.blendMode, 'soft-light');
+  slotElement.style.opacity = String(opacity);
+  slotElement.style.visibility = 'visible';
+  slotElement.setAttribute('aria-hidden', 'false');
+  applySectionStylingMaskToElement(slotElement, safeLayer.mask);
+  return true;
+}
+
+function hideSectionStylingTopLayer() {
+  for (let layerIndex = 0; layerIndex < sectionStylingTopSlotsByLayer.length; layerIndex += 1) {
+    const slotPair = sectionStylingTopSlotsByLayer[layerIndex];
+    for (let slotIndex = 0; slotIndex < slotPair.length; slotIndex += 1) {
+      hideSectionStylingTopSlot(slotPair[slotIndex]);
+    }
+  }
+  sectionStylingTopLayer.setAttribute('aria-hidden', 'true');
+}
+
+function syncSectionStylingLayers(nowMs = performance.now(), currentFrame = null) {
+  if (!sectionStylingBackgroundLayer || sectionStylingTopSlotElements.length <= 0) {
+    return;
+  }
+  const swipeConfig = resolveSwipeSectionsConfig();
+  syncSectionStylingTopSlotPositionMode(swipeConfig);
+  if (!isSectionStylingFeatureEnabled(swipeConfig)) {
+    sectionStylingBackgroundLayer.style.display = 'none';
+    sectionStylingBackgroundLayer.style.visibility = 'hidden';
+    sectionStylingBackgroundLayer.setAttribute('aria-hidden', 'true');
+    hideSectionStylingTopLayer();
+    return;
+  }
+
+  sectionStylingBackgroundLayer.style.display = 'block';
+  sectionStylingBackgroundLayer.style.visibility = 'visible';
+  sectionStylingBackgroundLayer.setAttribute('aria-hidden', 'false');
+
+  const gateConfig = resolveHeroPlaybackGateConfig();
+  const frameNow = Number.isFinite(currentFrame)
+    ? currentFrame
+    : getCurrentHeroVideoFrame(gateConfig);
+  const postButtonPauseFrame = (
+    gateConfig
+    && Number.isFinite(Number(gateConfig.postButtonPauseFrame))
+  )
+    ? Math.max(0, Number(gateConfig.postButtonPauseFrame))
+    : 0;
+  const isSectionRangeActive = (
+    swipeConfig.enabled === true
+    && Array.isArray(swipeConfig.sections)
+    && swipeConfig.sections.length > 0
+    && Number.isFinite(frameNow)
+    && frameNow >= postButtonPauseFrame
+  );
+
+  if (!isSectionRangeActive) {
+    for (let i = 0; i < sectionStylingBackgroundSlots.length; i += 1) {
+      hideSectionStylingBackgroundSlot(sectionStylingBackgroundSlots[i]);
+    }
+    hideSectionStylingTopLayer();
+    return;
+  }
+  // Runtime sanity guard: keep the section background host paint-visible while active.
+  sectionStylingBackgroundLayer.style.display = 'block';
+  sectionStylingBackgroundLayer.style.visibility = 'visible';
+  sectionStylingBackgroundLayer.setAttribute('aria-hidden', 'false');
+
+  const sections = swipeConfig.sections;
+  const swipeState = STATE && STATE.swipeSections ? STATE.swipeSections : null;
+  const isTransitioning = Boolean(
+    swipeState
+    && swipeState.isTransitioning === true
+    && Number.isFinite(swipeState.transitionFromSectionIndex)
+    && Number.isFinite(swipeState.transitionToSectionIndex)
+    && swipeState.transitionFromSectionIndex >= 0
+    && swipeState.transitionFromSectionIndex < sections.length
+    && swipeState.transitionToSectionIndex >= 0
+    && swipeState.transitionToSectionIndex < sections.length
+  );
+
+  let outgoingIndex = findActiveSwipeSectionIndexForFrame(swipeConfig, frameNow);
+  let incomingIndex = -1;
+  let outgoingOpacityMultiplier = 1;
+  let incomingOpacityMultiplier = 0;
+
+  if (isTransitioning) {
+    outgoingIndex = Math.floor(swipeState.transitionFromSectionIndex);
+    incomingIndex = Math.floor(swipeState.transitionToSectionIndex);
+    outgoingOpacityMultiplier = clamp(
+      Number(swipeState.sectionStylingOutgoingOpacityMultiplier),
+      0,
+      1,
+    );
+    incomingOpacityMultiplier = clamp(
+      Number(swipeState.sectionStylingOpacityMultiplier),
+      0,
+      1,
+    );
+  }
+
+  const outgoingSection = (
+    outgoingIndex >= 0
+    && outgoingIndex < sections.length
+  )
+    ? sections[outgoingIndex]
+    : null;
+  const incomingSection = (
+    incomingIndex >= 0
+    && incomingIndex < sections.length
+  )
+    ? sections[incomingIndex]
+    : null;
+
+  const outgoingStyling = resolveSectionStylingForSection(outgoingSection);
+  const incomingStyling = resolveSectionStylingForSection(incomingSection);
+
+  const hasOutgoingBackground = applySectionStylingBackgroundSlot(
+    sectionStylingBackgroundSlots[0],
+    outgoingStyling,
+    outgoingOpacityMultiplier,
+  );
+  const hasIncomingBackground = applySectionStylingBackgroundSlot(
+    sectionStylingBackgroundSlots[1],
+    incomingStyling,
+    incomingOpacityMultiplier,
+  );
+  if (!hasOutgoingBackground) {
+    hideSectionStylingBackgroundSlot(sectionStylingBackgroundSlots[0]);
+  }
+  if (!hasIncomingBackground) {
+    hideSectionStylingBackgroundSlot(sectionStylingBackgroundSlots[1]);
+  }
+
+  let anyTopVisible = false;
+  for (let layerIndex = 0; layerIndex < sectionStylingTopSlotsByLayer.length; layerIndex += 1) {
+    const slotPair = sectionStylingTopSlotsByLayer[layerIndex];
+    const outgoingUpperLayer = outgoingStyling
+      && Array.isArray(outgoingStyling.upperLayers)
+      ? outgoingStyling.upperLayers[layerIndex]
+      : null;
+    const incomingUpperLayer = incomingStyling
+      && Array.isArray(incomingStyling.upperLayers)
+      ? incomingStyling.upperLayers[layerIndex]
+      : null;
+    const hasOutgoingTop = applySectionStylingTopSlot(
+      slotPair[0],
+      outgoingUpperLayer,
+      outgoingOpacityMultiplier,
+    );
+    const hasIncomingTop = applySectionStylingTopSlot(
+      slotPair[1],
+      incomingUpperLayer,
+      incomingOpacityMultiplier,
+    );
+    anyTopVisible = anyTopVisible || hasOutgoingTop || hasIncomingTop;
+    if (!hasOutgoingTop) {
+      hideSectionStylingTopSlot(slotPair[0]);
+    }
+    if (!hasIncomingTop) {
+      hideSectionStylingTopSlot(slotPair[1]);
+    }
+  }
+
+  if (anyTopVisible) {
+    sectionStylingTopLayer.setAttribute('aria-hidden', 'false');
+    ensureSectionStylingTopSlotsOnTop();
+  } else {
+    hideSectionStylingTopLayer();
+  }
+
+  sectionStylingBackgroundLayer.dataset.sectionStylingActiveSectionId = (
+    outgoingSection
+    && typeof outgoingSection.id === 'string'
+  )
+    ? outgoingSection.id
+    : '';
+  sectionStylingBackgroundLayer.dataset.sectionStylingTimestamp = Number.isFinite(nowMs)
+    ? String(nowMs)
+    : String(performance.now());
+}
+
+function setSectionStylingTopSlotsPositionMode(mode = '') {
+  const normalized = String(mode || '').trim().toLowerCase();
+  if (
+    normalized.length <= 0
+    || normalized === 'auto'
+    || normalized === 'default'
+    || normalized === 'config'
+  ) {
+    sectionStylingTopSlotPositionModeOverride = '';
+  } else {
+    sectionStylingTopSlotPositionModeOverride = sanitizeSectionStylingTopSlotPositionMode(
+      normalized,
+      SECTION_STYLING_TOP_SLOT_POSITION_MODE_FIXED,
+    );
+  }
+  const swipeConfig = resolveSwipeSectionsConfig();
+  const resolvedMode = syncSectionStylingTopSlotPositionMode(swipeConfig);
+  ensureSectionStylingTopSlotsOnTop();
+  renderScene({ skipAutoStart: true });
+  return {
+    override: sectionStylingTopSlotPositionModeOverride || null,
+    resolved: resolvedMode,
+  };
+}
+
+function verifySectionStylingBlendMode() {
+  const swipeConfig = resolveSwipeSectionsConfig();
+  const resolvedMode = resolveSectionStylingTopSlotPositionMode(swipeConfig);
+  const slots = sectionStylingTopSlotElements.map((slot) => {
+    const computed = (slot && typeof window !== 'undefined' && typeof window.getComputedStyle === 'function')
+      ? window.getComputedStyle(slot)
+      : null;
+    const parent = slot && slot.parentElement ? slot.parentElement : null;
+    return {
+      id: slot && slot.id ? slot.id : '',
+      parentId: parent && parent.id ? parent.id : '',
+      parentTagName: parent && parent.tagName ? parent.tagName.toLowerCase() : '',
+      mixBlendMode: computed
+        ? (computed.mixBlendMode || computed.getPropertyValue('mix-blend-mode') || '')
+        : '',
+      opacity: computed ? (computed.opacity || '') : '',
+      visibility: computed ? (computed.visibility || '') : '',
+      display: computed ? (computed.display || '') : '',
+      position: computed ? (computed.position || '') : '',
+      zIndex: computed ? (computed.zIndex || '') : '',
+      ariaHidden: slot ? slot.getAttribute('aria-hidden') : null,
+      inlinePosition: slot && slot.style ? slot.style.position || '' : '',
+    };
+  });
+  return {
+    timestampMs: performance.now(),
+    viewportLayoutMode: STATE.viewportLayoutMode,
+    sectionStylingEnabled: isSectionStylingFeatureEnabled(swipeConfig),
+    configuredTopSlotsPositionMode: (
+      swipeConfig
+      && swipeConfig.sectionStyling
+      && typeof swipeConfig.sectionStyling === 'object'
+    )
+      ? swipeConfig.sectionStyling.topSlotsPositionMode || null
+      : null,
+    overrideTopSlotsPositionMode: sectionStylingTopSlotPositionModeOverride || null,
+    resolvedTopSlotsPositionMode: resolvedMode,
+    appliedTopSlotsPositionMode: sectionStylingTopSlotPositionModeApplied || null,
+    wrapperInDom: Boolean(sectionStylingTopLayer && sectionStylingTopLayer.parentElement),
+    wrapperParentId: (
+      sectionStylingTopLayer
+      && sectionStylingTopLayer.parentElement
+      && sectionStylingTopLayer.parentElement.id
+    )
+      ? sectionStylingTopLayer.parentElement.id
+      : '',
+    topSlots: slots,
+  };
 }
 
 function getSwipeSectionsRsvpRuntimeState() {
@@ -8396,7 +9395,7 @@ function maybeStartFoliageVideosFromHeroVideoFrame(currentFrame, gateConfig) {
   }
   
   gateState.foliageVideosStarted = true;
-  console.log('[FoliageVideos] Starting at frame:', currentFrame, '(startFrame:', startFrame + ')');
+  // console.log('[FoliageVideos] Starting at frame:', currentFrame, '(startFrame:', startFrame + ')');
   startFoliageVideos();
 }
 
@@ -10560,6 +11559,11 @@ function getTemplateNoiseOffset(
 // =========================
 
 function areFlowersFullyOpen() {
+  const flowersEnabled = Boolean(CONFIG.flowers && CONFIG.flowers.enabled === true);
+  const growthEnabled = Boolean(CONFIG.branchGrowth && CONFIG.branchGrowth.enabled === true);
+  if (!flowersEnabled || !growthEnabled) {
+    return true;
+  }
   const flowerGrowth = STATE.flowerGrowth;
   return Boolean(
     flowerGrowth 
@@ -10664,33 +11668,52 @@ function tickWindInfluencers(nowMs) {
   }
 
   STATE.windInfluencerPositions = newPositions;
+  // Debug log wind positions when debug mode is enabled
+  try {
+    if (windConfig && windConfig.debug && windConfig.debug.enabled) {
+      // Use console.debug to avoid noise unless dev tools open
+      // console.debug('[Wind] Positions:', JSON.stringify(STATE.windInfluencerPositions));
+    }
+  } catch (e) {
+    // console.debug('[Wind] Positions logging failed', e);
+  }
 }
 
 function drawWindDebugOverlay(targetCtx) {
   const windConfig = resolveWindConfig();
-  if (!windConfig.debug.enabled) {
+  if (!windConfig || !windConfig.debug || !windConfig.debug.enabled) {
     return;
   }
   const positions = STATE.windInfluencerPositions;
   if (!positions || positions.length === 0) {
+    // Nothing to draw — log when debug mode is enabled to help diagnosis
+    try {
+      // console.warn('[Wind] drawWindDebugOverlay: no positions to draw');
+    } catch (_) {}
     return;
   }
   const dbg = windConfig.debug;
-  targetCtx.save();
-  for (let i = 0; i < positions.length; i += 1) {
-    const pos = positions[i];
-    targetCtx.beginPath();
-    targetCtx.arc(pos.x, pos.y, pos.radius, 0, 2 * Math.PI);
-    targetCtx.lineWidth = dbg.lineWidthPx;
-    targetCtx.strokeStyle = dbg.strokeStyle;
-    targetCtx.fillStyle = dbg.fillStyle;
-    targetCtx.fill();
-    targetCtx.stroke();
-    targetCtx.font = '12px monospace';
-    targetCtx.fillStyle = dbg.strokeStyle;
-    targetCtx.fillText(`wind[${i}] x:${Math.round(pos.x)} y:${Math.round(pos.y)}`, pos.x + pos.radius + 4, pos.y + 4);
+  try {
+    targetCtx.save();
+    for (let i = 0; i < positions.length; i += 1) {
+      const pos = positions[i];
+      targetCtx.beginPath();
+      targetCtx.arc(pos.x, pos.y, pos.radius, 0, 2 * Math.PI);
+      targetCtx.lineWidth = dbg.lineWidthPx;
+      targetCtx.strokeStyle = dbg.strokeStyle;
+      targetCtx.fillStyle = dbg.fillStyle;
+      targetCtx.fill();
+      targetCtx.stroke();
+      targetCtx.font = '12px monospace';
+      targetCtx.fillStyle = dbg.strokeStyle;
+      targetCtx.fillText(`wind[${i}] x:${Math.round(pos.x)} y:${Math.round(pos.y)}`, pos.x + pos.radius + 4, pos.y + 4);
+    }
+    targetCtx.restore();
+  } catch (e) {
+    // Ensure we restore the context even on error
+    try { targetCtx.restore(); } catch (_) {}
+    console.error('[Wind] drawWindDebugOverlay failed:', e);
   }
-  targetCtx.restore();
 }
 
 
@@ -14416,20 +15439,8 @@ function stepFlowerInteractionFrame(timestampMs) {
 // 12) Draw Helpers
 // =========================
 function drawBackground() {
-  // Always clear first so the base canvas stays transparent when no fill is set.
+  // Keep myCanvas transparent; background visuals are handled by sectionStylingBackgroundLayer.
   ctx.clearRect(0, 0, STATE.viewportWidth, STATE.viewportHeight);
-  const fill = CONFIG.backgroundColor;
-  if (fill === null || fill === undefined) {
-    return;
-  }
-  if (typeof fill === 'string') {
-    const normalizedFill = fill.trim().toLowerCase();
-    if (normalizedFill.length === 0 || normalizedFill === 'transparent') {
-      return;
-    }
-  }
-  ctx.fillStyle = fill;
-  ctx.fillRect(0, 0, STATE.viewportWidth, STATE.viewportHeight);
 }
 
 function resolveOpenButtonArrowDrawTargetCtx() {
@@ -17550,6 +18561,191 @@ function resolveSwipeSectionsRsvpConfig(
   };
 }
 
+function canonicalizeSectionStylingBlendModeToken(rawValue = '') {
+  const normalized = String(rawValue || '')
+    .trim()
+    .toLowerCase()
+    .replace(/_/g, '-')
+    .replace(/\s+/g, '-');
+  const compact = normalized.replace(/-/g, '');
+  if (compact === 'softlight') {
+    return 'soft-light';
+  }
+  if (compact === 'hardlight') {
+    return 'hard-light';
+  }
+  if (compact === 'colordodge') {
+    return 'color-dodge';
+  }
+  if (compact === 'colorburn') {
+    return 'color-burn';
+  }
+  if (compact === 'pluslighter') {
+    return 'plus-lighter';
+  }
+  if (compact === 'plusdarker') {
+    return 'plus-darker';
+  }
+  return normalized;
+}
+
+function isSectionStylingBlendModeSupportedByCss(blendMode = 'soft-light') {
+  const candidate = canonicalizeSectionStylingBlendModeToken(blendMode);
+  if (!candidate || !SECTION_STYLING_SUPPORTED_BLEND_MODES.has(candidate)) {
+    return false;
+  }
+  if (typeof CSS !== 'undefined' && CSS && typeof CSS.supports === 'function') {
+    try {
+      return CSS.supports('mix-blend-mode', candidate);
+    } catch (_error) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function resolveSectionStylingBlendMode(rawValue, fallback = 'soft-light') {
+  const fallbackToken = canonicalizeSectionStylingBlendModeToken(fallback) || 'soft-light';
+  const candidate = canonicalizeSectionStylingBlendModeToken(rawValue);
+  if (!candidate || !SECTION_STYLING_SUPPORTED_BLEND_MODES.has(candidate)) {
+    return fallbackToken;
+  }
+  if (!isSectionStylingBlendModeSupportedByCss(candidate)) {
+    return fallbackToken;
+  }
+  return candidate;
+}
+
+function sanitizeSectionStylingTopSlotPositionMode(
+  rawValue,
+  fallback = SECTION_STYLING_TOP_SLOT_POSITION_MODE_FIXED,
+) {
+  const normalized = String(rawValue || '').trim().toLowerCase();
+  if (SECTION_STYLING_TOP_SLOT_ALLOWED_POSITION_MODES.has(normalized)) {
+    return normalized;
+  }
+  return SECTION_STYLING_TOP_SLOT_ALLOWED_POSITION_MODES.has(fallback)
+    ? fallback
+    : SECTION_STYLING_TOP_SLOT_POSITION_MODE_FIXED;
+}
+
+function resolveSectionStylingMediaType(rawValue) {
+  const normalized = String(rawValue || '').trim().toLowerCase();
+  return normalized === 'video' ? 'video' : 'image';
+}
+
+function resolveSectionStylingMaskConfig(maskCandidate = {}) {
+  const safeMask = isPlainObjectLiteral(maskCandidate) ? maskCandidate : {};
+  const centerXRatio = Number.isFinite(Number(safeMask.centerXRatio))
+    ? clamp(Number(safeMask.centerXRatio), 0, 1)
+    : 0.5;
+  const centerYRatio = Number.isFinite(Number(safeMask.centerYRatio))
+    ? clamp(Number(safeMask.centerYRatio), 0, 1)
+    : 0.5;
+  const innerRadiusRatio = Number.isFinite(Number(safeMask.innerRadiusRatio))
+    ? clamp(Number(safeMask.innerRadiusRatio), 0, 1)
+    : 0.22;
+  let outerRadiusRatio = Number.isFinite(Number(safeMask.outerRadiusRatio))
+    ? clamp(Number(safeMask.outerRadiusRatio), 0, 1)
+    : 0.82;
+  outerRadiusRatio = Math.max(innerRadiusRatio + 0.02, outerRadiusRatio);
+  const clampedOuterRadiusRatio = clamp(outerRadiusRatio, 0.02, 1);
+  const legacyOpacity = Number.isFinite(Number(safeMask.opacity))
+    ? clamp(Number(safeMask.opacity), 0, 1)
+    : 1;
+  const hasCenterColor = (
+    typeof safeMask.centerColor === 'string'
+    && safeMask.centerColor.trim().length > 0
+  );
+  const hasOuterColor = (
+    typeof safeMask.outerColor === 'string'
+    && safeMask.outerColor.trim().length > 0
+  );
+  return {
+    enabled: safeMask.enabled === true,
+    centerXRatio,
+    centerYRatio,
+    innerRadiusRatio,
+    outerRadiusRatio: clampedOuterRadiusRatio,
+    // Backward-compat for old configs that only provided mask.opacity.
+    opacity: legacyOpacity,
+    centerColor: hasCenterColor
+      ? safeMask.centerColor.trim()
+      : `rgba(255, 255, 255, ${legacyOpacity})`,
+    outerColor: hasOuterColor
+      ? safeMask.outerColor.trim()
+      : 'rgba(255, 255, 255, 0)',
+  };
+}
+
+function resolveSectionStylingUpperLayerConfig(layerCandidate = {}) {
+  const safeLayer = isPlainObjectLiteral(layerCandidate) ? layerCandidate : {};
+  return {
+    color: (
+      typeof safeLayer.color === 'string'
+      && safeLayer.color.trim().length > 0
+    )
+      ? safeLayer.color.trim()
+      : 'transparent',
+    opacity: Number.isFinite(Number(safeLayer.opacity))
+      ? clamp(Number(safeLayer.opacity), 0, 1)
+      : 0,
+    blendMode: resolveSectionStylingBlendMode(safeLayer.blendMode, 'soft-light'),
+    mask: resolveSectionStylingMaskConfig(safeLayer.mask),
+  };
+}
+
+function resolveSectionStylingBackgroundConfig(backgroundCandidate = {}) {
+  const safeBackground = isPlainObjectLiteral(backgroundCandidate) ? backgroundCandidate : {};
+  const mediaRaw = isPlainObjectLiteral(safeBackground.media) ? safeBackground.media : {};
+  const mediaPath = (
+    typeof mediaRaw.path === 'string'
+    && mediaRaw.path.trim().length > 0
+  )
+    ? normalizeCenterOverlayImagePath(mediaRaw.path.trim())
+    : (
+      typeof safeBackground.imagePath === 'string'
+      && safeBackground.imagePath.trim().length > 0
+    )
+      ? normalizeCenterOverlayImagePath(safeBackground.imagePath.trim())
+      : '';
+  const mediaOpacityRaw = Number.isFinite(Number(mediaRaw.opacity))
+    ? Number(mediaRaw.opacity)
+    : (
+      Number.isFinite(Number(safeBackground.imageOpacity))
+        ? Number(safeBackground.imageOpacity)
+        : 1
+    );
+  const mediaTypeRaw = mediaRaw.type !== undefined ? mediaRaw.type : safeBackground.mediaType;
+  return {
+    color: (
+      typeof safeBackground.color === 'string'
+      && safeBackground.color.trim().length > 0
+    )
+      ? safeBackground.color.trim()
+      : 'transparent',
+    media: {
+      type: resolveSectionStylingMediaType(mediaTypeRaw),
+      path: mediaPath,
+      opacity: clamp(mediaOpacityRaw, 0, 1),
+    },
+  };
+}
+
+function resolveSectionStylingConfig(sectionStylingCandidate = {}) {
+  const safeSectionStyling = isPlainObjectLiteral(sectionStylingCandidate) ? sectionStylingCandidate : {};
+  const upperLayersRaw = Array.isArray(safeSectionStyling.upperLayers)
+    ? safeSectionStyling.upperLayers
+    : [];
+  return {
+    background: resolveSectionStylingBackgroundConfig(safeSectionStyling.background),
+    upperLayers: [
+      resolveSectionStylingUpperLayerConfig(upperLayersRaw[0]),
+      resolveSectionStylingUpperLayerConfig(upperLayersRaw[1]),
+    ],
+  };
+}
+
 function resolveSwipeSectionsConfig(configCandidate = CONFIG.swipeSections) {
   const safeConfig = isPlainObjectLiteral(configCandidate) ? configCandidate : {};
   const gateConfig = resolveHeroPlaybackGateConfig(CONFIG.heroPlaybackGate);
@@ -17584,6 +18780,10 @@ function resolveSwipeSectionsConfig(configCandidate = CONFIG.swipeSections) {
 
   const sectionsRaw = Array.isArray(safeConfig.sections) ? safeConfig.sections : [];
   const sections = [];
+  const topLevelSectionStylingRaw = isPlainObjectLiteral(safeConfig.sectionStyling)
+    ? safeConfig.sectionStyling
+    : {};
+  let hasExplicitSectionStyling = false;
   const resolveSwipeSectionButtonConfig = (buttonCandidate) => {
     const buttonRaw = isPlainObjectLiteral(buttonCandidate) ? buttonCandidate : null;
     if (!buttonRaw) {
@@ -17768,6 +18968,10 @@ function resolveSwipeSectionsConfig(configCandidate = CONFIG.swipeSections) {
       ? centerOverlayOffsetYVideoHeightRatioRaw
       : null;
     const button = resolveSwipeSectionButtonConfig(rawEntry.button);
+    if (isPlainObjectLiteral(rawEntry.sectionStyling)) {
+      hasExplicitSectionStyling = true;
+    }
+    const sectionStyling = resolveSectionStylingConfig(rawEntry.sectionStyling);
     sections.push({
       id,
       frame,
@@ -17775,6 +18979,7 @@ function resolveSwipeSectionsConfig(configCandidate = CONFIG.swipeSections) {
       centerOverlayImagePath,
       centerOverlayOffsetYVideoHeightRatio,
       button,
+      sectionStyling,
     });
   }
   if (sections.length <= 0) {
@@ -17785,6 +18990,7 @@ function resolveSwipeSectionsConfig(configCandidate = CONFIG.swipeSections) {
       centerOverlayImagePath: pages[0] || fallbackOverlayPath,
       centerOverlayOffsetYVideoHeightRatio: null,
       button: null,
+      sectionStyling: resolveSectionStylingConfig({}),
     });
   }
 
@@ -17868,6 +19074,16 @@ function resolveSwipeSectionsConfig(configCandidate = CONFIG.swipeSections) {
           : 0.85,
         0,
         1,
+      ),
+    },
+    sectionStyling: {
+      enabled: (
+        topLevelSectionStylingRaw.enabled === true
+        || hasExplicitSectionStyling === true
+      ),
+      topSlotsPositionMode: sanitizeSectionStylingTopSlotPositionMode(
+        topLevelSectionStylingRaw.topSlotsPositionMode,
+        SECTION_STYLING_TOP_SLOT_POSITION_MODE_FIXED,
       ),
     },
     rsvp: resolveSwipeSectionsRsvpConfig(safeConfig.rsvp, sections),
@@ -19238,6 +20454,51 @@ function resizeCanvasToViewport() {
     jumpSparkleFrontCanvas.height = Math.floor(STATE.viewportHeight * STATE.dpr);
     jumpSparkleFrontCtx.setTransform(STATE.dpr, 0, 0, STATE.dpr, 0, 0);
   }
+  // Ensure the CSS display size matches the logical viewport size (CSS pixels)
+  try {
+    if (canvas && canvas.style) {
+      canvas.style.width = `${STATE.viewportWidth}px`;
+      canvas.style.height = `${STATE.viewportHeight}px`;
+    }
+    if (frontCanvas && frontCanvas.style) {
+      frontCanvas.style.width = `${STATE.viewportWidth}px`;
+      frontCanvas.style.height = `${STATE.viewportHeight}px`;
+    }
+    if (heroHintCanvas && heroHintCanvas.style) {
+      heroHintCanvas.style.width = `${STATE.viewportWidth}px`;
+      heroHintCanvas.style.height = `${STATE.viewportHeight}px`;
+    }
+    if (flowersBackCanvas && flowersBackCanvas.style) {
+      flowersBackCanvas.style.width = `${STATE.viewportWidth}px`;
+      flowersBackCanvas.style.height = `${STATE.viewportHeight}px`;
+    }
+    if (flowersFrontCanvas && flowersFrontCanvas.style) {
+      flowersFrontCanvas.style.width = `${STATE.viewportWidth}px`;
+      flowersFrontCanvas.style.height = `${STATE.viewportHeight}px`;
+    }
+    if (jumpSparkleBackCanvas && jumpSparkleBackCanvas.style) {
+      jumpSparkleBackCanvas.style.width = `${STATE.viewportWidth}px`;
+      jumpSparkleBackCanvas.style.height = `${STATE.viewportHeight}px`;
+    }
+    if (jumpSparkleFrontCanvas && jumpSparkleFrontCanvas.style) {
+      jumpSparkleFrontCanvas.style.width = `${STATE.viewportWidth}px`;
+      jumpSparkleFrontCanvas.style.height = `${STATE.viewportHeight}px`;
+    }
+  } catch (e) {
+    // non-fatal, but log for diagnosis
+    console.debug('[Canvas] Failed to set style width/height on canvases', e);
+  }
+
+  // Development debug: log DPR, viewport and canvas sizes
+  try {
+    if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+      const root = document.documentElement || document.body;
+      const cssVarW = root ? (getComputedStyle(root).getPropertyValue('--app-viewport-width') || '').trim() : '';
+      // console.error('[DEBUG] Canvas Resize:', `dpr=${STATE.dpr}`, `viewport=${STATE.viewportWidth}x${STATE.viewportHeight}`, `canvas.width=${canvas && canvas.width}`, `canvas.height=${canvas && canvas.height}`, `style=${canvas && canvas.style ? canvas.style.width + 'x' + canvas.style.height : 'n/a'}`, `--app-viewport-width=${cssVarW}`);
+    }
+  } catch (e) {
+    // console.debug('[DEBUG] Canvas Resize log failed', e);
+  }
   
   viewportDebugLog(
     'resizeCanvasToViewport',
@@ -19246,6 +20507,7 @@ function resizeCanvasToViewport() {
     `dpr=${STATE.dpr.toFixed(2)}`,
     `duration=${(performance.now() - resizeStartMs).toFixed(2)}ms`,
   );
+
 }
 
 let largeViewportProbeElement = null;
@@ -19689,6 +20951,7 @@ function ensureScrollStageLayoutStructure() {
   }
 
   const orderedStageChildren = [
+    sectionStylingBackgroundLayer,
     canvas,
     flowersBackCanvas,
     heroHintCanvas,
@@ -19704,6 +20967,10 @@ function ensureScrollStageLayoutStructure() {
     frontCanvas,
     flowersFrontCanvas,
     jumpSparkleFrontLayer,
+    sectionStylingTopLayer1SlotA,
+    sectionStylingTopLayer1SlotB,
+    sectionStylingTopLayer2SlotA,
+    sectionStylingTopLayer2SlotB,
     mainElement,
   ];
   for (let i = 0; i < orderedStageChildren.length; i += 1) {
@@ -19729,6 +20996,7 @@ function ensureRootBackgroundLayoutStructure() {
   }
 
   const orderedLayers = [
+    sectionStylingBackgroundLayer,
     canvas,
     flowersBackCanvas,
     heroHintCanvas,
@@ -19744,6 +21012,10 @@ function ensureRootBackgroundLayoutStructure() {
     frontCanvas,
     flowersFrontCanvas,
     jumpSparkleFrontLayer,
+    sectionStylingTopLayer1SlotA,
+    sectionStylingTopLayer1SlotB,
+    sectionStylingTopLayer2SlotA,
+    sectionStylingTopLayer2SlotB,
   ];
   let anchor = body.firstChild;
   for (let i = 0; i < orderedLayers.length; i += 1) {
@@ -20503,6 +21775,7 @@ function renderScene(options = {}) {
   syncSection2ButtonLayer(overlayNowMs);
   syncSection1LabelLayer(overlayNowMs);
   syncJumpSparkleLayer(overlayNowMs);
+  syncSectionStylingLayers(overlayNowMs, heroPlaybackFrame);
   syncWash1Layer(heroPlaybackFrame);
   syncWash2Layer(heroPlaybackFrame);
   if (enforceHeroPlaybackGatePauseFrames(heroPlaybackFrame, heroPlaybackGateConfig, { rerenderOnPause: false })) {
@@ -21283,6 +22556,8 @@ function cancelSwipeSectionTransition() {
   swipeState.transitionDirection = 0;
   swipeState.overlayOpacityMultiplier = 1;
   swipeState.overlayOutgoingOpacityMultiplier = 0;
+  swipeState.sectionStylingOpacityMultiplier = 1;
+  swipeState.sectionStylingOutgoingOpacityMultiplier = 0;
   swipeState.overlayTransitionHasSwappedPath = false;
 }
 
@@ -21381,6 +22656,7 @@ function syncSwipeSectionsStateWithConfig(options = {}) {
     rsvpRuntime.sectionId = swipeConfig.rsvp.sectionId;
   }
   preloadSwipeSectionsOverlayImages(swipeConfig);
+  preloadSwipeSectionsSectionStylingBackgroundImages(swipeConfig);
   if (swipeConfig.scrollHint && swipeConfig.scrollHint.enabled === true && swipeConfig.scrollHint.spritePath.length > 0) {
     ensureCenterOverlayImagePreload(swipeConfig.scrollHint.spritePath).catch(() => {});
   }
@@ -21392,6 +22668,8 @@ function syncSwipeSectionsStateWithConfig(options = {}) {
       setSwipeSectionOverlayPathOverride('');
       swipeState.overlayOpacityMultiplier = 1;
       swipeState.overlayOutgoingOpacityMultiplier = 0;
+      swipeState.sectionStylingOpacityMultiplier = 1;
+      swipeState.sectionStylingOutgoingOpacityMultiplier = 0;
       swipeState.overlayTransitionHasSwappedPath = false;
     }
     return swipeConfig;
@@ -21421,6 +22699,8 @@ function syncSwipeSectionsStateWithConfig(options = {}) {
     setSwipeSectionOverlayPathOverride(nextSection.centerOverlayImagePath, { forceLoad: safeOptions.forceLoadOverlay });
     swipeState.overlayOpacityMultiplier = 1;
     swipeState.overlayOutgoingOpacityMultiplier = 0;
+    swipeState.sectionStylingOpacityMultiplier = 1;
+    swipeState.sectionStylingOutgoingOpacityMultiplier = 0;
     swipeState.overlayTransitionHasSwappedPath = false;
   }
   syncSwipeSectionDomState(nextSection, nextIndex);
@@ -21537,6 +22817,15 @@ function prepareSwipeSectionOverlayTransitionForTargetSection(targetSection, dur
   swipeState.overlayOpacityMultiplier = mode === 'none' ? 1 : 0;
 }
 
+function prepareSwipeSectionStylingTransitionForTargetSection() {
+  const swipeState = STATE.swipeSections;
+  if (!swipeState) {
+    return;
+  }
+  swipeState.sectionStylingOutgoingOpacityMultiplier = 1;
+  swipeState.sectionStylingOpacityMultiplier = 0;
+}
+
 function updateSwipeSectionOverlayTransitionProgress(progress, targetSection) {
   const swipeState = STATE.swipeSections;
   if (!swipeState || !targetSection) {
@@ -21572,6 +22861,16 @@ function updateSwipeSectionOverlayTransitionProgress(progress, targetSection) {
   }
   swipeState.overlayOutgoingOpacityMultiplier = clamp(outgoingOpacity, 0, 1);
   swipeState.overlayOpacityMultiplier = clamp(incomingOpacity, 0, 1);
+}
+
+function updateSwipeSectionStylingTransitionProgress(progress) {
+  const swipeState = STATE.swipeSections;
+  if (!swipeState) {
+    return;
+  }
+  const clampedProgress = clamp(Number.isFinite(progress) ? progress : 0, 0, 1);
+  swipeState.sectionStylingOutgoingOpacityMultiplier = clamp(1 - clampedProgress, 0, 1);
+  swipeState.sectionStylingOpacityMultiplier = clampedProgress;
 }
 
 function finalizeSwipeSectionTransition(targetIndex, direction, reason, swipeConfig = resolveSwipeSectionsConfig()) {
@@ -21661,6 +22960,7 @@ function startSwipeSectionTransition(targetIndex, direction, reason, swipeConfig
   swipeState.transitionToSectionIndex = safeTargetIndex;
   swipeState.transitionDirection = direction > 0 ? 1 : (direction < 0 ? -1 : 0);
   prepareSwipeSectionOverlayTransitionForTargetSection(targetSection, durationMs, swipeConfig);
+  prepareSwipeSectionStylingTransitionForTargetSection();
 
   if (!(durationMs > 1e-6) || Math.abs(toFrame - fromFrame) <= 0.2) {
     finalizeSwipeSectionTransition(safeTargetIndex, direction, reason, swipeConfig);
@@ -21677,6 +22977,7 @@ function startSwipeSectionTransition(targetIndex, direction, reason, swipeConfig
       + ((swipeState.transitionToFrame - swipeState.transitionFromFrame) * progress);
     lockHeroVideoToFrame(frame, gateConfig);
     updateSwipeSectionOverlayTransitionProgress(progress, targetSection);
+    updateSwipeSectionStylingTransitionProgress(progress);
     renderScene({ skipAutoStart: true });
     if (progress >= 1 - 1e-6) {
       swipeState.transitionRafId = null;
@@ -25162,6 +26463,18 @@ function exposeDevToolsApi() {
 
     setSwipeSectionsOptions(nextOptions) {
       applySwipeSectionsOptions(nextOptions);
+    },
+
+    setSectionStylingBaseBackground(nextOptions) {
+      return setSectionStylingBaseBackground(nextOptions);
+    },
+
+    setSectionStylingTopSlotsPositionMode(mode) {
+      return setSectionStylingTopSlotsPositionMode(mode);
+    },
+
+    verifySectionStylingBlendMode() {
+      return verifySectionStylingBlendMode();
     },
 
     getRsvpState() {

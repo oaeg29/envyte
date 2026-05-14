@@ -8759,6 +8759,11 @@ function getTemplateNoiseOffset(
 // =========================
 
 function areFlowersFullyOpen() {
+  const flowersEnabled = Boolean(CONFIG.flowers && CONFIG.flowers.enabled === true);
+  const growthEnabled = Boolean(CONFIG.branchGrowth && CONFIG.branchGrowth.enabled === true);
+  if (!flowersEnabled || !growthEnabled) {
+    return true;
+  }
   const flowerGrowth = STATE.flowerGrowth;
   return Boolean(
     flowerGrowth 

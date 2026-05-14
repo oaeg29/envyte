@@ -6,16 +6,11 @@
   --app-viewport-width: 100vw;
   --app-viewport-offset-left: 0px;
   --app-viewport-offset-top: 0px;
-  --app-page-bg-top: hsl(205, 15%, 100%);
-  --app-page-bg-mid: hsl(208, 15%, 89%);
-  --app-page-bg-bottom: hsl(208, 20%, 82%);
+  --app-page-bg-top: #ffffff;
+  --app-page-bg-mid: #ffffff;
+  --app-page-bg-bottom: #ffffff;
   --app-page-bg-solid: var(--app-page-bg-top);
-  --app-page-bg-gradient: linear-gradient(
-    180deg,
-    var(--app-page-bg-top) 0%,
-    var(--app-page-bg-mid) 50%,
-    var(--app-page-bg-bottom) 100%
-  );
+  --app-page-bg-gradient: none;
   --safari-top-tint: var(--app-page-bg-top);
   --safari-top-tint-shim-opacity: 0.01;
 }
@@ -137,8 +132,102 @@ body.ios-safari-top-tint-shim-experiment #safari-top-tint-shim {
   left: var(--app-viewport-offset-left);
   width: var(--app-viewport-width);
   height: var(--app-viewport-height);
-  z-index: -1;
+  z-index: 0;
+  background: transparent;
   pointer-events: none;
+}
+
+#sectionStylingBackgroundLayer {
+  position: fixed;
+  top: var(--app-viewport-offset-top);
+  left: var(--app-viewport-offset-left);
+  width: var(--app-viewport-width);
+  height: var(--app-viewport-height);
+  z-index: 0;
+  pointer-events: none;
+  display: none;
+  visibility: hidden;
+  overflow: hidden;
+}
+
+#sectionStylingBackgroundBaseLayer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: var(--app-page-bg-solid);
+  background-image: var(--app-page-bg-gradient);
+  pointer-events: none;
+}
+
+#sectionStylingBackgroundBaseImageLayer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  visibility: hidden;
+  background-repeat: no-repeat;
+  background-position: center center;
+  background-size: cover;
+  pointer-events: none;
+}
+
+.sectionStylingBackgroundSlot {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.sectionStylingBackgroundColor,
+.sectionStylingBackgroundImage {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.sectionStylingBackgroundImage {
+  opacity: 0;
+  visibility: hidden;
+  background-repeat: no-repeat;
+  background-position: center center;
+  background-size: cover;
+}
+
+#sectionStylingTopLayer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  z-index: auto;
+  pointer-events: none;
+  display: none;
+  visibility: hidden;
+  overflow: hidden;
+}
+
+.sectionStylingTopSlot {
+  position: fixed;
+  top: var(--app-viewport-offset-top);
+  left: var(--app-viewport-offset-left);
+  width: var(--app-viewport-width);
+  height: var(--app-viewport-height);
+  z-index: 2147483647;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  mix-blend-mode: soft-light;
 }
 
 #myCanvasFront {
@@ -511,6 +600,7 @@ video {
 }
 
 body.ios26-fixed-workaround #myCanvas,
+body.ios26-fixed-workaround #sectionStylingBackgroundLayer,
 body.ios26-fixed-workaround #myCanvasFront,
 body.ios26-fixed-workaround #myCanvasFlowersBack,
 body.ios26-fixed-workaround #myCanvasFlowersFront,
@@ -524,6 +614,10 @@ body.ios26-fixed-workaround #centerOverlayImageAlt,
 body.ios26-fixed-workaround #rsvpLayer,
 body.ios26-fixed-workaround #jumpSparkleBackLayer,
 body.ios26-fixed-workaround #jumpSparkleFrontLayer,
+body.ios26-fixed-workaround #sectionStylingTopLayer1SlotA,
+body.ios26-fixed-workaround #sectionStylingTopLayer1SlotB,
+body.ios26-fixed-workaround #sectionStylingTopLayer2SlotA,
+body.ios26-fixed-workaround #sectionStylingTopLayer2SlotB,
 body.ios26-fixed-workaround #scrollHintLayer,
 body.ios26-fixed-workaround #section2ButtonLayer,
 body.ios26-fixed-workaround #section1LabelLayer,
@@ -563,6 +657,7 @@ body[data-viewport-layout-mode="rootbg"] footer {
 }
 
 body[data-viewport-layout-mode="relativeAdjustable"] #myCanvas,
+body[data-viewport-layout-mode="relativeAdjustable"] #sectionStylingBackgroundLayer,
 body[data-viewport-layout-mode="relativeAdjustable"] #myCanvasFront,
 body[data-viewport-layout-mode="relativeAdjustable"] #myCanvasFlowersBack,
 body[data-viewport-layout-mode="relativeAdjustable"] #myCanvasFlowersFront,
@@ -576,11 +671,16 @@ body[data-viewport-layout-mode="relativeAdjustable"] #centerOverlayImageAlt,
 body[data-viewport-layout-mode="relativeAdjustable"] #rsvpLayer,
 body[data-viewport-layout-mode="relativeAdjustable"] #jumpSparkleBackLayer,
 body[data-viewport-layout-mode="relativeAdjustable"] #jumpSparkleFrontLayer,
+body[data-viewport-layout-mode="relativeAdjustable"] #sectionStylingTopLayer1SlotA,
+body[data-viewport-layout-mode="relativeAdjustable"] #sectionStylingTopLayer1SlotB,
+body[data-viewport-layout-mode="relativeAdjustable"] #sectionStylingTopLayer2SlotA,
+body[data-viewport-layout-mode="relativeAdjustable"] #sectionStylingTopLayer2SlotB,
 body[data-viewport-layout-mode="relativeAdjustable"] #scrollHintLayer,
 body[data-viewport-layout-mode="relativeAdjustable"] #section2ButtonLayer,
 body[data-viewport-layout-mode="relativeAdjustable"] #section1LabelLayer,
 body[data-viewport-layout-mode="relativeAdjustable"] #loadingScreen,
 body[data-viewport-layout-mode="relative166"] #myCanvas,
+body[data-viewport-layout-mode="relative166"] #sectionStylingBackgroundLayer,
 body[data-viewport-layout-mode="relative166"] #myCanvasFront,
 body[data-viewport-layout-mode="relative166"] #myCanvasFlowersBack,
 body[data-viewport-layout-mode="relative166"] #myCanvasFlowersFront,
@@ -594,6 +694,10 @@ body[data-viewport-layout-mode="relative166"] #centerOverlayImageAlt,
 body[data-viewport-layout-mode="relative166"] #rsvpLayer,
 body[data-viewport-layout-mode="relative166"] #jumpSparkleBackLayer,
 body[data-viewport-layout-mode="relative166"] #jumpSparkleFrontLayer,
+body[data-viewport-layout-mode="relative166"] #sectionStylingTopLayer1SlotA,
+body[data-viewport-layout-mode="relative166"] #sectionStylingTopLayer1SlotB,
+body[data-viewport-layout-mode="relative166"] #sectionStylingTopLayer2SlotA,
+body[data-viewport-layout-mode="relative166"] #sectionStylingTopLayer2SlotB,
 body[data-viewport-layout-mode="relative166"] #scrollHintLayer,
 body[data-viewport-layout-mode="relative166"] #section2ButtonLayer,
 body[data-viewport-layout-mode="relative166"] #section1LabelLayer,
