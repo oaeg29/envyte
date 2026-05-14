@@ -1305,7 +1305,7 @@
         instantBudgetMs: 120, // threshold used by telemetry for "instant" startup
       },
       warmMode: {
-        policy: 'adaptive', // off | adaptive | alwaysAfterFirstGesture
+        policy: 'alwaysAfterFirstGesture', // off | adaptive | alwaysAfterFirstGesture
         adaptiveMissThreshold: 2,
         adaptiveWindowMs: 4000,
         disableAfterSuccessCount: 4,
