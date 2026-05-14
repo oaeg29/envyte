@@ -1037,7 +1037,7 @@
         pulse: {
           durationMs: 1500,
           easing: 'ease-in-out',
-          minScale: 0.3,
+          minScale: 0.55,
           maxScale: 0.7,
           minOpacity: 0.35,
           maxOpacity: 0.62,
