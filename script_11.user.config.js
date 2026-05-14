@@ -264,9 +264,14 @@
 
   foliageVideos: {
     enabled: true,
+    mode: 'split', // split | combined
     startFrame: 270, // Hero video frame at which to start foliage videos
     playbackSpeed: 1.45,
     fallbackToFoliageOnLoadError: true,
+    handoffMinHoldMs: 110, // keep video visible a bit longer to guarantee zero-flash handoff
+    handoffSettleRafCount: 2, // extra RAF paints while canvas is visible before hiding video
+    handoffTimeoutMs: 900, // hard safety timeout for handoff finalization
+    keepCanvasesMountedDuringVideo: true, // avoid cold compositor attach on reveal
     syncEnabled: true, // enable/disable sync loop to keep videos in sync
     syncMethod: 'requestVideoFrameCallback', // 'auto' (try requestVideoFrameCallback first), 'requestVideoFrameCallback', 'raf'
     driftThresholdFrames: 3, // frames of drift allowed before correction (at 30fps = 0.033s)
@@ -278,6 +283,10 @@
     upperVideo: {
       webm: './smallGrowBloom_upper.webm',
       mov: './smallGrowBloom_upper_foriOS.mov',
+    },
+    combinedVideo: {
+      webm: './foliage_vid_combined.webm',
+      mov: './foliage_vid_combined.mov',
     },
   },
 
@@ -463,13 +472,13 @@
     textDropShadowEnabled: false,
     colorModel: 'hslOffsets', // hslOffsets | explicit
     hslBaseHue: 222, // base (darkest) hue
-    hslBaseSaturation: 2, // base (darkest) saturation %
-    hslBaseLightness: 17, // base (darkest) lightness %
+    hslBaseSaturation: 0, // keep splash tint sampling neutral/white
+    hslBaseLightness: 100, // keep splash tint sampling white
     // Per-stop H/S/L offsets from base, as [h, s, l]
     hslStopOffsets: {
       linearBottom: [0, 0, 0],
       linearMid: [0, 0, 10],
-      linearTop: [0, 0, 10],
+      linearTop: [0, 0, 0],
       radialEnd: [0, 0, 30],
       radialMid: [0, 0, 40],
       radialStart: [0, 0, 60],
@@ -935,6 +944,12 @@
       fadeInDurationMs: 230,
       swapNearTargetProgress: 0.85, // 0..1; when the target image path swaps during section travel
     },
+    outro: {
+      enabled: false,
+      delayMs: 5000, // delay after landing on the last section before triggering outro
+      videoFadeDurationMs: 1000, // hero video opacity 1 -> 0 duration
+      imageInvertDurationMs: 1000, // center image invert(0) -> invert(1) duration
+    },
     scrollHint: {
       enabled: true,
       spritePath: './scroll_4_more.png',
@@ -1317,7 +1332,7 @@
         applyTo: 'sparkleOnly',
       },
       targetSelection: {
-        mode: 'weightedTopAware', // nearest | weightedTopAware
+        mode: 'nearest', // nearest | weightedTopAware
         weightedTopAware: {
           distanceWeight: 0.3,
           upperLayerWeight: 0.8,

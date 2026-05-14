@@ -71,6 +71,12 @@ const _foliageVideoGeometryInlineResetDone = new WeakSet();
 const _foliagePlaybackAuditListenersInstalled = new WeakSet();
 const _foliagePlaybackRateGuardState = new WeakMap();
 let _foliageVideoGeometryParityRafId = 0;
+const FOLIAGE_VIDEO_HANDOFF_RUNTIME = {
+  token: 0,
+  inProgress: false,
+  completed: false,
+  timeoutId: null,
+};
 const centerOverlayImageLayer = document.createElement('img');
 const centerOverlayImageLayerAlt = document.createElement('img');
 const centerOverlayImageLayers = [centerOverlayImageLayer, centerOverlayImageLayerAlt];
@@ -279,6 +285,10 @@ const HERO_VIDEO_SOURCE_RUNTIME = {
   errorEvents: 0,
   errorListenerInstalled: false,
 };
+const FOLIAGE_VIDEO_MODE_SPLIT = 'split';
+const FOLIAGE_VIDEO_MODE_COMBINED = 'combined';
+const FOLIAGE_VIDEO_TYPES_SPLIT = Object.freeze(['lower', 'upper']);
+const FOLIAGE_VIDEO_TYPES_COMBINED = Object.freeze(['upper']);
 let sectionStylingTopSlotPositionModeOverride = '';
 let sectionStylingTopSlotPositionModeApplied = '';
 let sectionStylingFeatureWasEnabledLastSync = false;
@@ -2356,7 +2366,7 @@ function resolveFoliageVideoSourcePath(videoType) {
   if (!config || !config.enabled) {
     return null;
   }
-  const videoConfig = videoType === 'lower' ? config.lowerVideo : config.upperVideo;
+  const videoConfig = resolveFoliageVideoConfigForType(videoType, config);
   if (!videoConfig) {
     return null;
   }
@@ -2371,7 +2381,10 @@ function buildFoliageVideoSourceCandidates(videoType) {
   if (!config || !config.enabled) {
     return [];
   }
-  const videoConfig = videoType === 'lower' ? config.lowerVideo : config.upperVideo;
+  if (!isFoliageVideoTypeActive(videoType, config)) {
+    return [];
+  }
+  const videoConfig = resolveFoliageVideoConfigForType(videoType, config);
   if (!videoConfig) {
     return [];
   }
@@ -2401,6 +2414,39 @@ function buildFoliageVideoSourceCandidates(videoType) {
     }
   }
   return candidates;
+}
+
+function resolveFoliageVideoMode(configCandidate = CONFIG && CONFIG.foliageVideos) {
+  const config = configCandidate && typeof configCandidate === 'object' ? configCandidate : {};
+  return config.mode === FOLIAGE_VIDEO_MODE_COMBINED
+    ? FOLIAGE_VIDEO_MODE_COMBINED
+    : FOLIAGE_VIDEO_MODE_SPLIT;
+}
+
+function getActiveFoliageVideoTypes(configCandidate = CONFIG && CONFIG.foliageVideos) {
+  return resolveFoliageVideoMode(configCandidate) === FOLIAGE_VIDEO_MODE_COMBINED
+    ? FOLIAGE_VIDEO_TYPES_COMBINED
+    : FOLIAGE_VIDEO_TYPES_SPLIT;
+}
+
+function isFoliageVideoTypeActive(videoType, configCandidate = CONFIG && CONFIG.foliageVideos) {
+  return getActiveFoliageVideoTypes(configCandidate).includes(videoType);
+}
+
+function resolveFoliageVideoConfigForType(videoType, configCandidate = CONFIG && CONFIG.foliageVideos) {
+  const config = configCandidate && typeof configCandidate === 'object' ? configCandidate : {};
+  const mode = resolveFoliageVideoMode(config);
+  if (videoType === 'lower') {
+    return mode === FOLIAGE_VIDEO_MODE_SPLIT ? config.lowerVideo : null;
+  }
+  if (videoType === 'upper') {
+    return mode === FOLIAGE_VIDEO_MODE_COMBINED ? config.combinedVideo : config.upperVideo;
+  }
+  return null;
+}
+
+function getFoliageVideoElementByType(videoType) {
+  return videoType === 'lower' ? foliageVideoLower : foliageVideoUpper;
 }
 
 function getFoliageVideoCurrentSourcePath(videoType) {
@@ -2640,6 +2686,7 @@ function configureFoliageVideoElement(videoType) {
   if (!config || !config.enabled) {
     return;
   }
+  const isActiveType = isFoliageVideoTypeActive(videoType, config);
   const runtime = videoType === 'lower' ? FOLIAGE_VIDEO_SOURCE_RUNTIME.lower : FOLIAGE_VIDEO_SOURCE_RUNTIME.upper;
   const videoEl = videoType === 'lower' ? foliageVideoLower : foliageVideoUpper;
   const videoId = videoType === 'lower' ? 'foliageVideoLower' : 'foliageVideoUpper';
@@ -2665,6 +2712,19 @@ function configureFoliageVideoElement(videoType) {
   installFoliagePlaybackAuditListeners(videoType, videoEl);
   installFoliagePlaybackRateGuard(videoType, videoEl);
 
+  if (!isActiveType) {
+    runtime.candidates = [];
+    runtime.activeIndex = -1;
+    runtime.fallbackUsed = false;
+    videoEl.style.display = 'none';
+    videoEl.style.visibility = 'hidden';
+    videoEl.pause();
+    videoEl.removeAttribute('data-foliage-video-source-path');
+    videoEl.removeAttribute('src');
+    videoEl.src = '';
+    return;
+  }
+
   runtime.candidates = buildFoliageVideoSourceCandidates(videoType);
   runtime.activeIndex = -1;
   runtime.fallbackUsed = false;
@@ -2681,8 +2741,7 @@ function configureFoliageVideoElement(videoType) {
       }
       console.warn(`[FoliageVideo${videoType}] Media error (${errorLabel}) on source: ${getFoliageVideoCurrentSourcePath(videoType)}`);
       if (config.fallbackToFoliageOnLoadError) {
-        showFoliageCanvases();
-        hideFoliageVideos();
+        requestFoliageVideoToCanvasHandoff(`video-error:${videoType}:${errorLabel}`, { force: true });
       }
     });
     runtime.errorListenerInstalled = true;
@@ -2694,42 +2753,186 @@ function configureFoliageVideoElement(videoType) {
   });
 }
 
-function hideFoliageCanvases() {
-  if (canvas) canvas.style.display = 'none';
-  if (frontCanvas) frontCanvas.style.display = 'none';
+function resolveFoliageVideoHandoffConfig() {
+  const config = CONFIG && CONFIG.foliageVideos ? CONFIG.foliageVideos : {};
+  return {
+    minHoldMs: Number.isFinite(Number(config.handoffMinHoldMs))
+      ? Math.max(0, Number(config.handoffMinHoldMs))
+      : 90,
+    settleRafCount: Number.isFinite(Number(config.handoffSettleRafCount))
+      ? Math.max(1, Math.floor(Number(config.handoffSettleRafCount)))
+      : 2,
+    timeoutMs: Number.isFinite(Number(config.handoffTimeoutMs))
+      ? Math.max(100, Number(config.handoffTimeoutMs))
+      : 900,
+    keepCanvasesMountedDuringVideo: config.keepCanvasesMountedDuringVideo !== false,
+  };
+}
+
+function clearFoliageVideoHandoffTimeout(runtime = FOLIAGE_VIDEO_HANDOFF_RUNTIME) {
+  if (!runtime || runtime.timeoutId === null) {
+    return;
+  }
+  clearTimeout(runtime.timeoutId);
+  runtime.timeoutId = null;
+}
+
+function resetFoliageVideoHandoffRuntime() {
+  const runtime = FOLIAGE_VIDEO_HANDOFF_RUNTIME;
+  runtime.token += 1;
+  runtime.inProgress = false;
+  runtime.completed = false;
+  clearFoliageVideoHandoffTimeout(runtime);
+}
+
+function hideFoliageCanvases(options = {}) {
+  const safeOptions = (options && typeof options === 'object') ? options : {};
+  const handoffConfig = resolveFoliageVideoHandoffConfig();
+  const keepMounted = (
+    handoffConfig.keepCanvasesMountedDuringVideo
+    && safeOptions.keepMounted !== false
+  );
+  [canvas, frontCanvas].forEach((canvasEl) => {
+    if (!canvasEl) {
+      return;
+    }
+    if (keepMounted) {
+      canvasEl.style.display = '';
+      canvasEl.style.visibility = 'visible';
+      canvasEl.style.opacity = '0';
+      return;
+    }
+    canvasEl.style.display = 'none';
+    canvasEl.style.visibility = 'hidden';
+    canvasEl.style.opacity = '';
+  });
 }
 
 function showFoliageCanvases() {
-  if (canvas) canvas.style.display = '';
-  if (frontCanvas) frontCanvas.style.display = '';
+  [canvas, frontCanvas].forEach((canvasEl) => {
+    if (!canvasEl) {
+      return;
+    }
+    canvasEl.style.display = '';
+    canvasEl.style.visibility = 'visible';
+    canvasEl.style.opacity = '1';
+  });
 }
 
 function hideFoliageVideos() {
   stopFoliageSyncLoop();
   if (foliageVideoLower) {
     foliageVideoLower.style.display = 'none';
+    foliageVideoLower.style.visibility = 'hidden';
     foliageVideoLower.pause();
   }
   if (foliageVideoUpper) {
     foliageVideoUpper.style.display = 'none';
+    foliageVideoUpper.style.visibility = 'hidden';
     foliageVideoUpper.pause();
   }
 }
 
 function showFoliageVideos() {
-  if (foliageVideoLower) foliageVideoLower.style.display = 'block';
-  if (foliageVideoUpper) foliageVideoUpper.style.display = 'block';
+  const activeTypes = getActiveFoliageVideoTypes(CONFIG.foliageVideos);
+  FOLIAGE_VIDEO_TYPES_SPLIT.forEach((videoType) => {
+    const videoEl = getFoliageVideoElementByType(videoType);
+    if (!videoEl) {
+      return;
+    }
+    if (activeTypes.includes(videoType)) {
+      videoEl.style.display = 'block';
+      videoEl.style.visibility = 'visible';
+      return;
+    }
+    videoEl.style.display = 'none';
+    videoEl.style.visibility = 'hidden';
+    videoEl.pause();
+  });
 }
 
 let foliageVideosEndedCount = 0;
 
-function checkBothFoliageVideosEnded() {
-  foliageVideosEndedCount += 1;
-  if (foliageVideosEndedCount >= 2) {
-    // console.log('[FoliageVideos] Both videos ended, showing foliage canvases');
+function requestFoliageVideoToCanvasHandoff(reason = 'unknown', options = {}) {
+  const safeOptions = (options && typeof options === 'object') ? options : {};
+  const force = safeOptions.force === true;
+  const runtime = FOLIAGE_VIDEO_HANDOFF_RUNTIME;
+  if (runtime.inProgress === true && force !== true) {
+    return;
+  }
+
+  const handoffConfig = resolveFoliageVideoHandoffConfig();
+  const token = runtime.token + 1;
+  runtime.token = token;
+  runtime.inProgress = true;
+  runtime.completed = false;
+  clearFoliageVideoHandoffTimeout(runtime);
+
+  const handoffStartMs = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+    ? performance.now()
+    : Date.now();
+
+  const finalize = (outcome = 'settled') => {
+    if (runtime.token !== token) {
+      return;
+    }
+    clearFoliageVideoHandoffTimeout(runtime);
     hideFoliageVideos();
     showFoliageCanvases();
     foliageVideosEndedCount = 0;
+    runtime.inProgress = false;
+    runtime.completed = true;
+    renderScene({ skipAutoStart: true });
+    syncFlowerInteractionLoop();
+    if (isFoliagePlaybackAuditEnabled()) {
+      console.log('[FoliageVideos] Handoff finalized', { reason, outcome });
+    }
+  };
+
+  const waitForSettleFrames = (remainingRafCount) => {
+    if (runtime.token !== token || runtime.inProgress !== true) {
+      return;
+    }
+    if (remainingRafCount <= 0) {
+      const nowMs = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+        ? performance.now()
+        : Date.now();
+      const elapsedMs = Math.max(0, nowMs - handoffStartMs);
+      const holdRemainingMs = Math.max(0, handoffConfig.minHoldMs - elapsedMs);
+      if (holdRemainingMs > 0.5) {
+        setTimeout(() => {
+          waitForSettleFrames(0);
+        }, holdRemainingMs);
+        return;
+      }
+      finalize('settled');
+      return;
+    }
+    requestAnimationFrame(() => {
+      renderScene({ skipAutoStart: true });
+      waitForSettleFrames(remainingRafCount - 1);
+    });
+  };
+
+  showFoliageCanvases();
+  renderScene({ skipAutoStart: true });
+  syncFlowerInteractionLoop();
+
+  runtime.timeoutId = setTimeout(() => {
+    finalize('timeout');
+  }, handoffConfig.timeoutMs);
+
+  waitForSettleFrames(handoffConfig.settleRafCount);
+}
+
+function checkBothFoliageVideosEnded() {
+  const expectedEndedCount = getActiveFoliageVideoTypes(CONFIG.foliageVideos).length;
+  if (expectedEndedCount <= 0) {
+    return;
+  }
+  foliageVideosEndedCount += 1;
+  if (foliageVideosEndedCount >= expectedEndedCount) {
+    requestFoliageVideoToCanvasHandoff('both-ended', { force: true });
   }
 }
 
@@ -2738,7 +2941,15 @@ function startFoliageVideos() {
   if (!config || !config.enabled) {
     return;
   }
+  const activeVideoTypes = getActiveFoliageVideoTypes(config);
+  if (!Array.isArray(activeVideoTypes) || activeVideoTypes.length <= 0) {
+    return;
+  }
   const playbackSpeed = resolveConfiguredFoliagePlaybackSpeed();
+  resetFoliageVideoHandoffRuntime();
+  stopFoliageSyncLoop();
+  hideFoliageCanvases();
+  foliageVideosEndedCount = 0;
 
   // console.log('[FoliageVideos] Starting playback with speed:', playbackSpeed);
 
@@ -2756,50 +2967,42 @@ function startFoliageVideos() {
   // Sync positioning before starting
   syncFoliageVideoPositioning();
 
-  // Prepare both videos (set currentTime, playbackRate, and visibility)
+  // Prepare active videos (set currentTime, playbackRate, and visibility)
   const playPromises = [];
 
-  if (foliageVideoLower) {
-    foliageVideoLower.currentTime = 0;
-    foliageVideoLower.style.display = 'block';
-    foliageVideoLower.style.visibility = 'visible';
-    applyFoliagePlaybackRate('lower', foliageVideoLower, playbackSpeed, 'start-pre-play');
-    playPromises.push(foliageVideoLower.play().then(() => {
-      applyFoliagePlaybackRate('lower', foliageVideoLower, playbackSpeed, 'start-post-play');
-      // console.log('[FoliageVideos] Lower video playing, playbackRate set to:', foliageVideoLower.playbackRate);
+  FOLIAGE_VIDEO_TYPES_SPLIT.forEach((videoType) => {
+    const videoEl = getFoliageVideoElementByType(videoType);
+    if (!videoEl) {
+      return;
+    }
+    if (!activeVideoTypes.includes(videoType)) {
+      videoEl.style.display = 'none';
+      videoEl.style.visibility = 'hidden';
+      videoEl.pause();
+      return;
+    }
+    videoEl.currentTime = 0;
+    videoEl.style.display = 'block';
+    videoEl.style.visibility = 'visible';
+    applyFoliagePlaybackRate(videoType, videoEl, playbackSpeed, 'start-pre-play');
+    playPromises.push(videoEl.play().then(() => {
+      applyFoliagePlaybackRate(videoType, videoEl, playbackSpeed, 'start-post-play');
     }).catch(err => {
-      console.warn('[FoliageVideos] Failed to play lower video:', err);
+      console.warn(`[FoliageVideos] Failed to play ${videoType} video:`, err);
       if (config.fallbackToFoliageOnLoadError) {
-        showFoliageCanvases();
-        hideFoliageVideos();
+        requestFoliageVideoToCanvasHandoff(`start-failed-${videoType}`, { force: true });
       }
     }));
-  }
-
-  if (foliageVideoUpper) {
-    foliageVideoUpper.currentTime = 0;
-    foliageVideoUpper.style.display = 'block';
-    foliageVideoUpper.style.visibility = 'visible';
-    applyFoliagePlaybackRate('upper', foliageVideoUpper, playbackSpeed, 'start-pre-play');
-    playPromises.push(foliageVideoUpper.play().then(() => {
-      applyFoliagePlaybackRate('upper', foliageVideoUpper, playbackSpeed, 'start-post-play');
-      // console.log('[FoliageVideos] Upper video playing, playbackRate set to:', foliageVideoUpper.playbackRate);
-    }).catch(err => {
-      console.warn('[FoliageVideos] Failed to play upper video:', err);
-      if (config.fallbackToFoliageOnLoadError) {
-        showFoliageCanvases();
-        hideFoliageVideos();
-      }
-    }));
-  }
+  });
 
   queueFoliageVideoGeometryParityDebugCheck('start');
 
-  // Start both videos simultaneously and then start sync loop
+  // Start active videos simultaneously and then start sync loop when relevant.
   if (playPromises.length > 0) {
     Promise.all(playPromises).then(() => {
-      // console.log('[FoliageVideos] Both videos started, initiating sync loop');
-      startFoliageSyncLoop();
+      if (activeVideoTypes.length >= 2) {
+        startFoliageSyncLoop();
+      }
     }).catch(err => {
       console.warn('[FoliageVideos] One or more videos failed to start:', err);
     });
@@ -2892,19 +3095,30 @@ function runFoliageVideoGeometryParityDebugCheck(reason = 'unknown') {
 
 function getFoliageSyncConfig() {
   const config = CONFIG.foliageVideos;
+  const activeTypes = getActiveFoliageVideoTypes(config);
+  const hasSyncPair = Array.isArray(activeTypes) && activeTypes.length >= 2;
+  const normalizedMaster = (
+    config
+    && (config.syncMaster === 'lower' || config.syncMaster === 'upper')
+    && activeTypes.includes(config.syncMaster)
+  )
+    ? config.syncMaster
+    : (activeTypes[0] || 'lower');
   if (!config) {
     return {
       enabled: false,
       method: 'auto',
       driftThresholdFrames: 1,
-      master: 'lower',
+      master: normalizedMaster,
     };
   }
   return {
-    enabled: config.syncEnabled !== false,
+    enabled: config.syncEnabled !== false
+      && resolveFoliageVideoMode(config) !== FOLIAGE_VIDEO_MODE_COMBINED
+      && hasSyncPair,
     method: config.syncMethod || 'auto',
     driftThresholdFrames: Number.isFinite(config.driftThresholdFrames) ? Math.max(1, config.driftThresholdFrames) : 1,
-    master: config.syncMaster || 'lower',
+    master: normalizedMaster,
   };
 }
 
@@ -2929,9 +3143,11 @@ function stopFoliageSyncLoop() {
 }
 
 function startFoliageSyncLoop() {
+  if (getActiveFoliageVideoTypes(CONFIG.foliageVideos).length < 2) {
+    return;
+  }
   const syncConfig = getFoliageSyncConfig();
   if (!syncConfig.enabled) {
-    console.log('[FoliageVideos] Sync disabled in config');
     return;
   }
 
@@ -3804,7 +4020,7 @@ if (CONFIG.foliageVideos && CONFIG.foliageVideos.enabled) {
   
   // Hide canvases initially when using video foliage
   if (!CONFIG.branchGrowth.enabled) {
-    hideFoliageCanvases();
+    hideFoliageCanvases({ keepMounted: true });
   }
   
   // Sync positioning on resize
@@ -4046,6 +4262,7 @@ const STATE = {
   swipeSections: {
     activeSectionIndex: -1,
     activeSectionId: '',
+    activeSectionEntryNonce: 0,
     isTransitioning: false,
     transitionRafId: null,
     transitionFromFrame: 0,
@@ -4086,6 +4303,13 @@ const STATE = {
       jumpAnimation: null,
       currentSectionId: '',
       visibleSinceMs: 0,
+    },
+    outro: {
+      pendingTriggerTimerId: null,
+      armedSectionId: '',
+      armedEntryNonce: 0,
+      appliedEntryNonce: -1,
+      isApplied: false,
     },
     rsvp: {
       initialized: false,
@@ -6351,6 +6575,8 @@ function syncCenterOverlayImageLayer(nowMs = performance.now(), currentFrame = n
   const overlayConfig = resolveCenterOverlayImageConfig();
   const swipeConfig = resolveSwipeSectionsConfig();
   const swipeState = STATE && STATE.swipeSections ? STATE.swipeSections : null;
+  const swipeOutroState = swipeState && swipeState.outro ? swipeState.outro : null;
+  const swipeOutroConfig = swipeConfig && swipeConfig.outro ? swipeConfig.outro : null;
   const sections = swipeConfig && Array.isArray(swipeConfig.sections) ? swipeConfig.sections : [];
   const pages = swipeConfig && Array.isArray(swipeConfig.pages) ? swipeConfig.pages : [];
   // Use viewport height for zoom-insensitive scaling like the video
@@ -6378,6 +6604,26 @@ function syncCenterOverlayImageLayer(nowMs = performance.now(), currentFrame = n
   )
     ? Math.max(0, overlayConfig.fadeInDurationSec * 1000)
     : 0;
+  const outroImageInvertDurationMs = (
+    swipeOutroConfig
+    && swipeOutroConfig.enabled === true
+    && Number.isFinite(Number(swipeOutroConfig.imageInvertDurationMs))
+  )
+    ? Math.max(0, Number(swipeOutroConfig.imageInvertDurationMs))
+    : 0;
+  const activeSectionEntryNonce = (
+    swipeState
+    && Number.isFinite(Number(swipeState.activeSectionEntryNonce))
+  )
+    ? Number(swipeState.activeSectionEntryNonce)
+    : 0;
+  const shouldApplyOutroInvert = Boolean(
+    swipeOutroState
+    && swipeOutroState.isApplied === true
+    && Number.isFinite(Number(swipeOutroState.appliedEntryNonce))
+    && Number(swipeOutroState.appliedEntryNonce) === activeSectionEntryNonce
+  );
+  const outroFilterValue = shouldApplyOutroInvert ? 'invert(1)' : 'invert(0)';
   const isSwipeTransitioning = Boolean(
     swipeState
     && swipeState.isTransitioning === true
@@ -6403,11 +6649,19 @@ function syncCenterOverlayImageLayer(nowMs = performance.now(), currentFrame = n
     if (!layer) {
       return;
     }
-    if (enableCssFade !== true || steadyFadeDurationMs <= 0) {
+    const transitionTokens = [];
+    if (enableCssFade === true && steadyFadeDurationMs > 0) {
+      transitionTokens.push(`opacity ${steadyFadeDurationMs}ms ease`);
+    }
+    if (outroImageInvertDurationMs > 0) {
+      transitionTokens.push(`filter ${outroImageInvertDurationMs}ms ease`);
+      transitionTokens.push(`-webkit-filter ${outroImageInvertDurationMs}ms ease`);
+    }
+    if (transitionTokens.length <= 0) {
       layer.style.transition = 'none';
       return;
     }
-    layer.style.transition = `opacity ${steadyFadeDurationMs}ms ease`;
+    layer.style.transition = transitionTokens.join(', ');
   };
 
   const hideLayerAtIndex = (layerIndex, options = {}) => {
@@ -6420,6 +6674,8 @@ function syncCenterOverlayImageLayer(nowMs = performance.now(), currentFrame = n
     layer.style.display = keepMounted ? 'block' : 'none';
     layer.style.opacity = '0';
     layer.style.visibility = 'hidden';
+    layer.style.filter = outroFilterValue;
+    layer.style.webkitFilter = outroFilterValue;
     STATE.centerOverlayImageLayerVisibleSinceMs[layerIndex] = 0;
     STATE.centerOverlayImageLayerLastShouldBeVisible[layerIndex] = false;
   };
@@ -6498,6 +6754,8 @@ function syncCenterOverlayImageLayer(nowMs = performance.now(), currentFrame = n
 
     layer.style.display = 'block';
     applyLayerTransitionMode(layer, options.enableCssFade !== false);
+    layer.style.filter = outroFilterValue;
+    layer.style.webkitFilter = outroFilterValue;
     STATE.centerOverlayImageLayerVisibleSinceMs[layerIndex] = Number.isFinite(nowMs) ? nowMs : performance.now();
     STATE.centerOverlayImageLayerLastShouldBeVisible[layerIndex] = true;
 
@@ -19267,6 +19525,9 @@ function resolveSwipeSectionsConfig(configCandidate = CONFIG.swipeSections) {
   const overlayTransitionConfig = isPlainObjectLiteral(safeConfig.overlayTransition)
     ? safeConfig.overlayTransition
     : {};
+  const outroConfig = isPlainObjectLiteral(safeConfig.outro)
+    ? safeConfig.outro
+    : {};
   const initialSectionIndexRaw = Number(safeConfig.initialSectionIndex);
   const initialSectionIndex = Number.isFinite(initialSectionIndexRaw)
     ? clamp(Math.floor(initialSectionIndexRaw), 0, sections.length - 1)
@@ -19343,6 +19604,18 @@ function resolveSwipeSectionsConfig(configCandidate = CONFIG.swipeSections) {
         0,
         1,
       ),
+    },
+    outro: {
+      enabled: outroConfig.enabled !== false,
+      delayMs: Number.isFinite(Number(outroConfig.delayMs))
+        ? Math.max(0, Number(outroConfig.delayMs))
+        : 5000,
+      videoFadeDurationMs: Number.isFinite(Number(outroConfig.videoFadeDurationMs))
+        ? Math.max(0, Number(outroConfig.videoFadeDurationMs))
+        : 1000,
+      imageInvertDurationMs: Number.isFinite(Number(outroConfig.imageInvertDurationMs))
+        ? Math.max(0, Number(outroConfig.imageInvertDurationMs))
+        : 1000,
     },
     sectionStyling: {
       globalEnabled: topLevelSectionStylingRaw.globalEnabled !== false,
@@ -19486,6 +19759,217 @@ function hideSwipeSectionsScrollHintLayer(options = {}) {
   swipeSectionsScrollHintLayer.style.opacity = '0';
   swipeSectionsScrollHintLayer.style.visibility = 'hidden';
   swipeSectionsScrollHintDebugRect.style.display = 'none';
+}
+
+function getSwipeSectionsOutroRuntimeState() {
+  const swipeState = STATE && STATE.swipeSections ? STATE.swipeSections : null;
+  return swipeState && swipeState.outro ? swipeState.outro : null;
+}
+
+function clearSwipeSectionsOutroPendingTrigger() {
+  const outroState = getSwipeSectionsOutroRuntimeState();
+  if (!outroState) {
+    return;
+  }
+  if (Number.isFinite(Number(outroState.pendingTriggerTimerId))) {
+    clearTimeout(outroState.pendingTriggerTimerId);
+  }
+  outroState.pendingTriggerTimerId = null;
+}
+
+function resetSwipeSectionsOutroVisualsImmediately() {
+  if (video && video.style) {
+    video.style.transition = 'none';
+    video.style.opacity = '1';
+  }
+  for (let i = 0; i < centerOverlayImageLayers.length; i += 1) {
+    const layer = centerOverlayImageLayers[i];
+    if (!layer || !layer.style) {
+      continue;
+    }
+    layer.style.transition = 'none';
+    layer.style.filter = 'invert(0)';
+    layer.style.webkitFilter = 'invert(0)';
+  }
+}
+
+function resetSwipeSectionsOutroRuntime(options = {}) {
+  const safeOptions = isPlainObjectLiteral(options) ? options : {};
+  const resetVisuals = safeOptions.resetVisuals === true;
+  const clearArmed = safeOptions.clearArmed !== false;
+  const clearApplied = safeOptions.clearApplied !== false;
+  const outroState = getSwipeSectionsOutroRuntimeState();
+  clearSwipeSectionsOutroPendingTrigger();
+  if (!outroState) {
+    if (resetVisuals) {
+      resetSwipeSectionsOutroVisualsImmediately();
+    }
+    return;
+  }
+  if (clearArmed) {
+    outroState.armedSectionId = '';
+    outroState.armedEntryNonce = 0;
+  }
+  if (clearApplied) {
+    outroState.appliedEntryNonce = -1;
+    outroState.isApplied = false;
+  }
+  if (resetVisuals) {
+    resetSwipeSectionsOutroVisualsImmediately();
+  }
+}
+
+function resolveSwipeSectionsOutroEligibility(swipeConfig = resolveSwipeSectionsConfig()) {
+  const swipeState = STATE && STATE.swipeSections ? STATE.swipeSections : null;
+  const sections = swipeConfig && Array.isArray(swipeConfig.sections) ? swipeConfig.sections : [];
+  const outroConfig = swipeConfig && swipeConfig.outro ? swipeConfig.outro : null;
+  if (!swipeState || !outroConfig || swipeConfig.enabled !== true || outroConfig.enabled !== true || sections.length <= 0) {
+    return {
+      eligible: false,
+      activeSection: null,
+      activeSectionIndex: -1,
+      entryNonce: 0,
+      outroConfig,
+    };
+  }
+  if (swipeState.isTransitioning === true || !isSwipeSectionsNavigationActive(swipeConfig)) {
+    return {
+      eligible: false,
+      activeSection: null,
+      activeSectionIndex: -1,
+      entryNonce: Number.isFinite(Number(swipeState.activeSectionEntryNonce))
+        ? Number(swipeState.activeSectionEntryNonce)
+        : 0,
+      outroConfig,
+    };
+  }
+  let activeSectionIndex = (
+    Number.isFinite(swipeState.activeSectionIndex)
+    && swipeState.activeSectionIndex >= 0
+    && swipeState.activeSectionIndex < sections.length
+  )
+    ? Math.floor(swipeState.activeSectionIndex)
+    : findClosestSwipeSectionIndexToFrame(
+      getCurrentHeroVideoFrame(resolveHeroPlaybackGateConfig()),
+      swipeConfig,
+    );
+  if (!(activeSectionIndex >= 0 && activeSectionIndex < sections.length)) {
+    return {
+      eligible: false,
+      activeSection: null,
+      activeSectionIndex: -1,
+      entryNonce: Number.isFinite(Number(swipeState.activeSectionEntryNonce))
+        ? Number(swipeState.activeSectionEntryNonce)
+        : 0,
+      outroConfig,
+    };
+  }
+  const activeSection = sections[activeSectionIndex];
+  const lastSection = sections[sections.length - 1];
+  const entryNonce = Number.isFinite(Number(swipeState.activeSectionEntryNonce))
+    ? Number(swipeState.activeSectionEntryNonce)
+    : 0;
+  const isLastSection = Boolean(
+    activeSection
+    && lastSection
+    && typeof activeSection.id === 'string'
+    && typeof lastSection.id === 'string'
+    && activeSection.id === lastSection.id
+  );
+  return {
+    eligible: isLastSection,
+    activeSection,
+    activeSectionIndex,
+    entryNonce,
+    outroConfig,
+  };
+}
+
+function triggerSwipeSectionsOutroForEntry(entryNonce, swipeConfig = resolveSwipeSectionsConfig()) {
+  const outroState = getSwipeSectionsOutroRuntimeState();
+  if (!outroState) {
+    return false;
+  }
+  const eligibility = resolveSwipeSectionsOutroEligibility(swipeConfig);
+  if (eligibility.eligible !== true || !eligibility.activeSection || eligibility.entryNonce !== entryNonce) {
+    return false;
+  }
+  clearSwipeSectionsOutroPendingTrigger();
+  outroState.armedSectionId = eligibility.activeSection.id;
+  outroState.armedEntryNonce = entryNonce;
+  outroState.isApplied = true;
+  outroState.appliedEntryNonce = entryNonce;
+
+  const outroConfig = eligibility.outroConfig || {};
+  const videoFadeDurationMs = Number.isFinite(Number(outroConfig.videoFadeDurationMs))
+    ? Math.max(0, Number(outroConfig.videoFadeDurationMs))
+    : 1000;
+  if (video && video.style) {
+    if (videoFadeDurationMs > 1e-6) {
+      video.style.transition = `opacity ${videoFadeDurationMs}ms ease`;
+    } else {
+      video.style.transition = 'none';
+    }
+    video.style.opacity = '0';
+  }
+  renderScene({ skipAutoStart: true });
+  if (typeof requestAnimationFrame === 'function') {
+    requestAnimationFrame(() => {
+      renderScene({ skipAutoStart: true });
+    });
+  }
+  return true;
+}
+
+function syncSwipeSectionsOutroState(swipeConfig = resolveSwipeSectionsConfig()) {
+  const outroState = getSwipeSectionsOutroRuntimeState();
+  if (!outroState) {
+    return;
+  }
+  const eligibility = resolveSwipeSectionsOutroEligibility(swipeConfig);
+  const hasAppliedOutro = outroState.isApplied === true;
+  if (eligibility.eligible !== true || !eligibility.activeSection) {
+    resetSwipeSectionsOutroRuntime({
+      clearArmed: true,
+      clearApplied: true,
+      resetVisuals: hasAppliedOutro,
+    });
+    return;
+  }
+  if (
+    outroState.isApplied === true
+    && Number.isFinite(Number(outroState.appliedEntryNonce))
+    && Number(outroState.appliedEntryNonce) === eligibility.entryNonce
+  ) {
+    clearSwipeSectionsOutroPendingTrigger();
+    return;
+  }
+  if (
+    Number.isFinite(Number(outroState.pendingTriggerTimerId))
+    && typeof outroState.armedSectionId === 'string'
+    && outroState.armedSectionId === eligibility.activeSection.id
+    && Number.isFinite(Number(outroState.armedEntryNonce))
+    && Number(outroState.armedEntryNonce) === eligibility.entryNonce
+  ) {
+    return;
+  }
+  clearSwipeSectionsOutroPendingTrigger();
+  outroState.armedSectionId = eligibility.activeSection.id;
+  outroState.armedEntryNonce = eligibility.entryNonce;
+  const delayMs = Number.isFinite(Number(eligibility.outroConfig.delayMs))
+    ? Math.max(0, Number(eligibility.outroConfig.delayMs))
+    : 5000;
+  if (delayMs <= 1e-6) {
+    triggerSwipeSectionsOutroForEntry(eligibility.entryNonce, swipeConfig);
+    return;
+  }
+  outroState.pendingTriggerTimerId = window.setTimeout(() => {
+    const latestState = getSwipeSectionsOutroRuntimeState();
+    if (latestState) {
+      latestState.pendingTriggerTimerId = null;
+    }
+    triggerSwipeSectionsOutroForEntry(eligibility.entryNonce, resolveSwipeSectionsConfig());
+  }, delayMs);
 }
 
 function isSwipeSectionsScrollHintJumpEligible(
@@ -22953,6 +23437,11 @@ function syncSwipeSectionsStateWithConfig(options = {}) {
     cancelSwipeSectionTransition();
     resetSwipeSectionsWheelGestureSession();
     clearSwipeSectionsTouchTracking();
+    resetSwipeSectionsOutroRuntime({
+      clearArmed: true,
+      clearApplied: true,
+      resetVisuals: true,
+    });
     if (swipeState.isTransitioning !== true) {
       setSwipeSectionOverlayPathOverride('');
       swipeState.overlayOpacityMultiplier = 1;
@@ -22984,6 +23473,14 @@ function syncSwipeSectionsStateWithConfig(options = {}) {
   const previousIndex = swipeState.activeSectionIndex;
   swipeState.activeSectionIndex = nextIndex;
   swipeState.activeSectionId = nextSection.id;
+  if (previousIndex !== nextIndex) {
+    const previousEntryNonce = Number.isFinite(Number(swipeState.activeSectionEntryNonce))
+      ? Number(swipeState.activeSectionEntryNonce)
+      : 0;
+    swipeState.activeSectionEntryNonce = previousEntryNonce + 1;
+  } else if (!Number.isFinite(Number(swipeState.activeSectionEntryNonce))) {
+    swipeState.activeSectionEntryNonce = 0;
+  }
   if (swipeState.isTransitioning !== true) {
     setSwipeSectionOverlayPathOverride(nextSection.centerOverlayImagePath, { forceLoad: safeOptions.forceLoadOverlay });
     swipeState.overlayOpacityMultiplier = 1;
@@ -22994,6 +23491,7 @@ function syncSwipeSectionsStateWithConfig(options = {}) {
   }
   syncSwipeSectionDomState(nextSection, nextIndex);
   handleSwipeSectionsScrollHintOnActiveSectionChange(nextSection, nextIndex, swipeConfig);
+  syncSwipeSectionsOutroState(swipeConfig);
   if (safeOptions.emitEvent === true && previousIndex !== nextIndex) {
     dispatchSwipeSectionChangeEvent({
       index: nextIndex,
@@ -23182,9 +23680,18 @@ function finalizeSwipeSectionTransition(targetIndex, direction, reason, swipeCon
   STATE.centerOverlaySteadyLayerIndex = nextSteadyLayerIndex;
   swipeState.activeSectionIndex = safeTargetIndex;
   swipeState.activeSectionId = targetSection.id;
+  if (previousIndex !== safeTargetIndex) {
+    const previousEntryNonce = Number.isFinite(Number(swipeState.activeSectionEntryNonce))
+      ? Number(swipeState.activeSectionEntryNonce)
+      : 0;
+    swipeState.activeSectionEntryNonce = previousEntryNonce + 1;
+  } else if (!Number.isFinite(Number(swipeState.activeSectionEntryNonce))) {
+    swipeState.activeSectionEntryNonce = 0;
+  }
   setSwipeSectionOverlayPathOverride(targetSection.centerOverlayImagePath, { forceLoad: true });
   syncSwipeSectionDomState(targetSection, safeTargetIndex);
   handleSwipeSectionsScrollHintOnActiveSectionChange(targetSection, safeTargetIndex, swipeConfig);
+  syncSwipeSectionsOutroState(swipeConfig);
   if (previousIndex !== safeTargetIndex) {
     dispatchSwipeSectionChangeEvent({
       index: safeTargetIndex,
@@ -23230,6 +23737,18 @@ function startSwipeSectionTransition(targetIndex, direction, reason, swipeConfig
   )
     ? swipeState.activeSectionIndex
     : findClosestSwipeSectionIndexToFrame(fromFrame, swipeConfig);
+  const lastSectionIndex = swipeConfig.sections.length - 1;
+  const leavingLastSection = (
+    currentIndex === lastSectionIndex
+    && safeTargetIndex !== lastSectionIndex
+  );
+  if (leavingLastSection) {
+    resetSwipeSectionsOutroRuntime({
+      clearArmed: true,
+      clearApplied: true,
+      resetVisuals: true,
+    });
+  }
 
   if (Number.isFinite(swipeState.transitionRafId) && swipeState.transitionRafId !== null) {
     cancelAnimationFrame(swipeState.transitionRafId);
@@ -25931,6 +26450,7 @@ function applySwipeSectionsOptions(nextOptions) {
   const nextOverlayTransitionPatch = isPlainObjectLiteral(nextOptions.overlayTransition)
     ? nextOptions.overlayTransition
     : {};
+  const nextOutroPatch = isPlainObjectLiteral(nextOptions.outro) ? nextOptions.outro : {};
   const nextRsvpPatch = isPlainObjectLiteral(nextOptions.rsvp) ? nextOptions.rsvp : {};
   const currentRsvp = isPlainObjectLiteral(currentConfig.rsvp) ? currentConfig.rsvp : {};
   const currentRsvpInitialState = isPlainObjectLiteral(currentRsvp.initialState) ? currentRsvp.initialState : {};
@@ -25968,6 +26488,10 @@ function applySwipeSectionsOptions(nextOptions) {
     overlayTransition: {
       ...currentConfig.overlayTransition,
       ...nextOverlayTransitionPatch,
+    },
+    outro: {
+      ...currentConfig.outro,
+      ...nextOutroPatch,
     },
     rsvp: {
       ...currentRsvp,
