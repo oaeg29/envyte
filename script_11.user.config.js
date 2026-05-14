@@ -1296,6 +1296,7 @@
         './sparkle_003.webm',
       ],
       playbackRate: 0.75,
+      playbackAdvanceTimeoutMs: 360, // when using video renderer, wait this long for currentTime to advance before showing sparkle
       fps: 30,
       blendMode: 'screen',
       widthVideoHeightRatio: 0.27,

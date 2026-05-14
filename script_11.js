@@ -23950,9 +23950,6 @@ function canRenderJumpSparkleInstanceFrame(instance) {
   if (!instance || instance.active !== true) {
     return false;
   }
-  if (instance.primed === true) {
-    return true;
-  }
   return instance.mediaState === 'playing';
 }
 
@@ -24077,6 +24074,9 @@ function resolveJumpSparkleConfig(flowersConfig = CONFIG.flowers || {}) {
     playbackRate: Number.isFinite(Number(safeConfig.playbackRate))
       ? Math.max(0.01, Number(safeConfig.playbackRate))
       : 1,
+    playbackAdvanceTimeoutMs: Number.isFinite(Number(safeConfig.playbackAdvanceTimeoutMs))
+      ? Math.max(0, Number(safeConfig.playbackAdvanceTimeoutMs))
+      : 360,
     fps: Number.isFinite(Number(safeConfig.fps))
       ? Math.max(1, Number(safeConfig.fps))
       : 30,
@@ -24521,6 +24521,67 @@ function waitForJumpSparkleVideoEvent(videoEl, eventNames = [], timeoutMs = 450)
   });
 }
 
+function waitForJumpSparklePlaybackAdvance(videoEl, timeoutMs = 360) {
+  if (!videoEl) {
+    return Promise.resolve(false);
+  }
+  const initialTime = Number.isFinite(Number(videoEl.currentTime))
+    ? Math.max(0, Number(videoEl.currentTime))
+    : 0;
+  if (initialTime > 1e-3) {
+    return Promise.resolve(true);
+  }
+  return new Promise((resolve) => {
+    let settled = false;
+    let timeoutId = null;
+    let rafId = null;
+    const hasAdvanced = () => {
+      const currentTime = Number(videoEl.currentTime);
+      return Number.isFinite(currentTime) && currentTime > initialTime + 1e-3;
+    };
+    const settle = (result) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      videoEl.removeEventListener('playing', onPlaybackEvent);
+      videoEl.removeEventListener('timeupdate', onPlaybackEvent);
+      videoEl.removeEventListener('seeked', onPlaybackEvent);
+      videoEl.removeEventListener('error', onError);
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId);
+      }
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
+      resolve(result);
+    };
+    const onPlaybackEvent = () => {
+      if (hasAdvanced()) {
+        settle(true);
+      }
+    };
+    const onError = () => {
+      settle(false);
+    };
+    const tick = () => {
+      if (hasAdvanced()) {
+        settle(true);
+        return;
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+    videoEl.addEventListener('playing', onPlaybackEvent);
+    videoEl.addEventListener('timeupdate', onPlaybackEvent);
+    videoEl.addEventListener('seeked', onPlaybackEvent);
+    videoEl.addEventListener('error', onError, { once: true });
+    timeoutId = setTimeout(() => {
+      settle(hasAdvanced());
+    }, Math.max(0, Number(timeoutMs) || 0));
+    rafId = requestAnimationFrame(tick);
+  });
+}
+
 async function primeJumpSparkleInstanceAtStartFrame(instance) {
   if (!instance || !instance.videoEl || instance.active !== true) {
     return false;
@@ -24570,8 +24631,13 @@ async function runJumpSparkleInstancePlayback(instance, sparkleConfig) {
     return false;
   }
   const activationNonce = Number(instance.activationNonce);
+  const suppressAlternateFallback = isLikelyIOSDevice();
   const sources = [instance.preferredPath];
-  if (typeof instance.fallbackPath === 'string' && instance.fallbackPath.length > 0) {
+  if (
+    suppressAlternateFallback !== true
+    && typeof instance.fallbackPath === 'string'
+    && instance.fallbackPath.length > 0
+  ) {
     sources.push(instance.fallbackPath);
   }
 
@@ -24580,7 +24646,7 @@ async function runJumpSparkleInstancePlayback(instance, sparkleConfig) {
     if (!sourcePath || instance.active !== true || Number(instance.activationNonce) !== activationNonce) {
       return false;
     }
-    if (!setJumpSparkleInstanceSource(instance, sourcePath, { forceReload: true })) {
+    if (!setJumpSparkleInstanceSource(instance, sourcePath, { forceReload: false })) {
       continue;
     }
     instance.fallbackAttempted = i > 0;
@@ -24595,6 +24661,14 @@ async function runJumpSparkleInstancePlayback(instance, sparkleConfig) {
       }
       if (instance.active !== true || Number(instance.activationNonce) !== activationNonce) {
         return false;
+      }
+      const playbackAdvanced = await waitForJumpSparklePlaybackAdvance(
+        instance.videoEl,
+        sparkleConfig.playbackAdvanceTimeoutMs,
+      );
+      if (!playbackAdvanced) {
+        instance.mediaState = 'failed';
+        continue;
       }
       instance.mediaState = 'playing';
       syncJumpSparkleLayer(performance.now());
@@ -24705,6 +24779,21 @@ function ensureJumpSparkleInstancePool(sparkleConfig) {
     deactivateJumpSparkleInstance(instance);
     if (instance.videoEl && instance.videoEl.parentElement) {
       instance.videoEl.parentElement.removeChild(instance.videoEl);
+    }
+  }
+  const variants = Array.isArray(safeConfig.variants) ? safeConfig.variants : [];
+  if (variants.length > 0) {
+    for (let i = 0; i < variants.length; i += 1) {
+      const variantPaths = resolveJumpSparkleVariantPaths(variants[i]);
+      if (!variantPaths || !variantPaths.preferredPath) {
+        continue;
+      }
+      const slot = i % runtime.instances.length;
+      const preloadInstance = runtime.instances[slot];
+      if (!preloadInstance || preloadInstance.active === true) {
+        continue;
+      }
+      setJumpSparkleInstanceSource(preloadInstance, variantPaths.preferredPath, { forceReload: false });
     }
   }
   return runtime.instances;
@@ -25080,7 +25169,7 @@ function activateJumpSparkleInstance(target, sparkleConfig, nowMs = performance.
   moveJumpSparkleInstanceToLayer(instance, layerName);
   instance.videoEl.style.mixBlendMode = sparkleConfig.blendMode;
   instance.videoEl.playbackRate = sparkleConfig.playbackRate;
-  if (!setJumpSparkleInstanceSource(instance, preferredPath, { forceReload: true })) {
+  if (!setJumpSparkleInstanceSource(instance, preferredPath, { forceReload: false })) {
     return false;
   }
   instance.videoEl.style.display = 'none';
