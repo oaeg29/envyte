@@ -72,6 +72,11 @@ const rsvpConfirmButton = document.createElement('button');
 const rsvpYesButtonImage = document.createElement('img');
 const rsvpNoButtonImage = document.createElement('img');
 const rsvpConfirmButtonImage = document.createElement('img');
+const rsvpConfirmGlowLayer = document.createElement('div');
+const rsvpConfirmGlowCore = document.createElement('div');
+const rsvpConfirmGlowRays = document.createElement('div');
+const rsvpNameMissingIndicator = document.createElement('div');
+const rsvpResponseMissingIndicator = document.createElement('div');
 const rsvpNameDebugRect = document.createElement('div');
 const rsvpYesDebugRect = document.createElement('div');
 const rsvpNoDebugRect = document.createElement('div');
@@ -169,6 +174,12 @@ const section2ButtonLayer = document.createElement('div');
 const section2Button = document.createElement('button');
 const section1LabelLayer = document.createElement('div');
 const section1LabelEl = document.createElement('div');
+const jumpSparkleBackLayer = document.createElement('div');
+const jumpSparkleFrontLayer = document.createElement('div');
+const jumpSparkleBackCanvas = document.createElement('canvas');
+const jumpSparkleFrontCanvas = document.createElement('canvas');
+const jumpSparkleBackBlendPlate = document.createElement('div');
+const jumpSparkleFrontBlendPlate = document.createElement('div');
 
 // =========================
 // 2) Config
@@ -2932,6 +2943,16 @@ rsvpConfirmButton.type = 'button';
 rsvpConfirmButton.setAttribute('aria-label', 'RSVP confirm');
 rsvpConfirmButton.setAttribute('data-rsvp-control', 'confirm');
 rsvpConfirmButton.dataset.rsvpResponse = 'confirm';
+rsvpConfirmGlowLayer.id = 'rsvpConfirmGlowLayer';
+rsvpConfirmGlowLayer.setAttribute('aria-hidden', 'true');
+rsvpConfirmGlowCore.id = 'rsvpConfirmGlowCore';
+rsvpConfirmGlowRays.id = 'rsvpConfirmGlowRays';
+rsvpNameMissingIndicator.id = 'rsvpNameMissingIndicator';
+rsvpNameMissingIndicator.className = 'rsvpMissingIndicator';
+rsvpNameMissingIndicator.setAttribute('aria-hidden', 'true');
+rsvpResponseMissingIndicator.id = 'rsvpResponseMissingIndicator';
+rsvpResponseMissingIndicator.className = 'rsvpMissingIndicator';
+rsvpResponseMissingIndicator.setAttribute('aria-hidden', 'true');
 rsvpYesButtonImage.id = 'rsvpYesButtonImage';
 rsvpYesButtonImage.alt = '';
 rsvpYesButtonImage.draggable = false;
@@ -2951,6 +2972,8 @@ rsvpNoDebugRect.id = 'rsvpNoDebugRect';
 rsvpNoDebugRect.className = 'rsvpDebugRect';
 rsvpConfirmDebugRect.id = 'rsvpConfirmDebugRect';
 rsvpConfirmDebugRect.className = 'rsvpDebugRect';
+rsvpConfirmGlowLayer.appendChild(rsvpConfirmGlowCore);
+rsvpConfirmGlowLayer.appendChild(rsvpConfirmGlowRays);
 rsvpYesButton.appendChild(rsvpYesButtonImage);
 rsvpNoButton.appendChild(rsvpNoButtonImage);
 rsvpConfirmButton.appendChild(rsvpConfirmButtonImage);
@@ -2958,10 +2981,13 @@ rsvpLayer.appendChild(rsvpNameDebugRect);
 rsvpLayer.appendChild(rsvpYesDebugRect);
 rsvpLayer.appendChild(rsvpNoDebugRect);
 rsvpLayer.appendChild(rsvpConfirmDebugRect);
+rsvpLayer.appendChild(rsvpConfirmGlowLayer);
 rsvpLayer.appendChild(rsvpNameInput);
 rsvpLayer.appendChild(rsvpYesButton);
 rsvpLayer.appendChild(rsvpNoButton);
 rsvpLayer.appendChild(rsvpConfirmButton);
+rsvpLayer.appendChild(rsvpNameMissingIndicator);
+rsvpLayer.appendChild(rsvpResponseMissingIndicator);
 wash1Layer.id = 'wash1Layer';
 wash2Layer.id = 'wash2Layer';
 section2ButtonLayer.id = 'section2ButtonLayer';
@@ -2971,12 +2997,31 @@ section2Button.type = 'button';
 section2Button.setAttribute('aria-label', 'View Location');
 section2Button.textContent = 'View Location';
 section2ButtonLayer.appendChild(section2Button);
+jumpSparkleBackLayer.id = 'jumpSparkleBackLayer';
+jumpSparkleBackLayer.setAttribute('aria-hidden', 'true');
+jumpSparkleFrontLayer.id = 'jumpSparkleFrontLayer';
+jumpSparkleFrontLayer.setAttribute('aria-hidden', 'true');
+jumpSparkleBackCanvas.id = 'jumpSparkleBackCanvas';
+jumpSparkleBackCanvas.setAttribute('aria-hidden', 'true');
+jumpSparkleFrontCanvas.id = 'jumpSparkleFrontCanvas';
+jumpSparkleFrontCanvas.setAttribute('aria-hidden', 'true');
+jumpSparkleBackBlendPlate.id = 'jumpSparkleBackBlendPlate';
+jumpSparkleBackBlendPlate.className = 'jumpSparkleBlendPlate';
+jumpSparkleBackBlendPlate.setAttribute('aria-hidden', 'true');
+jumpSparkleFrontBlendPlate.id = 'jumpSparkleFrontBlendPlate';
+jumpSparkleFrontBlendPlate.className = 'jumpSparkleBlendPlate';
+jumpSparkleFrontBlendPlate.setAttribute('aria-hidden', 'true');
+jumpSparkleBackLayer.appendChild(jumpSparkleBackCanvas);
+jumpSparkleFrontLayer.appendChild(jumpSparkleFrontCanvas);
+jumpSparkleBackLayer.appendChild(jumpSparkleBackBlendPlate);
+jumpSparkleFrontLayer.appendChild(jumpSparkleFrontBlendPlate);
 // video.height = window.innerHeight;   // Set height in pixels
 
 document.body.appendChild(flowersBackCanvas);
 document.body.appendChild(heroHintCanvas);
 document.body.appendChild(wash1Layer);
 document.body.appendChild(wash2Layer);
+document.body.appendChild(jumpSparkleBackLayer);
 document.body.appendChild(video);  // Adds it to the page
 document.body.appendChild(foliageVideoLower);
 document.body.appendChild(foliageVideoUpper);
@@ -2997,6 +3042,7 @@ document.body.appendChild(section1LabelLayer);
 // Keep front overlay canvas in root stacking context so it can render above the video.
 document.body.appendChild(frontCanvas);
 document.body.appendChild(flowersFrontCanvas);
+document.body.appendChild(jumpSparkleFrontLayer);
 
 // Initialize section control for canvas visibility and debug console
 initSectionControl();
@@ -3019,6 +3065,8 @@ wash2Layer.addEventListener('animationend', (event) => {
 });
 const frontCtx = frontCanvas.getContext('2d');
 const heroHintCtx = heroHintCanvas.getContext('2d');
+const jumpSparkleBackCtx = jumpSparkleBackCanvas.getContext('2d');
+const jumpSparkleFrontCtx = jumpSparkleFrontCanvas.getContext('2d');
 
 
 // // Define your color values
@@ -3372,6 +3420,27 @@ const STATE = {
     videoWiggleDelayTimerId: null,
     videoWiggleActive: false,
   },
+  section2ButtonWiggle: {
+    delayTimerId: null,
+    rafId: null,
+    active: false,
+    rotationDeg: 0,
+    hoverScale: 1,
+    visible: false,
+    entryNonce: 0,
+    lastWiggledEntryNonce: -1,
+  },
+  jumpSparkle: {
+    instances: [],
+    nextInstanceId: 1,
+    lastTriggerClientX: Number.NaN,
+    lastTriggerClientY: Number.NaN,
+    lastTriggerMs: 0,
+    debugLogLastByKey: {},
+    lastBackLayerVisible: false,
+    lastFrontLayerVisible: false,
+    lastEffectiveRenderer: '',
+  },
   swipeSections: {
     activeSectionIndex: -1,
     activeSectionId: '',
@@ -3412,7 +3481,6 @@ const STATE = {
       pendingJumpTimerId: null,
       jumpAnimation: null,
       currentSectionId: '',
-      section1InitialJumpTriggered: false,
       visibleSinceMs: 0,
     },
     rsvp: {
@@ -3424,6 +3492,13 @@ const STATE = {
       confirmPressed: false,
       updatedAtMs: 0,
       hoverResponse: '',
+      validationHintsArmed: false,
+      invalidConfirmShakeRafId: null,
+      invalidConfirmShakeDelayTimerId: null,
+      invalidConfirmShakeActive: false,
+      invalidConfirmShakeOffsetPx: 0,
+      invalidConfirmShakeLastStartMs: 0,
+      confirmGlowVisualState: 'hidden',
       activeFontKey: '',
       fontLoadPromise: null,
       fontLoadEntries: new Map(),
@@ -5651,7 +5726,209 @@ function getSwipeSectionsRsvpRuntimeState() {
   if (typeof swipeState.rsvp.hoverResponse !== 'string') {
     swipeState.rsvp.hoverResponse = '';
   }
+  if (swipeState.rsvp.validationHintsArmed !== true) {
+    swipeState.rsvp.validationHintsArmed = false;
+  }
+  if (
+    swipeState.rsvp.confirmGlowVisualState !== 'hidden'
+    && swipeState.rsvp.confirmGlowVisualState !== 'pulsing'
+    && swipeState.rsvp.confirmGlowVisualState !== 'final'
+  ) {
+    swipeState.rsvp.confirmGlowVisualState = 'hidden';
+  }
+  if (swipeState.rsvp.invalidConfirmShakeActive !== true) {
+    swipeState.rsvp.invalidConfirmShakeActive = false;
+  }
+  if (!Number.isFinite(Number(swipeState.rsvp.invalidConfirmShakeOffsetPx))) {
+    swipeState.rsvp.invalidConfirmShakeOffsetPx = 0;
+  }
+  if (!Number.isFinite(Number(swipeState.rsvp.invalidConfirmShakeLastStartMs))) {
+    swipeState.rsvp.invalidConfirmShakeLastStartMs = 0;
+  }
+  if (!Number.isFinite(Number(swipeState.rsvp.invalidConfirmShakeRafId))) {
+    swipeState.rsvp.invalidConfirmShakeRafId = null;
+  }
+  if (!Number.isFinite(Number(swipeState.rsvp.invalidConfirmShakeDelayTimerId))) {
+    swipeState.rsvp.invalidConfirmShakeDelayTimerId = null;
+  }
   return swipeState.rsvp;
+}
+
+function resolveRsvpCompletionState(runtimeState = getSwipeSectionsRsvpRuntimeState()) {
+  const runtime = runtimeState || getSwipeSectionsRsvpRuntimeState();
+  const trimmedName = runtime && typeof runtime.name === 'string' ? runtime.name.trim() : '';
+  const response = runtime ? sanitizeRsvpResponseValue(runtime.response, null) : null;
+  const isNameFilled = trimmedName.length > 0;
+  const isResponseFilled = response === 'yes' || response === 'no';
+  return {
+    isNameFilled,
+    isResponseFilled,
+    isFormComplete: isNameFilled && isResponseFilled,
+  };
+}
+
+function applyRsvpConfirmButtonTransform(scale = 1, shakeOffsetPx = 0) {
+  const safeScale = Number.isFinite(Number(scale)) ? Math.max(0.01, Number(scale)) : 1;
+  const safeOffsetPx = Number.isFinite(Number(shakeOffsetPx)) ? Number(shakeOffsetPx) : 0;
+  rsvpConfirmButton.style.transform = `translate(-50%, -50%) translateX(${safeOffsetPx}px) scale(${safeScale})`;
+}
+
+function stopRsvpInvalidConfirmShake(options = null) {
+  const runtime = getSwipeSectionsRsvpRuntimeState();
+  if (!runtime) {
+    return;
+  }
+  const safeOptions = isPlainObjectLiteral(options) ? options : {};
+  if (runtime.invalidConfirmShakeRafId !== null && Number.isFinite(Number(runtime.invalidConfirmShakeRafId))) {
+    cancelAnimationFrame(runtime.invalidConfirmShakeRafId);
+    runtime.invalidConfirmShakeRafId = null;
+  }
+  if (runtime.invalidConfirmShakeDelayTimerId !== null && Number.isFinite(Number(runtime.invalidConfirmShakeDelayTimerId))) {
+    clearTimeout(runtime.invalidConfirmShakeDelayTimerId);
+    runtime.invalidConfirmShakeDelayTimerId = null;
+  }
+  runtime.invalidConfirmShakeActive = false;
+  if (safeOptions.resetOffset !== false) {
+    runtime.invalidConfirmShakeOffsetPx = 0;
+  }
+}
+
+function triggerRsvpInvalidConfirmShake(
+  rsvpConfig = resolveSwipeSectionsConfig().rsvp,
+  options = null,
+) {
+  const runtime = getSwipeSectionsRsvpRuntimeState();
+  if (!runtime) {
+    return;
+  }
+  const safeOptions = isPlainObjectLiteral(options) ? options : {};
+  const validationConfig = rsvpConfig && rsvpConfig.validation ? rsvpConfig.validation : {};
+  const shakeConfig = validationConfig && validationConfig.invalidConfirmShake
+    ? validationConfig.invalidConfirmShake
+    : {};
+  if (shakeConfig.enabled !== true) {
+    return;
+  }
+  const nowMs = Number.isFinite(Number(safeOptions.nowMs))
+    ? Number(safeOptions.nowMs)
+    : performance.now();
+  const cooldownMs = Number.isFinite(Number(shakeConfig.cooldownMs))
+    ? Math.max(0, Number(shakeConfig.cooldownMs))
+    : 0;
+  if (
+    Number.isFinite(Number(runtime.invalidConfirmShakeLastStartMs))
+    && (nowMs - Number(runtime.invalidConfirmShakeLastStartMs)) < cooldownMs
+  ) {
+    return;
+  }
+  stopRsvpInvalidConfirmShake({ resetOffset: true });
+  const viewportHeight = Number.isFinite(Number(STATE.viewportHeight)) && Number(STATE.viewportHeight) > 0
+    ? Number(STATE.viewportHeight)
+    : window.innerHeight;
+  const maxOffsetPx = Math.max(
+    0,
+    viewportHeight * (
+      Number.isFinite(Number(shakeConfig.maxOffsetVideoHeightRatio))
+        ? Number(shakeConfig.maxOffsetVideoHeightRatio)
+        : 0
+    ),
+  );
+  const durationMs = Number.isFinite(Number(shakeConfig.durationMs))
+    ? Math.max(0, Number(shakeConfig.durationMs))
+    : 0;
+  const speedHz = Number.isFinite(Number(shakeConfig.speedHz))
+    ? Math.max(0, Number(shakeConfig.speedHz))
+    : 0;
+  const dampingStrength = Number.isFinite(Number(shakeConfig.dampingStrength))
+    ? Math.max(0, Number(shakeConfig.dampingStrength))
+    : 0;
+  if (maxOffsetPx <= 1e-6 || durationMs <= 1e-6 || speedHz <= 1e-6) {
+    return;
+  }
+  const delayMs = Number.isFinite(Number(shakeConfig.delayMs))
+    ? Math.max(0, Number(shakeConfig.delayMs))
+    : 0;
+  runtime.invalidConfirmShakeLastStartMs = nowMs;
+  const durationSec = Math.max(1e-6, durationMs / 1000);
+  const beginShake = () => {
+    runtime.invalidConfirmShakeDelayTimerId = null;
+    runtime.invalidConfirmShakeActive = true;
+    let startedAtMs = null;
+    const step = (rafNowMs) => {
+      runtime.invalidConfirmShakeRafId = null;
+      if (runtime.invalidConfirmShakeActive !== true) {
+        return;
+      }
+      if (!Number.isFinite(startedAtMs)) {
+        startedAtMs = rafNowMs;
+      }
+      const elapsedMs = Math.max(0, rafNowMs - startedAtMs);
+      const elapsedSec = elapsedMs / 1000;
+      const progress = clamp(elapsedSec / durationSec, 0, 1);
+      const envelope = Math.exp(-dampingStrength * elapsedSec) * (1 - progress);
+      const phase = elapsedSec * speedHz * Math.PI * 2;
+      runtime.invalidConfirmShakeOffsetPx = maxOffsetPx * envelope * Math.sin(phase);
+      syncRsvpButtonVisualState(rsvpConfig, runtime);
+      if (progress >= 1) {
+        stopRsvpInvalidConfirmShake({ resetOffset: true });
+        syncRsvpButtonVisualState(rsvpConfig, runtime);
+        return;
+      }
+      runtime.invalidConfirmShakeRafId = requestAnimationFrame(step);
+    };
+    runtime.invalidConfirmShakeRafId = requestAnimationFrame(step);
+  };
+  if (delayMs <= 1e-6) {
+    beginShake();
+    return;
+  }
+  runtime.invalidConfirmShakeDelayTimerId = window.setTimeout(beginShake, delayMs);
+}
+
+function syncSwipeSectionsScrollHintAfterRsvpStateChange(
+  swipeConfig = resolveSwipeSectionsConfig(),
+) {
+  const safeSwipeConfig = swipeConfig && typeof swipeConfig === 'object'
+    ? swipeConfig
+    : resolveSwipeSectionsConfig();
+  const scrollHintConfig = safeSwipeConfig && safeSwipeConfig.scrollHint
+    ? safeSwipeConfig.scrollHint
+    : null;
+  const rsvpConfig = safeSwipeConfig && safeSwipeConfig.rsvp
+    ? safeSwipeConfig.rsvp
+    : null;
+  if (
+    !scrollHintConfig
+    || scrollHintConfig.enabled !== true
+    || !rsvpConfig
+    || rsvpConfig.enabled !== true
+  ) {
+    return;
+  }
+  const section3HintConfig = rsvpConfig.scrollHintOnSection3 || {};
+  if (section3HintConfig.requireConfirmBeforeJump !== true) {
+    return;
+  }
+  const activeSectionId = resolveRsvpActiveSectionId(safeSwipeConfig);
+  if (activeSectionId !== rsvpConfig.sectionId) {
+    return;
+  }
+  const runtime = getSwipeSectionsRsvpRuntimeState();
+  const isConfirmed = Boolean(runtime && runtime.confirmPressed === true);
+  const scrollHintState = getSwipeSectionsScrollHintRuntimeState();
+  if (!scrollHintState) {
+    return;
+  }
+  if (!isConfirmed) {
+    cancelSwipeSectionsScrollHintPendingJump();
+    scrollHintState.jumpAnimation = null;
+    renderScene({ skipAutoStart: true });
+    return;
+  }
+  if (scrollHintState.pendingJumpTimerId === null) {
+    scheduleSwipeSectionsScrollHintJump(scrollHintConfig);
+  }
+  renderScene({ skipAutoStart: true });
 }
 
 function getRsvpStateSnapshot(runtimeState = getSwipeSectionsRsvpRuntimeState()) {
@@ -5789,15 +6066,18 @@ function setRsvpStatePatch(patch = {}, options = {}) {
   if (Object.prototype.hasOwnProperty.call(safePatch, 'name')) {
     const normalizedName = normalizeRsvpNameValue(safePatch.name, maxLength);
     const nextName = toRsvpNameTitleCase(normalizedName);
-    if (nextName !== runtime.name) {
+    const shouldResetConfirmPressed = runtime.confirmPressed === true;
+    if (nextName !== runtime.name || shouldResetConfirmPressed) {
       runtime.name = nextName;
+      runtime.confirmPressed = false;
       changed = true;
     }
   }
 
   if (Object.prototype.hasOwnProperty.call(safePatch, 'response')) {
     const nextResponse = sanitizeRsvpResponseValue(safePatch.response, null);
-    if (nextResponse !== runtime.response) {
+    const shouldResetConfirmPressed = runtime.confirmPressed === true;
+    if (nextResponse !== runtime.response || shouldResetConfirmPressed) {
       runtime.response = nextResponse;
       runtime.confirmPressed = false;
       changed = true;
@@ -5836,6 +6116,10 @@ function setRsvpStatePatch(patch = {}, options = {}) {
   }
   const snapshot = getRsvpStateSnapshot(runtime);
   syncRsvpButtonVisualState(rsvpConfig, runtime);
+  if (runtime.visible === true) {
+    syncRsvpLayer(performance.now());
+  }
+  syncSwipeSectionsScrollHintAfterRsvpStateChange(swipeConfig);
   if (safeOptions.emitEvent !== false) {
     dispatchRsvpStateChangeEvent(snapshot);
   }
@@ -6159,6 +6443,10 @@ function syncRsvpButtonVisualState(
   const isYesHovered = runtime.hoverResponse === 'yes';
   const isNoHovered = runtime.hoverResponse === 'no';
   const isConfirmHovered = runtime.hoverResponse === 'confirm';
+  const confirmShakeOffsetPx = Number.isFinite(Number(runtime.invalidConfirmShakeOffsetPx))
+    ? Number(runtime.invalidConfirmShakeOffsetPx)
+    : 0;
+  const confirmIsShaking = runtime.invalidConfirmShakeActive === true;
   const yesScale = (isYesSelected ? selectedScale : 1) * (isYesHovered ? hoverScale : 1);
   const noScale = (isNoSelected ? selectedScale : 1) * (isNoHovered ? hoverScale : 1);
   const confirmScale = (isConfirmSelected ? selectedScale : 1) * (isConfirmHovered ? hoverScale : 1);
@@ -6184,10 +6472,12 @@ function syncRsvpButtonVisualState(
   }
   rsvpYesButton.style.transform = `translate(-50%, -50%) scale(${yesScale})`;
   rsvpNoButton.style.transform = `translate(-50%, -50%) scale(${noScale})`;
-  rsvpConfirmButton.style.transform = `translate(-50%, -50%) scale(${confirmScale})`;
+  applyRsvpConfirmButtonTransform(confirmScale, confirmShakeOffsetPx);
   rsvpYesButton.style.transition = `transform ${transitionDurationMs}ms ${transitionEasing}`;
   rsvpNoButton.style.transition = `transform ${transitionDurationMs}ms ${transitionEasing}`;
-  rsvpConfirmButton.style.transition = `transform ${transitionDurationMs}ms ${transitionEasing}`;
+  rsvpConfirmButton.style.transition = confirmIsShaking
+    ? 'none'
+    : `transform ${transitionDurationMs}ms ${transitionEasing}`;
   rsvpYesButton.setAttribute('aria-pressed', isYesSelected ? 'true' : 'false');
   rsvpNoButton.setAttribute('aria-pressed', isNoSelected ? 'true' : 'false');
   rsvpConfirmButton.setAttribute('aria-pressed', isConfirmSelected ? 'true' : 'false');
@@ -6350,12 +6640,212 @@ function syncRsvpDebugRect(
   rectEl.style.visibility = 'visible';
 }
 
+function applyRsvpConfirmGlowStyleFromConfig(rsvpConfig = resolveSwipeSectionsConfig().rsvp) {
+  const confirmGlowConfig = rsvpConfig && rsvpConfig.confirmGlow ? rsvpConfig.confirmGlow : {};
+  const coreConfig = confirmGlowConfig && confirmGlowConfig.core ? confirmGlowConfig.core : {};
+  const raysConfig = confirmGlowConfig && confirmGlowConfig.rays ? confirmGlowConfig.rays : {};
+  const pulseConfig = confirmGlowConfig && confirmGlowConfig.pulse ? confirmGlowConfig.pulse : {};
+  const innerColor = coreConfig.innerColor || 'rgba(255,255,255,0.72)';
+  const outerColor = coreConfig.outerColor || 'rgba(255,255,255,0)';
+  rsvpConfirmGlowCore.style.background = `radial-gradient(circle, ${innerColor} 0%, ${outerColor} 72%)`;
+  const raysEnabled = raysConfig.enabled !== false;
+  rsvpConfirmGlowRays.style.display = raysEnabled ? 'block' : 'none';
+  if (raysEnabled) {
+    const raysColor = raysConfig.color || 'rgba(255,255,255,0.28)';
+    const raysSecondaryColor = raysConfig.secondaryColor || 'rgba(255,255,255,0.06)';
+    const repeatDeg = Number.isFinite(Number(raysConfig.repeatDeg))
+      ? Math.max(0.5, Number(raysConfig.repeatDeg))
+      : 18;
+    const blurPx = Number.isFinite(Number(raysConfig.blurPx))
+      ? Math.max(0, Number(raysConfig.blurPx))
+      : 6;
+    const raysOpacity = Number.isFinite(Number(raysConfig.opacity))
+      ? clamp(Number(raysConfig.opacity), 0, 1)
+      : 0.7;
+    const radialMaskInnerStop = Number.isFinite(Number(raysConfig.radialMaskInnerStop))
+      ? clamp(Number(raysConfig.radialMaskInnerStop), 0, 1)
+      : 0.18;
+    const radialMaskOuterStop = Number.isFinite(Number(raysConfig.radialMaskOuterStop))
+      ? clamp(Number(raysConfig.radialMaskOuterStop), 0, 1)
+      : 0.92;
+    const radialMaskEdgeBlurRatio = Number.isFinite(Number(raysConfig.radialMaskEdgeBlurRatio))
+      ? clamp(Number(raysConfig.radialMaskEdgeBlurRatio), 0, 1)
+      : 0.08;
+    rsvpConfirmGlowRays.style.background = (
+      `repeating-conic-gradient(` +
+      `from 0deg at 50% 50%, ` +
+      `${raysColor} 0deg ${repeatDeg * 0.48}deg, ` +
+      `${raysSecondaryColor} ${repeatDeg * 0.48}deg ${repeatDeg}deg` +
+      `)`
+    );
+    rsvpConfirmGlowRays.style.opacity = String(raysOpacity);
+    rsvpConfirmGlowRays.style.filter = `blur(${blurPx}px)`;
+    const orderedInnerStop = Math.min(radialMaskInnerStop, radialMaskOuterStop);
+    const orderedOuterStop = Math.max(radialMaskInnerStop, radialMaskOuterStop);
+    const ringWidth = Math.max(0, orderedOuterStop - orderedInnerStop);
+    const featherSpan = ringWidth > 0
+      ? (ringWidth * 0.5 * radialMaskEdgeBlurRatio)
+      : 0;
+    const rawMaskStops = [
+      clamp(orderedInnerStop - featherSpan, 0, 1),
+      clamp(orderedInnerStop + featherSpan, 0, 1),
+      clamp(orderedOuterStop - featherSpan, 0, 1),
+      clamp(orderedOuterStop + featherSpan, 0, 1),
+    ];
+    const maskStops = [];
+    let lastMaskStop = 0;
+    for (let i = 0; i < rawMaskStops.length; i += 1) {
+      const nextStop = clamp(rawMaskStops[i], 0, 1);
+      const monotonicStop = Math.max(lastMaskStop, nextStop);
+      maskStops.push(monotonicStop);
+      lastMaskStop = monotonicStop;
+    }
+    const maskValue = (
+      `radial-gradient(` +
+      `circle at 50% 50%, ` +
+      `transparent 0%, ` +
+      `transparent ${maskStops[0] * 100}%, ` +
+      `black ${maskStops[1] * 100}%, ` +
+      `black ${maskStops[2] * 100}%, ` +
+      `transparent ${maskStops[3] * 100}%, ` +
+      `transparent 100%` +
+      `)`
+    );
+    rsvpConfirmGlowRays.style.maskImage = maskValue;
+    rsvpConfirmGlowRays.style.webkitMaskImage = maskValue;
+  } else {
+    rsvpConfirmGlowRays.style.background = 'none';
+    rsvpConfirmGlowRays.style.opacity = '0';
+    rsvpConfirmGlowRays.style.filter = '';
+    rsvpConfirmGlowRays.style.maskImage = 'none';
+    rsvpConfirmGlowRays.style.webkitMaskImage = 'none';
+  }
+  const pulseDurationMs = Number.isFinite(Number(pulseConfig.durationMs))
+    ? Math.max(1, Number(pulseConfig.durationMs))
+    : 1800;
+  const pulseEasing = (
+    typeof pulseConfig.easing === 'string'
+    && pulseConfig.easing.trim().length > 0
+  )
+    ? pulseConfig.easing.trim()
+    : 'ease-in-out';
+  const pulseMinScale = Number.isFinite(Number(pulseConfig.minScale))
+    ? Math.max(0.01, Number(pulseConfig.minScale))
+    : 0.92;
+  const pulseMaxScale = Number.isFinite(Number(pulseConfig.maxScale))
+    ? Math.max(0.01, Number(pulseConfig.maxScale))
+    : 1.08;
+  const pulseMinOpacity = Number.isFinite(Number(pulseConfig.minOpacity))
+    ? clamp(Number(pulseConfig.minOpacity), 0, 1)
+    : 0.35;
+  const pulseMaxOpacity = Number.isFinite(Number(pulseConfig.maxOpacity))
+    ? clamp(Number(pulseConfig.maxOpacity), 0, 1)
+    : 0.62;
+  rsvpConfirmGlowLayer.style.setProperty('--rsvp-glow-pulse-duration', `${pulseDurationMs}ms`);
+  rsvpConfirmGlowLayer.style.setProperty('--rsvp-glow-pulse-easing', pulseEasing);
+  rsvpConfirmGlowLayer.style.setProperty('--rsvp-glow-pulse-min-scale', String(pulseMinScale));
+  rsvpConfirmGlowLayer.style.setProperty('--rsvp-glow-pulse-max-scale', String(pulseMaxScale));
+  rsvpConfirmGlowLayer.style.setProperty('--rsvp-glow-pulse-min-opacity', String(pulseMinOpacity));
+  rsvpConfirmGlowLayer.style.setProperty('--rsvp-glow-pulse-max-opacity', String(pulseMaxOpacity));
+}
+
+function setRsvpConfirmGlowVisualState(
+  nextState,
+  rsvpConfig = resolveSwipeSectionsConfig().rsvp,
+) {
+  const runtime = getSwipeSectionsRsvpRuntimeState();
+  if (!runtime) {
+    return;
+  }
+  const state = (
+    nextState === 'hidden'
+    || nextState === 'pulsing'
+    || nextState === 'final'
+  )
+    ? nextState
+    : 'hidden';
+  const confirmGlowConfig = rsvpConfig && rsvpConfig.confirmGlow ? rsvpConfig.confirmGlow : {};
+  const finalConfig = confirmGlowConfig && confirmGlowConfig.final ? confirmGlowConfig.final : {};
+  const finalScale = Number.isFinite(Number(finalConfig.scale))
+    ? Math.max(0.01, Number(finalConfig.scale))
+    : 1.14;
+  const finalOpacity = Number.isFinite(Number(finalConfig.opacity))
+    ? clamp(Number(finalConfig.opacity), 0, 1)
+    : 0.78;
+  const transitionDurationMs = Number.isFinite(Number(finalConfig.transitionDurationMs))
+    ? Math.max(0, Number(finalConfig.transitionDurationMs))
+    : 320;
+  const transitionEasing = (
+    typeof finalConfig.transitionEasing === 'string'
+    && finalConfig.transitionEasing.trim().length > 0
+  )
+    ? finalConfig.transitionEasing.trim()
+    : 'cubic-bezier(0.22, 1, 0.36, 1)';
+  if (state === 'hidden') {
+    rsvpConfirmGlowLayer.classList.remove('is-pulsing', 'is-final');
+    rsvpConfirmGlowLayer.style.display = 'none';
+    rsvpConfirmGlowLayer.style.visibility = 'hidden';
+    rsvpConfirmGlowLayer.style.transition = 'none';
+    rsvpConfirmGlowLayer.style.transform = 'translate(-50%, -50%) scale(1)';
+    rsvpConfirmGlowLayer.style.opacity = '0';
+    runtime.confirmGlowVisualState = 'hidden';
+    return;
+  }
+  rsvpConfirmGlowLayer.style.display = 'block';
+  rsvpConfirmGlowLayer.style.visibility = 'visible';
+  if (state === 'pulsing') {
+    rsvpConfirmGlowLayer.classList.remove('is-final');
+    rsvpConfirmGlowLayer.classList.add('is-pulsing');
+    rsvpConfirmGlowLayer.style.transition = 'none';
+    rsvpConfirmGlowLayer.style.transform = '';
+    rsvpConfirmGlowLayer.style.opacity = '';
+    runtime.confirmGlowVisualState = 'pulsing';
+    return;
+  }
+  if (runtime.confirmGlowVisualState !== 'final') {
+    const computed = window.getComputedStyle(rsvpConfirmGlowLayer);
+    const computedOpacity = Number.isFinite(Number(computed.opacity))
+      ? clamp(Number(computed.opacity), 0, 1)
+      : finalOpacity;
+    const computedTransform = (
+      typeof computed.transform === 'string'
+      && computed.transform.length > 0
+      && computed.transform !== 'none'
+    )
+      ? computed.transform
+      : 'translate(-50%, -50%) scale(1)';
+    rsvpConfirmGlowLayer.style.transform = computedTransform;
+    rsvpConfirmGlowLayer.style.opacity = String(computedOpacity);
+    rsvpConfirmGlowLayer.classList.remove('is-pulsing');
+    rsvpConfirmGlowLayer.classList.add('is-final');
+    // Force style commit so final transition starts from current pulse frame.
+    void rsvpConfirmGlowLayer.offsetWidth;
+    rsvpConfirmGlowLayer.style.transition = `transform ${transitionDurationMs}ms ${transitionEasing}, opacity ${transitionDurationMs}ms ${transitionEasing}`;
+    rsvpConfirmGlowLayer.style.transform = `translate(-50%, -50%) scale(${finalScale})`;
+    rsvpConfirmGlowLayer.style.opacity = String(finalOpacity);
+  } else {
+    rsvpConfirmGlowLayer.classList.remove('is-pulsing');
+    rsvpConfirmGlowLayer.classList.add('is-final');
+    rsvpConfirmGlowLayer.style.transition = `transform ${transitionDurationMs}ms ${transitionEasing}, opacity ${transitionDurationMs}ms ${transitionEasing}`;
+    rsvpConfirmGlowLayer.style.transform = `translate(-50%, -50%) scale(${finalScale})`;
+    rsvpConfirmGlowLayer.style.opacity = String(finalOpacity);
+  }
+  runtime.confirmGlowVisualState = 'final';
+}
+
 function hideRsvpLayer() {
   const runtime = getSwipeSectionsRsvpRuntimeState();
   if (runtime) {
     runtime.visible = false;
     runtime.hoverResponse = '';
+    runtime.confirmGlowVisualState = 'hidden';
   }
+  stopRsvpInvalidConfirmShake({ resetOffset: true });
+  rsvpNameMissingIndicator.style.display = 'none';
+  rsvpNameMissingIndicator.style.visibility = 'hidden';
+  rsvpResponseMissingIndicator.style.display = 'none';
+  rsvpResponseMissingIndicator.style.visibility = 'hidden';
+  setRsvpConfirmGlowVisualState('hidden');
   hideRsvpDebugRects();
   rsvpLayer.style.display = 'none';
   rsvpLayer.style.visibility = 'hidden';
@@ -6427,6 +6917,10 @@ function syncRsvpLayer(nowMs = performance.now()) {
   const nameFieldConfig = rsvpConfig.nameField || {};
   const buttonsConfig = rsvpConfig.buttons || {};
   const debugConfig = rsvpConfig.debug || {};
+  const validationConfig = rsvpConfig.validation || {};
+  const missingIndicatorsConfig = validationConfig.missingIndicators || {};
+  const confirmGlowConfig = rsvpConfig.confirmGlow || {};
+  const completionState = resolveRsvpCompletionState(runtime);
   
   // Use percentage-based positioning to match video centering
   // Since the container is now centered like the video, we use relative positioning
@@ -6555,12 +7049,241 @@ function syncRsvpLayer(nowMs = performance.now()) {
   rsvpConfirmButton.style.display = confirmEnabled ? 'block' : 'none';
   rsvpNameInput.style.pointerEvents = 'auto';
   rsvpNameInput.style.caretColor = nameFieldConfig.textColor || '#101010';
+
+  const missingIndicatorsArmed = validationConfig.showMissingIndicatorsAfterInvalidAttemptOnly !== false
+    ? runtime.validationHintsArmed === true
+    : true;
+  const nameIndicatorVisible = missingIndicatorsArmed && !completionState.isNameFilled;
+  const responseIndicatorVisible = missingIndicatorsArmed && !completionState.isResponseFilled;
+  const missingIndicatorFontSize = Math.max(
+    0,
+    (Number(missingIndicatorsConfig.fontSizeVideoHeightRatio) || 0) * viewportHeight,
+  );
+  const missingIndicatorText = (
+    typeof missingIndicatorsConfig.text === 'string'
+    && missingIndicatorsConfig.text.length > 0
+  )
+    ? missingIndicatorsConfig.text
+    : '*';
+  const missingIndicatorColor = (
+    typeof missingIndicatorsConfig.color === 'string'
+    && missingIndicatorsConfig.color.trim().length > 0
+  )
+    ? missingIndicatorsConfig.color.trim()
+    : '#cf2d2d';
+  const missingIndicatorFontFamily = (
+    typeof missingIndicatorsConfig.fontFamily === 'string'
+    && missingIndicatorsConfig.fontFamily.trim().length > 0
+  )
+    ? missingIndicatorsConfig.fontFamily.trim()
+    : 'inherit';
+  const missingIndicatorFontWeight = String(
+    missingIndicatorsConfig.fontWeight !== undefined
+      ? missingIndicatorsConfig.fontWeight
+      : 700,
+  );
+  const missingNameConfig = missingIndicatorsConfig.name || {};
+  const missingResponseConfig = missingIndicatorsConfig.response || {};
+  const nameIndicatorCenterXPercent = 50 + ((Number(missingNameConfig.offsetXVideoHeightRatio) || 0) * 100);
+  const nameIndicatorCenterYPercent = 50 + ((Number(missingNameConfig.offsetYVideoHeightRatio) || 0) * 100);
+  const responseIndicatorCenterXPercent = 50 + ((Number(missingResponseConfig.offsetXVideoHeightRatio) || 0) * 100);
+  const responseIndicatorCenterYPercent = 50 + ((Number(missingResponseConfig.offsetYVideoHeightRatio) || 0) * 100);
+  const applyMissingIndicatorStyles = (el, centerXPercent, centerYPercent, shouldShow) => {
+    el.textContent = missingIndicatorText;
+    el.style.left = `${centerXPercent}%`;
+    el.style.top = `${centerYPercent}%`;
+    el.style.color = missingIndicatorColor;
+    el.style.fontFamily = missingIndicatorFontFamily;
+    el.style.fontWeight = missingIndicatorFontWeight;
+    el.style.fontSize = `${missingIndicatorFontSize}px`;
+    el.style.display = shouldShow ? 'block' : 'none';
+    el.style.visibility = shouldShow ? 'visible' : 'hidden';
+    el.setAttribute('aria-hidden', shouldShow ? 'false' : 'true');
+  };
+  applyMissingIndicatorStyles(
+    rsvpNameMissingIndicator,
+    nameIndicatorCenterXPercent,
+    nameIndicatorCenterYPercent,
+    nameIndicatorVisible,
+  );
+  applyMissingIndicatorStyles(
+    rsvpResponseMissingIndicator,
+    responseIndicatorCenterXPercent,
+    responseIndicatorCenterYPercent,
+    responseIndicatorVisible,
+  );
+
+  const confirmGlowEnabled = (
+    confirmGlowConfig
+    && confirmGlowConfig.enabled !== false
+    && confirmEnabled
+  );
+  if (confirmGlowEnabled) {
+    const glowCenterXPercent = confirmCenterXPercent + ((Number(confirmGlowConfig.offsetXVideoHeightRatio) || 0) * 100);
+    const glowCenterYPercent = confirmCenterYPercent + ((Number(confirmGlowConfig.offsetYVideoHeightRatio) || 0) * 100);
+    const glowWidth = Math.max(0, (Number(confirmGlowConfig.widthVideoHeightRatio) || 0) * viewportHeight);
+    const glowHeight = Math.max(0, (Number(confirmGlowConfig.heightVideoHeightRatio) || 0) * viewportHeight);
+    rsvpConfirmGlowLayer.style.left = `${glowCenterXPercent}%`;
+    rsvpConfirmGlowLayer.style.top = `${glowCenterYPercent}%`;
+    rsvpConfirmGlowLayer.style.width = `${glowWidth}px`;
+    rsvpConfirmGlowLayer.style.height = `${glowHeight}px`;
+    applyRsvpConfirmGlowStyleFromConfig(rsvpConfig);
+    if (glowWidth > 0 && glowHeight > 0) {
+      const glowState = completionState.isFormComplete
+        ? (runtime.confirmPressed === true ? 'final' : 'pulsing')
+        : 'hidden';
+      setRsvpConfirmGlowVisualState(glowState, rsvpConfig);
+    } else {
+      setRsvpConfirmGlowVisualState('hidden', rsvpConfig);
+    }
+  } else {
+    setRsvpConfirmGlowVisualState('hidden', rsvpConfig);
+  }
+
   rsvpLayer.dataset.activeSectionId = activeSectionId;
   rsvpLayer.dataset.rsvpTimestamp = Number.isFinite(nowMs) ? String(nowMs) : String(performance.now());
   syncRsvpButtonVisualState(rsvpConfig, runtime);
 }
 
+function getSection2ButtonWiggleRuntimeState() {
+  const runtime = STATE && STATE.section2ButtonWiggle;
+  return runtime && typeof runtime === 'object' ? runtime : null;
+}
+
+function applySection2ButtonComposedTransform() {
+  if (!section2Button || !section2Button.style) {
+    return;
+  }
+  const runtime = getSection2ButtonWiggleRuntimeState();
+  const rotationDeg = runtime && Number.isFinite(Number(runtime.rotationDeg))
+    ? Number(runtime.rotationDeg)
+    : 0;
+  const hoverScale = runtime && Number.isFinite(Number(runtime.hoverScale))
+    ? Math.max(0.01, Number(runtime.hoverScale))
+    : 1;
+  section2Button.style.transform = `translate(-50%, -50%) rotate(${rotationDeg}deg) scale(${hoverScale})`;
+}
+
+function stopSection2ButtonWiggle(options = null) {
+  const safeOptions = isPlainObjectLiteral(options) ? options : {};
+  const resetRotation = safeOptions.resetRotation !== false;
+  const resetHoverScale = safeOptions.resetHoverScale === true;
+  const runtime = getSection2ButtonWiggleRuntimeState();
+  if (!runtime) {
+    return;
+  }
+  if (runtime.rafId !== null && Number.isFinite(runtime.rafId)) {
+    cancelAnimationFrame(runtime.rafId);
+    runtime.rafId = null;
+  }
+  if (runtime.delayTimerId !== null && Number.isFinite(runtime.delayTimerId)) {
+    clearTimeout(runtime.delayTimerId);
+    runtime.delayTimerId = null;
+  }
+  runtime.active = false;
+  if (resetRotation) {
+    runtime.rotationDeg = 0;
+  }
+  if (resetHoverScale) {
+    runtime.hoverScale = 1;
+  }
+  applySection2ButtonComposedTransform();
+}
+
+function scheduleSection2ButtonEntryWiggle(
+  buttonConfig,
+  entryNonce,
+) {
+  const runtime = getSection2ButtonWiggleRuntimeState();
+  if (!runtime) {
+    return;
+  }
+  const animation = buttonConfig && isPlainObjectLiteral(buttonConfig.animation)
+    ? buttonConfig.animation
+    : {};
+  const wiggle = animation && isPlainObjectLiteral(animation.wiggle)
+    ? animation.wiggle
+    : null;
+  if (!wiggle || wiggle.enabled !== true) {
+    return;
+  }
+  if (runtime.lastWiggledEntryNonce === entryNonce) {
+    return;
+  }
+  const maxAngleDeg = Number.isFinite(Number(wiggle.maxAngleDeg))
+    ? Math.max(0, Number(wiggle.maxAngleDeg))
+    : 0;
+  const durationMs = Number.isFinite(Number(wiggle.durationMs))
+    ? Math.max(0, Number(wiggle.durationMs))
+    : 0;
+  const speedHz = Number.isFinite(Number(wiggle.speedHz))
+    ? Math.max(0, Number(wiggle.speedHz))
+    : 0;
+  const dampingStrength = Number.isFinite(Number(wiggle.dampingStrength))
+    ? Math.max(0, Number(wiggle.dampingStrength))
+    : 0;
+  const delayAfterShowMs = Number.isFinite(Number(wiggle.delayAfterShowMs))
+    ? Math.max(0, Number(wiggle.delayAfterShowMs))
+    : 0;
+  if (maxAngleDeg <= 1e-6 || durationMs <= 1e-6 || speedHz <= 1e-6) {
+    runtime.lastWiggledEntryNonce = entryNonce;
+    return;
+  }
+  runtime.lastWiggledEntryNonce = entryNonce;
+  stopSection2ButtonWiggle({ resetRotation: true });
+  const durationSec = Math.max(1e-6, durationMs / 1000);
+
+  const beginWiggle = () => {
+    runtime.delayTimerId = null;
+    if (runtime.visible !== true || runtime.entryNonce !== entryNonce) {
+      stopSection2ButtonWiggle({ resetRotation: true });
+      return;
+    }
+    runtime.active = true;
+    let startedAtMs = null;
+
+    const step = (nowMs) => {
+      runtime.rafId = null;
+      if (!runtime.active) {
+        return;
+      }
+      if (runtime.visible !== true || runtime.entryNonce !== entryNonce) {
+        stopSection2ButtonWiggle({ resetRotation: true });
+        return;
+      }
+      if (!Number.isFinite(startedAtMs)) {
+        startedAtMs = nowMs;
+      }
+      const elapsedMs = Math.max(0, nowMs - startedAtMs);
+      const elapsedSec = elapsedMs / 1000;
+      const progress = clamp(elapsedSec / durationSec, 0, 1);
+      const envelope = Math.exp(-dampingStrength * elapsedSec) * (1 - progress);
+      const phase = elapsedSec * speedHz * Math.PI * 2;
+      runtime.rotationDeg = maxAngleDeg * envelope * Math.sin(phase);
+      applySection2ButtonComposedTransform();
+      if (progress >= 1) {
+        stopSection2ButtonWiggle({ resetRotation: true });
+        return;
+      }
+      runtime.rafId = requestAnimationFrame(step);
+    };
+
+    runtime.rafId = requestAnimationFrame(step);
+  };
+
+  if (delayAfterShowMs <= 1e-6) {
+    beginWiggle();
+    return;
+  }
+  runtime.delayTimerId = window.setTimeout(beginWiggle, delayAfterShowMs);
+}
+
 function hideSection2ButtonLayer() {
+  const wiggleRuntime = getSection2ButtonWiggleRuntimeState();
+  if (wiggleRuntime) {
+    wiggleRuntime.visible = false;
+  }
+  stopSection2ButtonWiggle({ resetRotation: true, resetHoverScale: true });
   section2ButtonLayer.style.display = 'none';
   section2ButtonLayer.style.visibility = 'hidden';
   section2ButtonLayer.style.pointerEvents = 'none';
@@ -6571,6 +7294,7 @@ function syncSection2ButtonLayer(nowMs = performance.now()) {
   const swipeConfig = resolveSwipeSectionsConfig();
   const sections = swipeConfig && Array.isArray(swipeConfig.sections) ? swipeConfig.sections : [];
   const activeSectionId = resolveRsvpActiveSectionId(swipeConfig);
+  const wiggleRuntime = getSection2ButtonWiggleRuntimeState();
   
   if (!swipeConfig || !swipeConfig.enabled || sections.length === 0) {
     hideSection2ButtonLayer();
@@ -6593,15 +7317,6 @@ function syncSection2ButtonLayer(nowMs = performance.now()) {
     hideSection2ButtonLayer();
     return;
   }
-  
-  const videoRect = getHeroVideoRenderedRect();
-  const videoHeight = (
-    videoRect
-    && Number.isFinite(videoRect.height)
-    && videoRect.height > 0
-  )
-    ? videoRect.height
-    : resolveHeroVideoRenderedHeightPx();
   
   // Use viewport height for zoom-insensitive scaling like the video
   const viewportHeight = STATE.viewportHeight || window.innerHeight;
@@ -6630,6 +7345,14 @@ function syncSection2ButtonLayer(nowMs = performance.now()) {
   
   const hasPng = typeof buttonConfig.pngSrc === 'string' && buttonConfig.pngSrc.trim().length > 0;
   const buttonLabel = buttonConfig.text || 'View Location';
+  const enteredSection2 = wiggleRuntime ? wiggleRuntime.visible !== true : false;
+  if (wiggleRuntime) {
+    wiggleRuntime.visible = true;
+    if (enteredSection2) {
+      wiggleRuntime.entryNonce += 1;
+      wiggleRuntime.hoverScale = 1;
+    }
+  }
   
   section2ButtonLayer.style.display = 'block';
   section2ButtonLayer.style.visibility = 'visible';
@@ -6642,7 +7365,6 @@ function syncSection2ButtonLayer(nowMs = performance.now()) {
   section2Button.style.top = `${buttonCenterYPercent}%`;
   section2Button.style.width = `${buttonWidth}px`;
   section2Button.style.height = `${buttonHeight}px`;
-  section2Button.style.transform = 'translate(-50%, -50%)';
   section2Button.style.backgroundColor = buttonConfig.backgroundColor || 'rgba(255, 255, 255, 0.9)';
   section2Button.style.color = buttonConfig.textColor || '#1f1b17';
   section2Button.style.fontSize = buttonConfig.fontSize || 'inherit';
@@ -6658,6 +7380,7 @@ function syncSection2ButtonLayer(nowMs = performance.now()) {
   section2Button.style.backgroundRepeat = hasPng ? 'no-repeat' : '';
   section2Button.style.backgroundPosition = hasPng ? 'center' : '';
   section2Button.style.backgroundSize = hasPng ? (buttonConfig.pngFit || 'contain') : '';
+  section2Button.style.transformOrigin = hasPng ? '50% 100%' : '50% 50%';
   
   const debug = buttonConfig.debug || {};
   if (debug.enabled) {
@@ -6672,6 +7395,24 @@ function syncSection2ButtonLayer(nowMs = performance.now()) {
   const transitionDurationMs = Number(animation.transitionDurationMs) || 150;
   const transitionEasing = animation.transitionEasing || 'cubic-bezier(0.16, 1, 0.3, 1)';
   section2Button.style.transition = `transform ${transitionDurationMs}ms ${transitionEasing}, background-color ${transitionDurationMs}ms ${transitionEasing}`;
+  applySection2ButtonComposedTransform();
+  if (
+    wiggleRuntime
+    && hasPng
+    && animation
+    && animation.wiggle
+    && animation.wiggle.enabled === true
+    && enteredSection2
+  ) {
+    scheduleSection2ButtonEntryWiggle(buttonConfig, wiggleRuntime.entryNonce);
+  } else if (
+    !hasPng
+    || !animation
+    || !animation.wiggle
+    || animation.wiggle.enabled !== true
+  ) {
+    stopSection2ButtonWiggle({ resetRotation: true });
+  }
   
   section2ButtonLayer.dataset.activeSectionId = activeSectionId;
   section2ButtonLayer.dataset.buttonTimestamp = Number.isFinite(nowMs) ? String(nowMs) : String(performance.now());
@@ -6786,7 +7527,7 @@ function syncSection1LabelLayer(nowMs = performance.now()) {
   const labelWidth = Math.max(0, (Number(labelConfig.widthVideoHeightRatio) || 0) * viewportHeight);
   const fontSize = Math.max(0, (Number(labelConfig.fontSizeVideoHeightRatio) || 0) * viewportHeight);
   const daysLeft = resolveSection1DaysLeft();
-  const labelText = `Save the date,\nonly ${daysLeft} days left!`;
+  const labelText = `${daysLeft}`;
 
   ensureSection1LabelFontLoaded(labelConfig);
 
@@ -6818,11 +7559,19 @@ function onSection2ButtonHoverEnter() {
     return;
   }
   const hoverScale = Number(section2.button.animation.hoverScale) || 1.08;
-  section2Button.style.transform = `translate(-50%, -50%) scale(${hoverScale})`;
+  const wiggleRuntime = getSection2ButtonWiggleRuntimeState();
+  if (wiggleRuntime) {
+    wiggleRuntime.hoverScale = hoverScale;
+  }
+  applySection2ButtonComposedTransform();
 }
 
 function onSection2ButtonHoverLeave() {
-  section2Button.style.transform = 'translate(-50%, -50%) scale(1)';
+  const wiggleRuntime = getSection2ButtonWiggleRuntimeState();
+  if (wiggleRuntime) {
+    wiggleRuntime.hoverScale = 1;
+  }
+  applySection2ButtonComposedTransform();
 }
 
 function onSection2ButtonClick(event) {
@@ -6913,18 +7662,25 @@ function onRsvpConfirmButtonClick(event) {
   const confirmConfig = rsvpConfig && rsvpConfig.buttons ? rsvpConfig.buttons.confirm : null;
   const runtime = getSwipeSectionsRsvpRuntimeState();
 
-  if (!confirmConfig || confirmConfig.enabled === false) {
+  if (!confirmConfig || confirmConfig.enabled === false || !runtime) {
+    return;
+  }
+  const completionState = resolveRsvpCompletionState(runtime);
+  if (!completionState.isFormComplete) {
+    runtime.validationHintsArmed = true;
+    runtime.confirmPressed = false;
+    triggerRsvpInvalidConfirmShake(rsvpConfig, { nowMs: performance.now() });
+    syncRsvpLayer(performance.now());
+    syncSwipeSectionsScrollHintAfterRsvpStateChange(swipeConfig);
+    renderScene({ skipAutoStart: true });
     return;
   }
 
-  const submittedName = runtime ? runtime.name : '';
-
-  if (!submittedName || submittedName.trim() === '') {
-    return;
-  }
-
+  stopRsvpInvalidConfirmShake({ resetOffset: true });
+  const submittedName = runtime.name;
   setRsvpStatePatch({ confirmPressed: true });
-  const submittedRsvp = runtime ? sanitizeRsvpResponseValue(runtime.response, null) : null;
+  const submittedRsvp = sanitizeRsvpResponseValue(runtime.response, null);
+  syncRsvpLayer(performance.now());
 
   const onSubmit = typeof confirmConfig.onSubmit === 'function' ? confirmConfig.onSubmit : null;
   if (onSubmit) {
@@ -6971,6 +7727,7 @@ function onRsvpConfirmButtonClick(event) {
       body: JSON.stringify(payload),
     }).catch(() => {});
   }
+  renderScene({ skipAutoStart: true });
 }
 
 function setupRsvpLayerEventHandlers() {
@@ -13402,6 +14159,14 @@ function shouldKeepFlowerInteractionLoopAlive() {
     return true;
   }
 
+  if (isSwipeSectionsScrollHintAnimationActive()) {
+    return true;
+  }
+
+  if (isJumpSparkleAnimationActive()) {
+    return true;
+  }
+
   if (!shouldRenderEndpointFlowers()) {
     return false;
   }
@@ -16113,6 +16878,27 @@ function resolveSwipeSectionsRsvpConfig(
   const animationRaw = isPlainObjectLiteral(buttonsRaw.animation) ? buttonsRaw.animation : {};
   const initialStateRaw = isPlainObjectLiteral(safeConfig.initialState) ? safeConfig.initialState : {};
   const debugRaw = isPlainObjectLiteral(safeConfig.debug) ? safeConfig.debug : {};
+  const validationRaw = isPlainObjectLiteral(safeConfig.validation) ? safeConfig.validation : {};
+  const invalidConfirmShakeRaw = isPlainObjectLiteral(validationRaw.invalidConfirmShake)
+    ? validationRaw.invalidConfirmShake
+    : {};
+  const missingIndicatorsRaw = isPlainObjectLiteral(validationRaw.missingIndicators)
+    ? validationRaw.missingIndicators
+    : {};
+  const missingNameRaw = isPlainObjectLiteral(missingIndicatorsRaw.name)
+    ? missingIndicatorsRaw.name
+    : {};
+  const missingResponseRaw = isPlainObjectLiteral(missingIndicatorsRaw.response)
+    ? missingIndicatorsRaw.response
+    : {};
+  const confirmGlowRaw = isPlainObjectLiteral(safeConfig.confirmGlow) ? safeConfig.confirmGlow : {};
+  const confirmGlowCoreRaw = isPlainObjectLiteral(confirmGlowRaw.core) ? confirmGlowRaw.core : {};
+  const confirmGlowRaysRaw = isPlainObjectLiteral(confirmGlowRaw.rays) ? confirmGlowRaw.rays : {};
+  const confirmGlowPulseRaw = isPlainObjectLiteral(confirmGlowRaw.pulse) ? confirmGlowRaw.pulse : {};
+  const confirmGlowFinalRaw = isPlainObjectLiteral(confirmGlowRaw.final) ? confirmGlowRaw.final : {};
+  const scrollHintOnSection3Raw = isPlainObjectLiteral(safeConfig.scrollHintOnSection3)
+    ? safeConfig.scrollHintOnSection3
+    : {};
   const fallbackSectionId = (
     sections[2]
     && typeof sections[2].id === 'string'
@@ -16392,6 +17178,180 @@ function resolveSwipeSectionsRsvpConfig(
       name: typeof initialStateRaw.name === 'string' ? initialStateRaw.name : '',
       response: sanitizeRsvpResponseValue(initialStateRaw.response, null),
     },
+    validation: {
+      showMissingIndicatorsAfterInvalidAttemptOnly: validationRaw.showMissingIndicatorsAfterInvalidAttemptOnly !== false,
+      invalidConfirmShake: {
+        enabled: invalidConfirmShakeRaw.enabled !== false,
+        delayMs: Number.isFinite(Number(invalidConfirmShakeRaw.delayMs))
+          ? Math.max(0, Number(invalidConfirmShakeRaw.delayMs))
+          : 0,
+        maxOffsetVideoHeightRatio: Number.isFinite(Number(invalidConfirmShakeRaw.maxOffsetVideoHeightRatio))
+          ? Math.max(0, Number(invalidConfirmShakeRaw.maxOffsetVideoHeightRatio))
+          : 0.012,
+        durationMs: Number.isFinite(Number(invalidConfirmShakeRaw.durationMs))
+          ? Math.max(0, Number(invalidConfirmShakeRaw.durationMs))
+          : 420,
+        speedHz: Number.isFinite(Number(invalidConfirmShakeRaw.speedHz))
+          ? Math.max(0, Number(invalidConfirmShakeRaw.speedHz))
+          : 7.5,
+        dampingStrength: Number.isFinite(Number(invalidConfirmShakeRaw.dampingStrength))
+          ? Math.max(0, Number(invalidConfirmShakeRaw.dampingStrength))
+          : 4.0,
+        cooldownMs: Number.isFinite(Number(invalidConfirmShakeRaw.cooldownMs))
+          ? Math.max(0, Number(invalidConfirmShakeRaw.cooldownMs))
+          : 140,
+      },
+      missingIndicators: {
+        text: (
+          typeof missingIndicatorsRaw.text === 'string'
+          && missingIndicatorsRaw.text.length > 0
+        )
+          ? missingIndicatorsRaw.text
+          : '*',
+        color: (
+          typeof missingIndicatorsRaw.color === 'string'
+          && missingIndicatorsRaw.color.trim().length > 0
+        )
+          ? missingIndicatorsRaw.color.trim()
+          : '#cf2d2d',
+        fontFamily: (
+          typeof missingIndicatorsRaw.fontFamily === 'string'
+          && missingIndicatorsRaw.fontFamily.trim().length > 0
+        )
+          ? missingIndicatorsRaw.fontFamily.trim()
+          : 'inherit',
+        fontWeight: (
+          typeof missingIndicatorsRaw.fontWeight === 'string'
+          || Number.isFinite(Number(missingIndicatorsRaw.fontWeight))
+        )
+          ? missingIndicatorsRaw.fontWeight
+          : 700,
+        fontSizeVideoHeightRatio: Number.isFinite(Number(missingIndicatorsRaw.fontSizeVideoHeightRatio))
+          ? Math.max(0, Number(missingIndicatorsRaw.fontSizeVideoHeightRatio))
+          : 0.045,
+        name: {
+          offsetXVideoHeightRatio: Number.isFinite(Number(missingNameRaw.offsetXVideoHeightRatio))
+            ? Number(missingNameRaw.offsetXVideoHeightRatio)
+            : 0,
+          offsetYVideoHeightRatio: Number.isFinite(Number(missingNameRaw.offsetYVideoHeightRatio))
+            ? Number(missingNameRaw.offsetYVideoHeightRatio)
+            : 0,
+        },
+        response: {
+          offsetXVideoHeightRatio: Number.isFinite(Number(missingResponseRaw.offsetXVideoHeightRatio))
+            ? Number(missingResponseRaw.offsetXVideoHeightRatio)
+            : 0,
+          offsetYVideoHeightRatio: Number.isFinite(Number(missingResponseRaw.offsetYVideoHeightRatio))
+            ? Number(missingResponseRaw.offsetYVideoHeightRatio)
+            : 0,
+        },
+      },
+    },
+    confirmGlow: {
+      enabled: confirmGlowRaw.enabled !== false,
+      offsetXVideoHeightRatio: Number.isFinite(Number(confirmGlowRaw.offsetXVideoHeightRatio))
+        ? Number(confirmGlowRaw.offsetXVideoHeightRatio)
+        : 0,
+      offsetYVideoHeightRatio: Number.isFinite(Number(confirmGlowRaw.offsetYVideoHeightRatio))
+        ? Number(confirmGlowRaw.offsetYVideoHeightRatio)
+        : 0,
+      widthVideoHeightRatio: Number.isFinite(Number(confirmGlowRaw.widthVideoHeightRatio))
+        ? Math.max(0, Number(confirmGlowRaw.widthVideoHeightRatio))
+        : 0.24,
+      heightVideoHeightRatio: Number.isFinite(Number(confirmGlowRaw.heightVideoHeightRatio))
+        ? Math.max(0, Number(confirmGlowRaw.heightVideoHeightRatio))
+        : 0.24,
+      core: {
+        innerColor: (
+          typeof confirmGlowCoreRaw.innerColor === 'string'
+          && confirmGlowCoreRaw.innerColor.trim().length > 0
+        )
+          ? confirmGlowCoreRaw.innerColor.trim()
+          : 'rgba(255,255,255,0.72)',
+        outerColor: (
+          typeof confirmGlowCoreRaw.outerColor === 'string'
+          && confirmGlowCoreRaw.outerColor.trim().length > 0
+        )
+          ? confirmGlowCoreRaw.outerColor.trim()
+          : 'rgba(255,255,255,0)',
+      },
+      rays: {
+        enabled: confirmGlowRaysRaw.enabled !== false,
+        color: (
+          typeof confirmGlowRaysRaw.color === 'string'
+          && confirmGlowRaysRaw.color.trim().length > 0
+        )
+          ? confirmGlowRaysRaw.color.trim()
+          : 'rgba(255,255,255,0.28)',
+        secondaryColor: (
+          typeof confirmGlowRaysRaw.secondaryColor === 'string'
+          && confirmGlowRaysRaw.secondaryColor.trim().length > 0
+        )
+          ? confirmGlowRaysRaw.secondaryColor.trim()
+          : 'rgba(255,255,255,0.06)',
+        repeatDeg: Number.isFinite(Number(confirmGlowRaysRaw.repeatDeg))
+          ? Math.max(0.5, Number(confirmGlowRaysRaw.repeatDeg))
+          : 18,
+        blurPx: Number.isFinite(Number(confirmGlowRaysRaw.blurPx))
+          ? Math.max(0, Number(confirmGlowRaysRaw.blurPx))
+          : 6,
+        opacity: Number.isFinite(Number(confirmGlowRaysRaw.opacity))
+          ? clamp(Number(confirmGlowRaysRaw.opacity), 0, 1)
+          : 0.7,
+        radialMaskInnerStop: Number.isFinite(Number(confirmGlowRaysRaw.radialMaskInnerStop))
+          ? clamp(Number(confirmGlowRaysRaw.radialMaskInnerStop), 0, 1)
+          : 0.18,
+        radialMaskOuterStop: Number.isFinite(Number(confirmGlowRaysRaw.radialMaskOuterStop))
+          ? clamp(Number(confirmGlowRaysRaw.radialMaskOuterStop), 0, 1)
+          : 0.92,
+        radialMaskEdgeBlurRatio: Number.isFinite(Number(confirmGlowRaysRaw.radialMaskEdgeBlurRatio))
+          ? clamp(Number(confirmGlowRaysRaw.radialMaskEdgeBlurRatio), 0, 1)
+          : 0.08,
+      },
+      pulse: {
+        durationMs: Number.isFinite(Number(confirmGlowPulseRaw.durationMs))
+          ? Math.max(1, Number(confirmGlowPulseRaw.durationMs))
+          : 1800,
+        easing: (
+          typeof confirmGlowPulseRaw.easing === 'string'
+          && confirmGlowPulseRaw.easing.trim().length > 0
+        )
+          ? confirmGlowPulseRaw.easing.trim()
+          : 'ease-in-out',
+        minScale: Number.isFinite(Number(confirmGlowPulseRaw.minScale))
+          ? Math.max(0.01, Number(confirmGlowPulseRaw.minScale))
+          : 0.92,
+        maxScale: Number.isFinite(Number(confirmGlowPulseRaw.maxScale))
+          ? Math.max(0.01, Number(confirmGlowPulseRaw.maxScale))
+          : 1.08,
+        minOpacity: Number.isFinite(Number(confirmGlowPulseRaw.minOpacity))
+          ? clamp(Number(confirmGlowPulseRaw.minOpacity), 0, 1)
+          : 0.35,
+        maxOpacity: Number.isFinite(Number(confirmGlowPulseRaw.maxOpacity))
+          ? clamp(Number(confirmGlowPulseRaw.maxOpacity), 0, 1)
+          : 0.62,
+      },
+      final: {
+        scale: Number.isFinite(Number(confirmGlowFinalRaw.scale))
+          ? Math.max(0.01, Number(confirmGlowFinalRaw.scale))
+          : 1.14,
+        opacity: Number.isFinite(Number(confirmGlowFinalRaw.opacity))
+          ? clamp(Number(confirmGlowFinalRaw.opacity), 0, 1)
+          : 0.78,
+        transitionDurationMs: Number.isFinite(Number(confirmGlowFinalRaw.transitionDurationMs))
+          ? Math.max(0, Number(confirmGlowFinalRaw.transitionDurationMs))
+          : 320,
+        transitionEasing: (
+          typeof confirmGlowFinalRaw.transitionEasing === 'string'
+          && confirmGlowFinalRaw.transitionEasing.trim().length > 0
+        )
+          ? confirmGlowFinalRaw.transitionEasing.trim()
+          : 'cubic-bezier(0.22, 1, 0.36, 1)',
+      },
+    },
+    scrollHintOnSection3: {
+      requireConfirmBeforeJump: scrollHintOnSection3Raw.requireConfirmBeforeJump !== false,
+    },
     debug: {
       enabled: debugRaw.enabled === true,
       showNameFieldRect: debugRaw.showNameFieldRect !== false,
@@ -16450,6 +17410,7 @@ function resolveSwipeSectionsConfig(configCandidate = CONFIG.swipeSections) {
       return null;
     }
     const animationRaw = isPlainObjectLiteral(buttonRaw.animation) ? buttonRaw.animation : {};
+    const wiggleRaw = isPlainObjectLiteral(animationRaw.wiggle) ? animationRaw.wiggle : {};
     const debugRaw = isPlainObjectLiteral(buttonRaw.debug) ? buttonRaw.debug : {};
     const normalizedPngSrc = (
       typeof buttonRaw.pngSrc === 'string'
@@ -16552,6 +17513,24 @@ function resolveSwipeSectionsConfig(configCandidate = CONFIG.swipeSections) {
         )
           ? animationRaw.transitionEasing.trim()
           : 'cubic-bezier(0.16, 1, 0.3, 1)',
+        wiggle: {
+          enabled: wiggleRaw.enabled === true,
+          delayAfterShowMs: Number.isFinite(Number(wiggleRaw.delayAfterShowMs))
+            ? Math.max(0, Number(wiggleRaw.delayAfterShowMs))
+            : 120,
+          maxAngleDeg: Number.isFinite(Number(wiggleRaw.maxAngleDeg))
+            ? Math.max(0, Number(wiggleRaw.maxAngleDeg))
+            : 2.4,
+          durationMs: Number.isFinite(Number(wiggleRaw.durationMs))
+            ? Math.max(0, Number(wiggleRaw.durationMs))
+            : 760,
+          speedHz: Number.isFinite(Number(wiggleRaw.speedHz))
+            ? Math.max(0, Number(wiggleRaw.speedHz))
+            : 5.8,
+          dampingStrength: Number.isFinite(Number(wiggleRaw.dampingStrength))
+            ? Math.max(0, Number(wiggleRaw.dampingStrength))
+            : 3.2,
+        },
       },
       debug: {
         enabled: debugRaw.enabled === true,
@@ -16805,8 +17784,13 @@ function resolveSwipeSectionsScrollHintConfig(configCandidate = {}) {
   };
 }
 
+function getSwipeSectionsScrollHintRuntimeState() {
+  const swipeState = STATE && STATE.swipeSections ? STATE.swipeSections : null;
+  return swipeState && swipeState.scrollHint ? swipeState.scrollHint : null;
+}
+
 function cancelSwipeSectionsScrollHintPendingJump() {
-  const scrollHintState = STATE && STATE.swipeSections ? STATE.swipeSections.scrollHint : null;
+  const scrollHintState = getSwipeSectionsScrollHintRuntimeState();
   if (!scrollHintState) {
     return;
   }
@@ -16816,11 +17800,131 @@ function cancelSwipeSectionsScrollHintPendingJump() {
   scrollHintState.pendingJumpTimerId = null;
 }
 
+function hideSwipeSectionsScrollHintLayer(options = {}) {
+  const safeOptions = isPlainObjectLiteral(options) ? options : {};
+  const scrollHintState = getSwipeSectionsScrollHintRuntimeState();
+  if (safeOptions.cancelPendingJump !== false) {
+    cancelSwipeSectionsScrollHintPendingJump();
+  }
+  if (scrollHintState) {
+    if (safeOptions.resetVisibleSince !== false) {
+      scrollHintState.visibleSinceMs = 0;
+    }
+    if (safeOptions.resetJumpAnimation !== false) {
+      scrollHintState.jumpAnimation = null;
+    }
+    if (safeOptions.resetCurrentSectionId === true) {
+      scrollHintState.currentSectionId = '';
+    }
+  }
+  swipeSectionsScrollHintLayer.style.display = 'none';
+  swipeSectionsScrollHintLayer.style.opacity = '0';
+  swipeSectionsScrollHintLayer.style.visibility = 'hidden';
+  swipeSectionsScrollHintDebugRect.style.display = 'none';
+}
+
+function isSwipeSectionsScrollHintJumpEligible(
+  scrollHintConfig,
+  swipeConfig = resolveSwipeSectionsConfig(),
+) {
+  if (!scrollHintConfig || scrollHintConfig.enabled !== true) {
+    return false;
+  }
+  const swipeState = STATE && STATE.swipeSections ? STATE.swipeSections : null;
+  const sections = swipeConfig && Array.isArray(swipeConfig.sections) ? swipeConfig.sections : [];
+  if (!swipeState || sections.length <= 0) {
+    return false;
+  }
+  if (swipeState.isTransitioning === true) {
+    return false;
+  }
+  const heroPlaybackGateConfig = resolveHeroPlaybackGateConfig();
+  const currentFrame = getCurrentHeroVideoFrame(heroPlaybackGateConfig);
+  const postButtonPauseFrame = heroPlaybackGateConfig && Number.isFinite(heroPlaybackGateConfig.postButtonPauseFrame)
+    ? heroPlaybackGateConfig.postButtonPauseFrame
+    : 273;
+  if (currentFrame < postButtonPauseFrame) {
+    return false;
+  }
+  const activeSectionIndex = (
+    Number.isFinite(swipeState.activeSectionIndex)
+    && swipeState.activeSectionIndex >= 0
+    && swipeState.activeSectionIndex < sections.length
+  )
+    ? swipeState.activeSectionIndex
+    : findClosestSwipeSectionIndexToFrame(currentFrame, swipeConfig);
+  const activeSection = (
+    activeSectionIndex >= 0
+    && activeSectionIndex < sections.length
+  )
+    ? sections[activeSectionIndex]
+    : null;
+  if (!activeSection) {
+    return false;
+  }
+  const rsvpConfig = swipeConfig && swipeConfig.rsvp ? swipeConfig.rsvp : null;
+  const section3HintConfig = rsvpConfig && rsvpConfig.scrollHintOnSection3
+    ? rsvpConfig.scrollHintOnSection3
+    : null;
+  if (
+    rsvpConfig
+    && rsvpConfig.enabled === true
+    && section3HintConfig
+    && section3HintConfig.requireConfirmBeforeJump === true
+    && activeSection.id === rsvpConfig.sectionId
+  ) {
+    const rsvpRuntime = getSwipeSectionsRsvpRuntimeState();
+    if (!(rsvpRuntime && rsvpRuntime.confirmPressed === true)) {
+      return false;
+    }
+  }
+  return scrollHintConfig.visibleSectionIds.indexOf(activeSection.id) >= 0;
+}
+
+function isSwipeSectionsScrollHintAnimationActive(nowMs = performance.now()) {
+  const scrollHintState = getSwipeSectionsScrollHintRuntimeState();
+  if (!scrollHintState) {
+    return false;
+  }
+  const scrollHintConfig = resolveSwipeSectionsConfig().scrollHint;
+  if (!scrollHintConfig || scrollHintConfig.enabled !== true) {
+    return false;
+  }
+  if (!isSwipeSectionsScrollHintJumpEligible(scrollHintConfig)) {
+    return false;
+  }
+
+  const jumpAnimation = scrollHintState.jumpAnimation;
+  if (jumpAnimation) {
+    const durationMs = Number.isFinite(Number(jumpAnimation.durationMs))
+      ? Math.max(1, Number(jumpAnimation.durationMs))
+      : 250;
+    const elapsedMs = Math.max(0, (Number.isFinite(nowMs) ? nowMs : performance.now()) - Number(jumpAnimation.startMs));
+    if (elapsedMs < durationMs - 1e-3) {
+      return true;
+    }
+  }
+
+  const overlayConfig = resolveCenterOverlayImageConfig();
+  if (
+    overlayConfig.fadeInEnabled !== true
+    || !Number.isFinite(Number(overlayConfig.fadeInDurationSec))
+    || Number(overlayConfig.fadeInDurationSec) <= 1e-6
+    || !Number.isFinite(Number(scrollHintState.visibleSinceMs))
+    || Number(scrollHintState.visibleSinceMs) <= 0
+  ) {
+    return false;
+  }
+  const fadeDurationMs = Number(overlayConfig.fadeInDurationSec) * 1000;
+  const elapsedMs = Math.max(0, (Number.isFinite(nowMs) ? nowMs : performance.now()) - Number(scrollHintState.visibleSinceMs));
+  return elapsedMs < fadeDurationMs - 1e-3;
+}
+
 function triggerSwipeSectionsScrollHintJump(scrollHintConfig) {
   if (!scrollHintConfig || scrollHintConfig.enabled !== true) {
     return;
   }
-  const scrollHintState = STATE && STATE.swipeSections ? STATE.swipeSections.scrollHint : null;
+  const scrollHintState = getSwipeSectionsScrollHintRuntimeState();
   if (!scrollHintState) {
     return;
   }
@@ -16837,51 +17941,49 @@ function scheduleSwipeSectionsScrollHintJump(scrollHintConfig) {
     return;
   }
   cancelSwipeSectionsScrollHintPendingJump();
-  const scrollHintState = STATE && STATE.swipeSections ? STATE.swipeSections.scrollHint : null;
+  const scrollHintState = getSwipeSectionsScrollHintRuntimeState();
   if (!scrollHintState || scrollHintConfig.jumpDelayMs <= 0) {
     return;
   }
   scrollHintState.pendingJumpTimerId = window.setTimeout(() => {
     scrollHintState.pendingJumpTimerId = null;
+    if (!isSwipeSectionsScrollHintJumpEligible(scrollHintConfig)) {
+      return;
+    }
     triggerSwipeSectionsScrollHintJump(scrollHintConfig);
+    scheduleSwipeSectionsScrollHintJump(scrollHintConfig);
   }, scrollHintConfig.jumpDelayMs);
 }
 
 function handleSwipeSectionsScrollHintOnActiveSectionChange(section, sectionIndex, swipeConfig) {
+  const scrollHintState = getSwipeSectionsScrollHintRuntimeState();
+  if (!scrollHintState) {
+    return;
+  }
   if (!section || !swipeConfig || !swipeConfig.scrollHint || swipeConfig.scrollHint.enabled !== true) {
-    cancelSwipeSectionsScrollHintPendingJump();
+    hideSwipeSectionsScrollHintLayer({ resetCurrentSectionId: true, cancelPendingJump: true });
     return;
   }
   const scrollHintConfig = swipeConfig.scrollHint;
   const sectionId = typeof section.id === 'string' ? section.id : '';
   const isVisible = scrollHintConfig.visibleSectionIds.indexOf(sectionId) >= 0;
-  const scrollHintState = STATE && STATE.swipeSections ? STATE.swipeSections.scrollHint : null;
-  if (!scrollHintState) {
-    return;
-  }
   if (!isVisible) {
-    cancelSwipeSectionsScrollHintPendingJump();
-    scrollHintState.currentSectionId = '';
+    hideSwipeSectionsScrollHintLayer({ resetCurrentSectionId: true, cancelPendingJump: true });
     return;
   }
-
   if (scrollHintState.currentSectionId !== sectionId) {
     scrollHintState.currentSectionId = sectionId;
-    if (sectionId === 'section-1' && scrollHintState.section1InitialJumpTriggered !== true) {
-      triggerSwipeSectionsScrollHintJump(scrollHintConfig);
-      scrollHintState.section1InitialJumpTriggered = true;
-    }
+    scrollHintState.visibleSinceMs = 0;
+    scrollHintState.jumpAnimation = null;
     scheduleSwipeSectionsScrollHintJump(scrollHintConfig);
   }
 }
 
 function syncSwipeSectionsScrollHintLayer(nowMs = performance.now()) {
   const scrollHintConfig = resolveSwipeSectionsConfig().scrollHint;
-  const scrollHintState = STATE && STATE.swipeSections && STATE.swipeSections.scrollHint ? STATE.swipeSections.scrollHint : null;
+  const scrollHintState = getSwipeSectionsScrollHintRuntimeState();
   if (!scrollHintConfig || scrollHintConfig.enabled !== true) {
-    if (scrollHintState) scrollHintState.visibleSinceMs = 0;
-    swipeSectionsScrollHintLayer.style.display = 'none';
-    swipeSectionsScrollHintDebugRect.style.display = 'none';
+    hideSwipeSectionsScrollHintLayer({ resetCurrentSectionId: true, cancelPendingJump: true });
     return;
   }
   const heroPlaybackGateConfig = resolveHeroPlaybackGateConfig();
@@ -16890,12 +17992,14 @@ function syncSwipeSectionsScrollHintLayer(nowMs = performance.now()) {
     ? heroPlaybackGateConfig.postButtonPauseFrame
     : 273;
   if (currentFrame < postButtonPauseFrame) {
-    if (scrollHintState) scrollHintState.visibleSinceMs = 0;
-    swipeSectionsScrollHintLayer.style.display = 'none';
-    swipeSectionsScrollHintDebugRect.style.display = 'none';
+    hideSwipeSectionsScrollHintLayer({ cancelPendingJump: true });
     return;
   }
   const swipeState = STATE && STATE.swipeSections ? STATE.swipeSections : null;
+  if (swipeState && swipeState.isTransitioning === true) {
+    hideSwipeSectionsScrollHintLayer({ cancelPendingJump: true });
+    return;
+  }
   const swipeConfig = resolveSwipeSectionsConfig();
   const activeSectionIndex = (
     swipeState
@@ -16912,9 +18016,7 @@ function syncSwipeSectionsScrollHintLayer(nowMs = performance.now()) {
     ? swipeConfig.sections[activeSectionIndex]
     : null;
   if (!activeSection || scrollHintConfig.visibleSectionIds.indexOf(activeSection.id) < 0) {
-    if (scrollHintState) scrollHintState.visibleSinceMs = 0;
-    swipeSectionsScrollHintLayer.style.display = 'none';
-    swipeSectionsScrollHintDebugRect.style.display = 'none';
+    hideSwipeSectionsScrollHintLayer({ resetCurrentSectionId: true, cancelPendingJump: true });
     return;
   }
 
@@ -16922,15 +18024,13 @@ function syncSwipeSectionsScrollHintLayer(nowMs = performance.now()) {
 
   const spritePath = normalizeCenterOverlayImagePath(scrollHintConfig.spritePath);
   if (spritePath.length <= 0) {
-    swipeSectionsScrollHintLayer.style.display = 'none';
-    swipeSectionsScrollHintDebugRect.style.display = 'none';
+    hideSwipeSectionsScrollHintLayer({ resetCurrentSectionId: true, cancelPendingJump: true });
     return;
   }
   const preloadEntry = getCenterOverlayImagePreloadEntry(spritePath);
   if (!preloadEntry || preloadEntry.status !== 'loaded' || !preloadEntry.image) {
     ensureCenterOverlayImagePreload(spritePath).catch(() => {});
-    swipeSectionsScrollHintLayer.style.display = 'none';
-    swipeSectionsScrollHintDebugRect.style.display = 'none';
+    hideSwipeSectionsScrollHintLayer({ cancelPendingJump: false });
     return;
   }
   if (swipeSectionsScrollHintLayer.dataset.scrollHintPath !== spritePath || swipeSectionsScrollHintLayer.src !== preloadEntry.image.src) {
@@ -16938,9 +18038,6 @@ function syncSwipeSectionsScrollHintLayer(nowMs = performance.now()) {
     swipeSectionsScrollHintLayer.dataset.scrollHintPath = spritePath;
   }
 
-  const videoRect = getHeroVideoRenderedRect();
-  const videoHeight = videoRect && Number.isFinite(videoRect.height) ? videoRect.height : 0;
-  
   // Use viewport height for zoom-insensitive scaling like the video
   const viewportHeight = STATE.viewportHeight || window.innerHeight;
   
@@ -17951,6 +19048,16 @@ function resizeCanvasToViewport() {
     flowersFrontCanvas.width = Math.floor(STATE.viewportWidth * STATE.dpr);
     flowersFrontCanvas.height = Math.floor(STATE.viewportHeight * STATE.dpr);
   }
+  if (jumpSparkleBackCanvas && jumpSparkleBackCtx) {
+    jumpSparkleBackCanvas.width = Math.floor(STATE.viewportWidth * STATE.dpr);
+    jumpSparkleBackCanvas.height = Math.floor(STATE.viewportHeight * STATE.dpr);
+    jumpSparkleBackCtx.setTransform(STATE.dpr, 0, 0, STATE.dpr, 0, 0);
+  }
+  if (jumpSparkleFrontCanvas && jumpSparkleFrontCtx) {
+    jumpSparkleFrontCanvas.width = Math.floor(STATE.viewportWidth * STATE.dpr);
+    jumpSparkleFrontCanvas.height = Math.floor(STATE.viewportHeight * STATE.dpr);
+    jumpSparkleFrontCtx.setTransform(STATE.dpr, 0, 0, STATE.dpr, 0, 0);
+  }
   
   viewportDebugLog(
     'resizeCanvasToViewport',
@@ -18405,6 +19512,7 @@ function ensureScrollStageLayoutStructure() {
     canvas,
     flowersBackCanvas,
     heroHintCanvas,
+    jumpSparkleBackLayer,
     wash1Layer,
     wash2Layer,
     video,
@@ -18415,6 +19523,7 @@ function ensureScrollStageLayoutStructure() {
     section1LabelLayer,
     frontCanvas,
     flowersFrontCanvas,
+    jumpSparkleFrontLayer,
     mainElement,
   ];
   for (let i = 0; i < orderedStageChildren.length; i += 1) {
@@ -18443,6 +19552,7 @@ function ensureRootBackgroundLayoutStructure() {
     canvas,
     flowersBackCanvas,
     heroHintCanvas,
+    jumpSparkleBackLayer,
     wash1Layer,
     wash2Layer,
     video,
@@ -18453,6 +19563,7 @@ function ensureRootBackgroundLayoutStructure() {
     section1LabelLayer,
     frontCanvas,
     flowersFrontCanvas,
+    jumpSparkleFrontLayer,
   ];
   let anchor = body.firstChild;
   for (let i = 0; i < orderedLayers.length; i += 1) {
@@ -19211,6 +20322,7 @@ function renderScene(options = {}) {
   syncRsvpLayer(overlayNowMs);
   syncSection2ButtonLayer(overlayNowMs);
   syncSection1LabelLayer(overlayNowMs);
+  syncJumpSparkleLayer(overlayNowMs);
   syncWash1Layer(heroPlaybackFrame);
   syncWash2Layer(heroPlaybackFrame);
   if (enforceHeroPlaybackGatePauseFrames(heroPlaybackFrame, heroPlaybackGateConfig, { rerenderOnPause: false })) {
@@ -20455,18 +21567,38 @@ function tryNavigateSwipeSectionDirection(direction, reason, event = null) {
 }
 
 function getCanvasPointerPositionFromClientPoint(clientX, clientY) {
-  if (!canvas || !Number.isFinite(clientX) || !Number.isFinite(clientY)) {
+  if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) {
     return null;
   }
-  const rect = canvas.getBoundingClientRect();
-  if (!rect || rect.width <= 0 || rect.height <= 0) {
+  if (canvas) {
+    const rect = canvas.getBoundingClientRect();
+    if (rect && rect.width > 0 && rect.height > 0) {
+      const scaleX = STATE.viewportWidth > 0 ? (STATE.viewportWidth / rect.width) : 1;
+      const scaleY = STATE.viewportHeight > 0 ? (STATE.viewportHeight / rect.height) : 1;
+      return {
+        x: (clientX - rect.left) * scaleX,
+        y: (clientY - rect.top) * scaleY,
+      };
+    }
+  }
+  const viewportWidth = Number.isFinite(STATE.viewportWidth) && STATE.viewportWidth > 0
+    ? STATE.viewportWidth
+    : (Number.isFinite(window.innerWidth) && window.innerWidth > 0 ? window.innerWidth : 0);
+  const viewportHeight = Number.isFinite(STATE.viewportHeight) && STATE.viewportHeight > 0
+    ? STATE.viewportHeight
+    : (Number.isFinite(window.innerHeight) && window.innerHeight > 0 ? window.innerHeight : 0);
+  if (viewportWidth <= 0 || viewportHeight <= 0) {
     return null;
   }
-  const scaleX = STATE.viewportWidth > 0 ? (STATE.viewportWidth / rect.width) : 1;
-  const scaleY = STATE.viewportHeight > 0 ? (STATE.viewportHeight / rect.height) : 1;
+  const viewportOffsetLeft = Number.isFinite(STATE.viewportOffsetLeftPx)
+    ? STATE.viewportOffsetLeftPx
+    : 0;
+  const viewportOffsetTop = Number.isFinite(STATE.viewportOffsetTopPx)
+    ? STATE.viewportOffsetTopPx
+    : 0;
   return {
-    x: (clientX - rect.left) * scaleX,
-    y: (clientY - rect.top) * scaleY,
+    x: clientX - viewportOffsetLeft,
+    y: clientY - viewportOffsetTop,
   };
 }
 
@@ -20981,6 +22113,1408 @@ function extractPrimaryClientPoint(event) {
   return { x: firstTouch.clientX, y: firstTouch.clientY };
 }
 
+const JUMP_SPARKLE_FRONT_LAYER_TOPMOST_Z_INDEX = 2147483647;
+const JUMP_SPARKLE_SUPPORTED_BLEND_MODES = new Set([
+  'normal',
+  'multiply',
+  'screen',
+  'overlay',
+  'darken',
+  'lighten',
+  'color-dodge',
+  'color-burn',
+  'hard-light',
+  'soft-light',
+  'difference',
+  'exclusion',
+  'hue',
+  'saturation',
+  'color',
+  'luminosity',
+  'plus-lighter',
+  'plus-darker',
+]);
+
+function canonicalizeJumpSparkleBlendModeToken(rawValue = '') {
+  const normalized = String(rawValue || '')
+    .trim()
+    .toLowerCase()
+    .replace(/_/g, '-')
+    .replace(/\s+/g, '-');
+  const compact = normalized.replace(/-/g, '');
+  if (compact === 'softlight') {
+    return 'soft-light';
+  }
+  if (compact === 'hardlight') {
+    return 'hard-light';
+  }
+  if (compact === 'colordodge') {
+    return 'color-dodge';
+  }
+  if (compact === 'colorburn') {
+    return 'color-burn';
+  }
+  if (compact === 'pluslighter') {
+    return 'plus-lighter';
+  }
+  if (compact === 'plusdarker') {
+    return 'plus-darker';
+  }
+  return normalized;
+}
+
+function resolveJumpSparkleBlendMode(rawValue) {
+  const fallback = 'normal';
+  const candidate = canonicalizeJumpSparkleBlendModeToken(rawValue);
+  if (!candidate || !JUMP_SPARKLE_SUPPORTED_BLEND_MODES.has(candidate)) {
+    return fallback;
+  }
+  if (!isJumpSparkleBlendModeSupportedByCss(candidate)) {
+    return fallback;
+  }
+  return candidate;
+}
+
+function isJumpSparkleBlendModeSupportedByCss(blendMode = 'normal') {
+  const candidate = canonicalizeJumpSparkleBlendModeToken(blendMode);
+  if (!candidate || !JUMP_SPARKLE_SUPPORTED_BLEND_MODES.has(candidate)) {
+    return false;
+  }
+  if (typeof CSS !== 'undefined' && CSS && typeof CSS.supports === 'function') {
+    try {
+      return CSS.supports('mix-blend-mode', candidate);
+    } catch (_error) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function resolveEffectiveSparkleRenderer(
+  configuredRenderer = 'canvas',
+  blendMode = 'normal',
+  blendReliabilityPolicy = 'autoSafe',
+) {
+  const normalizedRenderer = configuredRenderer === 'video' ? 'video' : 'canvas';
+  const normalizedBlendMode = canonicalizeJumpSparkleBlendModeToken(blendMode) || 'normal';
+  const normalizedPolicy = blendReliabilityPolicy === 'manualOnly' ? 'manualOnly' : 'autoSafe';
+  if (normalizedPolicy === 'autoSafe' && normalizedBlendMode !== 'normal') {
+    return 'canvas';
+  }
+  return normalizedRenderer;
+}
+
+function resolveJumpSparkleCanvasCompositeOperation(blendMode = 'normal') {
+  const normalized = canonicalizeJumpSparkleBlendModeToken(blendMode);
+  let candidate = 'source-over';
+  if (normalized === 'normal') {
+    candidate = 'source-over';
+  } else if (normalized === 'plus-darker') {
+    candidate = 'source-over';
+  } else if (normalized === 'plus-lighter') {
+    candidate = 'lighter';
+  } else if (JUMP_SPARKLE_SUPPORTED_BLEND_MODES.has(normalized)) {
+    candidate = normalized;
+  }
+  const probeCtx = jumpSparkleBackCtx || ctx;
+  if (probeCtx) {
+    const prev = probeCtx.globalCompositeOperation;
+    probeCtx.globalCompositeOperation = candidate;
+    const applied = probeCtx.globalCompositeOperation;
+    probeCtx.globalCompositeOperation = prev;
+    if (applied !== candidate) {
+      return 'source-over';
+    }
+  }
+  return candidate;
+}
+
+function resolveJumpSparkleConfig(flowersConfig = CONFIG.flowers || {}) {
+  const safeFlowersConfig = isPlainObjectLiteral(flowersConfig) ? flowersConfig : {};
+  const safeConfig = isPlainObjectLiteral(safeFlowersConfig.jumpSparkle)
+    ? safeFlowersConfig.jumpSparkle
+    : {};
+  const debugRaw = isPlainObjectLiteral(safeConfig.debug) ? safeConfig.debug : {};
+  const videoBlendPlateRaw = isPlainObjectLiteral(debugRaw.videoBlendPlate) ? debugRaw.videoBlendPlate : {};
+  const variantsRaw = Array.isArray(safeConfig.variants) ? safeConfig.variants : ['./sparkle.001'];
+  const variants = [];
+  for (let i = 0; i < variantsRaw.length; i += 1) {
+    const value = typeof variantsRaw[i] === 'string' ? variantsRaw[i].trim() : '';
+    if (value.length > 0) {
+      variants.push(value);
+    }
+  }
+  if (variants.length <= 0) {
+    variants.push('./sparkle.001');
+  }
+  const layerMode = safeConfig.layerMode === 'front' || safeConfig.layerMode === 'back'
+    ? safeConfig.layerMode
+    : 'matchFlowerLayer';
+  const triggerMode = safeConfig.triggerMode === 'overlapPool'
+    ? 'overlapPool'
+    : 'restart';
+  const overlapPoolRaw = isPlainObjectLiteral(safeConfig.overlapPool) ? safeConfig.overlapPool : {};
+  const recyclePolicy = overlapPoolRaw.recyclePolicy === 'oldestActive'
+    ? 'oldestActive'
+    : 'oldestActive';
+  const inputDedupeRaw = isPlainObjectLiteral(safeConfig.inputDedupe) ? safeConfig.inputDedupe : {};
+  const targetSelectionRaw = isPlainObjectLiteral(safeConfig.targetSelection) ? safeConfig.targetSelection : {};
+  const weightedRaw = isPlainObjectLiteral(targetSelectionRaw.weightedTopAware)
+    ? targetSelectionRaw.weightedTopAware
+    : {};
+  const targetMode = targetSelectionRaw.mode === 'weightedTopAware' ? 'weightedTopAware' : 'nearest';
+  const configuredRenderer = safeConfig.renderer === 'video' ? 'video' : 'canvas';
+  const blendReliabilityPolicy = safeConfig.blendReliabilityPolicy === 'manualOnly'
+    ? 'manualOnly'
+    : 'autoSafe';
+  const requestedBlendModeRaw = typeof safeConfig.blendMode === 'string' ? safeConfig.blendMode : 'overlay';
+  const requestedBlendModeNormalized = canonicalizeJumpSparkleBlendModeToken(requestedBlendModeRaw);
+  const requestedBlendModeKnown = (
+    requestedBlendModeNormalized.length > 0
+    && JUMP_SPARKLE_SUPPORTED_BLEND_MODES.has(requestedBlendModeNormalized)
+  );
+  const cssSupportsRequestedBlendMode = requestedBlendModeKnown
+    ? isJumpSparkleBlendModeSupportedByCss(requestedBlendModeNormalized)
+    : false;
+  const blendMode = resolveJumpSparkleBlendMode(requestedBlendModeRaw);
+  const blendModeFallbackToNormal = blendMode === 'normal' && requestedBlendModeNormalized !== 'normal';
+  const effectiveRenderer = resolveEffectiveSparkleRenderer(
+    configuredRenderer,
+    blendMode,
+    blendReliabilityPolicy,
+  );
+  const debugConfig = {
+    enabled: debugRaw.enabled === true,
+    logOnTrigger: debugRaw.logOnTrigger !== false,
+    logOnRendererSwitch: debugRaw.logOnRendererSwitch !== false,
+    logComputedStyles: debugRaw.logComputedStyles !== false,
+    throttleMs: Number.isFinite(Number(debugRaw.throttleMs))
+      ? Math.max(0, Number(debugRaw.throttleMs))
+      : 500,
+    videoBlendPlate: {
+      enabled: videoBlendPlateRaw.enabled === true,
+      backgroundColor: (
+        typeof videoBlendPlateRaw.backgroundColor === 'string'
+        && videoBlendPlateRaw.backgroundColor.trim().length > 0
+      )
+        ? videoBlendPlateRaw.backgroundColor.trim()
+        : '#ffffff',
+      opacity: Number.isFinite(Number(videoBlendPlateRaw.opacity))
+        ? clamp(Number(videoBlendPlateRaw.opacity), 0, 1)
+        : 1,
+    },
+  };
+
+  return {
+    enabled: safeConfig.enabled === true,
+    renderer: configuredRenderer,
+    effectiveRenderer,
+    blendReliabilityPolicy,
+    rendererSwitchForced: effectiveRenderer !== configuredRenderer,
+    variants,
+    playbackRate: Number.isFinite(Number(safeConfig.playbackRate))
+      ? Math.max(0.01, Number(safeConfig.playbackRate))
+      : 1,
+    fps: Number.isFinite(Number(safeConfig.fps))
+      ? Math.max(1, Number(safeConfig.fps))
+      : 30,
+    blendMode,
+    requestedBlendModeRaw,
+    requestedBlendModeNormalized,
+    cssSupportsRequestedBlendMode,
+    blendModeFallbackToNormal,
+    canvasCompositeOperation: resolveJumpSparkleCanvasCompositeOperation(blendMode),
+    widthVideoHeightRatio: Number.isFinite(Number(safeConfig.widthVideoHeightRatio))
+      ? Math.max(0, Number(safeConfig.widthVideoHeightRatio))
+      : 0.18,
+    offsetXVideoHeightRatio: Number.isFinite(Number(safeConfig.offsetXVideoHeightRatio))
+      ? Number(safeConfig.offsetXVideoHeightRatio)
+      : 0,
+    offsetYVideoHeightRatio: Number.isFinite(Number(safeConfig.offsetYVideoHeightRatio))
+      ? Number(safeConfig.offsetYVideoHeightRatio)
+      : 0,
+    layerMode,
+    zIndexBack: Number.isFinite(Number(safeConfig.zIndexBack))
+      ? Math.max(0, Math.floor(Number(safeConfig.zIndexBack)))
+      : 0,
+    zIndexFront: Number.isFinite(Number(safeConfig.zIndexFront))
+      ? Math.max(0, Math.floor(Number(safeConfig.zIndexFront)))
+      : 10000,
+    triggerMode,
+    overlapPool: {
+      maxConcurrent: Number.isFinite(Number(overlapPoolRaw.maxConcurrent))
+        ? Math.max(1, Math.floor(Number(overlapPoolRaw.maxConcurrent)))
+        : 3,
+      recyclePolicy,
+    },
+    inputDedupe: {
+      enabled: inputDedupeRaw.enabled !== false,
+      windowMs: Number.isFinite(Number(inputDedupeRaw.windowMs))
+        ? Math.max(0, Number(inputDedupeRaw.windowMs))
+        : 120,
+      radiusPx: Number.isFinite(Number(inputDedupeRaw.radiusPx))
+        ? Math.max(0, Number(inputDedupeRaw.radiusPx))
+        : 24,
+      applyTo: 'sparkleOnly',
+    },
+    targetSelection: {
+      mode: targetMode,
+      weightedTopAware: {
+        distanceWeight: Number.isFinite(Number(weightedRaw.distanceWeight))
+          ? Math.max(0, Number(weightedRaw.distanceWeight))
+          : 0.72,
+        upperLayerWeight: Number.isFinite(Number(weightedRaw.upperLayerWeight))
+          ? Math.max(0, Number(weightedRaw.upperLayerWeight))
+          : 0.20,
+        drawOrderWeight: Number.isFinite(Number(weightedRaw.drawOrderWeight))
+          ? Math.max(0, Number(weightedRaw.drawOrderWeight))
+          : 0.08,
+        proximityWindowVideoHeightRatio: Number.isFinite(Number(weightedRaw.proximityWindowVideoHeightRatio))
+          ? Math.max(0, Number(weightedRaw.proximityWindowVideoHeightRatio))
+          : 0.045,
+      },
+    },
+    debug: debugConfig,
+  };
+}
+
+function describeJumpSparkleElement(element) {
+  if (!element || !element.tagName) {
+    return '';
+  }
+  const tag = String(element.tagName || '').toLowerCase();
+  const idPart = element.id ? `#${element.id}` : '';
+  const classPart = (
+    typeof element.className === 'string' && element.className.trim().length > 0
+  )
+    ? `.${element.className.trim().split(/\s+/).join('.')}`
+    : '';
+  return `${tag}${idPart}${classPart}`;
+}
+
+function collectJumpSparkleComputedStyleSnapshot(element) {
+  if (!element || typeof window === 'undefined' || typeof window.getComputedStyle !== 'function') {
+    return null;
+  }
+  let computed;
+  try {
+    computed = window.getComputedStyle(element);
+  } catch (_error) {
+    return null;
+  }
+  if (!computed) {
+    return null;
+  }
+  return {
+    mixBlendMode: computed.mixBlendMode || computed.getPropertyValue('mix-blend-mode') || '',
+    zIndex: computed.zIndex || '',
+    position: computed.position || '',
+    display: computed.display || '',
+    visibility: computed.visibility || '',
+    opacity: computed.opacity || '',
+    transform: computed.transform || '',
+    filter: computed.filter || '',
+    backdropFilter: computed.backdropFilter || computed.getPropertyValue('backdrop-filter') || '',
+    isolation: computed.isolation || '',
+  };
+}
+
+function collectJumpSparkleStackingContextSignals(element, maxDepth = 8) {
+  const results = [];
+  if (!element || typeof window === 'undefined' || typeof window.getComputedStyle !== 'function') {
+    return results;
+  }
+  let node = element;
+  let depth = 0;
+  while (node && depth <= maxDepth) {
+    let computed;
+    try {
+      computed = window.getComputedStyle(node);
+    } catch (_error) {
+      break;
+    }
+    if (!computed) {
+      break;
+    }
+    const flags = [];
+    const transform = computed.transform || '';
+    const filter = computed.filter || '';
+    const backdropFilter = computed.backdropFilter || computed.getPropertyValue('backdrop-filter') || '';
+    const opacityValue = Number(computed.opacity);
+    const isolation = computed.isolation || '';
+    const position = computed.position || '';
+    const zIndex = computed.zIndex || '';
+    if (transform !== 'none') {
+      flags.push('transform');
+    }
+    if (filter !== 'none') {
+      flags.push('filter');
+    }
+    if (backdropFilter && backdropFilter !== 'none') {
+      flags.push('backdrop-filter');
+    }
+    if (Number.isFinite(opacityValue) && opacityValue < 0.999) {
+      flags.push('opacity<1');
+    }
+    if (isolation === 'isolate') {
+      flags.push('isolation');
+    }
+    if (position !== 'static' && zIndex !== 'auto') {
+      flags.push('positioned-z-index');
+    }
+    if (flags.length > 0) {
+      results.push({
+        depth,
+        element: describeJumpSparkleElement(node),
+        flags,
+      });
+    }
+    node = node.parentElement;
+    depth += 1;
+  }
+  return results;
+}
+
+function logJumpSparkleDebug(eventName, sparkleConfig, payload = {}, options = {}) {
+  const safeConfig = sparkleConfig || resolveJumpSparkleConfig();
+  const debugConfig = safeConfig && safeConfig.debug ? safeConfig.debug : {};
+  if (debugConfig.enabled !== true) {
+    return;
+  }
+  const runtime = getJumpSparkleRuntimeState();
+  if (!runtime || typeof runtime !== 'object') {
+    return;
+  }
+  if (!runtime.debugLogLastByKey || typeof runtime.debugLogLastByKey !== 'object') {
+    runtime.debugLogLastByKey = {};
+  }
+  const throttleKey = (
+    typeof options.throttleKey === 'string' && options.throttleKey.trim().length > 0
+  )
+    ? options.throttleKey.trim()
+    : eventName;
+  const nowMs = Number.isFinite(Number(options.nowMs)) ? Number(options.nowMs) : performance.now();
+  const throttleMs = Number.isFinite(Number(debugConfig.throttleMs))
+    ? Math.max(0, Number(debugConfig.throttleMs))
+    : 500;
+  const lastLogMs = Number(runtime.debugLogLastByKey[throttleKey]);
+  if (Number.isFinite(lastLogMs) && throttleMs > 0 && nowMs - lastLogMs < throttleMs) {
+    return;
+  }
+  runtime.debugLogLastByKey[throttleKey] = nowMs;
+  const heroRect = getHeroVideoRenderedRect();
+  const heroHeight = (
+    heroRect
+    && Number.isFinite(heroRect.height)
+    && heroRect.height > 0
+  )
+    ? heroRect.height
+    : resolveHeroVideoRenderedHeightPx();
+  const activeLayerKey = payload && payload.layer === 'front' ? 'front' : 'back';
+  const activeLayer = activeLayerKey === 'front' ? jumpSparkleFrontLayer : jumpSparkleBackLayer;
+  const activeCanvas = activeLayerKey === 'front' ? jumpSparkleFrontCanvas : jumpSparkleBackCanvas;
+  const activeBlendPlate = activeLayerKey === 'front' ? jumpSparkleFrontBlendPlate : jumpSparkleBackBlendPlate;
+  const output = {
+    event: eventName,
+    requestedBlendModeRaw: safeConfig.requestedBlendModeRaw,
+    requestedBlendModeNormalized: safeConfig.requestedBlendModeNormalized,
+    resolvedBlendMode: safeConfig.blendMode,
+    configuredRenderer: safeConfig.renderer,
+    effectiveRenderer: safeConfig.effectiveRenderer,
+    blendReliabilityPolicy: safeConfig.blendReliabilityPolicy,
+    rendererSwitchForced: safeConfig.rendererSwitchForced === true,
+    cssSupportsRequestedBlendMode: safeConfig.cssSupportsRequestedBlendMode === true,
+    blendFallbackToNormal: safeConfig.blendModeFallbackToNormal === true,
+    viewportLayoutMode: STATE.viewportLayoutMode,
+    heroHeightPx: heroHeight,
+    sourceFamily: USE_APPLE_VIDEO_SOURCE_FAMILY ? 'apple-mov-preferred' : 'webm-preferred',
+    ...payload,
+  };
+  if (debugConfig.logComputedStyles !== false) {
+    output.computed = {
+      backLayer: collectJumpSparkleComputedStyleSnapshot(jumpSparkleBackLayer),
+      frontLayer: collectJumpSparkleComputedStyleSnapshot(jumpSparkleFrontLayer),
+      activeLayer: collectJumpSparkleComputedStyleSnapshot(activeLayer),
+      activeCanvas: collectJumpSparkleComputedStyleSnapshot(activeCanvas),
+      activeBlendPlate: collectJumpSparkleComputedStyleSnapshot(activeBlendPlate),
+    };
+    if (payload && payload.videoElement) {
+      output.computed.video = collectJumpSparkleComputedStyleSnapshot(payload.videoElement);
+    }
+    output.stackingContextSignals = collectJumpSparkleStackingContextSignals(activeLayer, 8);
+  }
+  try {
+    console.log('[JumpSparkleDebug]', output);
+  } catch (_error) {
+    // ignore logging failures
+  }
+}
+
+function getJumpSparkleRuntimeState() {
+  if (!STATE.jumpSparkle || typeof STATE.jumpSparkle !== 'object') {
+    STATE.jumpSparkle = {
+      instances: [],
+      nextInstanceId: 1,
+      lastTriggerClientX: Number.NaN,
+      lastTriggerClientY: Number.NaN,
+      lastTriggerMs: 0,
+      debugLogLastByKey: {},
+      lastBackLayerVisible: false,
+      lastFrontLayerVisible: false,
+      lastEffectiveRenderer: '',
+    };
+  }
+  if (!Array.isArray(STATE.jumpSparkle.instances)) {
+    STATE.jumpSparkle.instances = [];
+  }
+  if (!Number.isFinite(Number(STATE.jumpSparkle.nextInstanceId)) || Number(STATE.jumpSparkle.nextInstanceId) < 1) {
+    STATE.jumpSparkle.nextInstanceId = 1;
+  }
+  if (!Number.isFinite(Number(STATE.jumpSparkle.lastTriggerMs))) {
+    STATE.jumpSparkle.lastTriggerMs = 0;
+  }
+  if (!STATE.jumpSparkle.debugLogLastByKey || typeof STATE.jumpSparkle.debugLogLastByKey !== 'object') {
+    STATE.jumpSparkle.debugLogLastByKey = {};
+  }
+  if (typeof STATE.jumpSparkle.lastBackLayerVisible !== 'boolean') {
+    STATE.jumpSparkle.lastBackLayerVisible = false;
+  }
+  if (typeof STATE.jumpSparkle.lastFrontLayerVisible !== 'boolean') {
+    STATE.jumpSparkle.lastFrontLayerVisible = false;
+  }
+  if (typeof STATE.jumpSparkle.lastEffectiveRenderer !== 'string') {
+    STATE.jumpSparkle.lastEffectiveRenderer = '';
+  }
+  return STATE.jumpSparkle;
+}
+
+function syncJumpSparkleBlendPlateState(sparkleConfig, backVisible, frontVisible) {
+  const safeConfig = sparkleConfig || resolveJumpSparkleConfig();
+  const debugConfig = safeConfig && safeConfig.debug ? safeConfig.debug : {};
+  const blendPlateConfig = debugConfig && debugConfig.videoBlendPlate ? debugConfig.videoBlendPlate : {};
+  const shouldShowPlate = (
+    safeConfig.enabled === true
+    && safeConfig.effectiveRenderer === 'video'
+    && blendPlateConfig.enabled === true
+  );
+  const plateOpacity = Number.isFinite(Number(blendPlateConfig.opacity))
+    ? clamp(Number(blendPlateConfig.opacity), 0, 1)
+    : 1;
+  const plateBackgroundColor = (
+    typeof blendPlateConfig.backgroundColor === 'string'
+    && blendPlateConfig.backgroundColor.trim().length > 0
+  )
+    ? blendPlateConfig.backgroundColor.trim()
+    : '#ffffff';
+
+  const applyPlateState = (plate, visible) => {
+    if (!plate) {
+      return;
+    }
+    plate.style.backgroundColor = plateBackgroundColor;
+    plate.style.opacity = String(plateOpacity);
+    plate.style.display = visible ? 'block' : 'none';
+    plate.style.visibility = visible ? 'visible' : 'hidden';
+    plate.setAttribute('aria-hidden', visible ? 'false' : 'true');
+  };
+
+  applyPlateState(jumpSparkleBackBlendPlate, shouldShowPlate && backVisible);
+  applyPlateState(jumpSparkleFrontBlendPlate, shouldShowPlate && frontVisible);
+}
+
+function setJumpSparkleLayerVisibility(backVisible, frontVisible, sparkleConfig = resolveJumpSparkleConfig()) {
+  const safeConfig = sparkleConfig || resolveJumpSparkleConfig();
+  const runtime = getJumpSparkleRuntimeState();
+  const backZIndex = Number.isFinite(Number(safeConfig.zIndexBack))
+    ? Math.max(0, Math.floor(Number(safeConfig.zIndexBack)))
+    : 0;
+  const frontConfiguredZIndex = Number.isFinite(Number(safeConfig.zIndexFront))
+    ? Math.max(0, Math.floor(Number(safeConfig.zIndexFront)))
+    : JUMP_SPARKLE_FRONT_LAYER_TOPMOST_Z_INDEX;
+  const frontZIndex = Math.max(JUMP_SPARKLE_FRONT_LAYER_TOPMOST_Z_INDEX, frontConfiguredZIndex);
+  jumpSparkleBackLayer.style.zIndex = String(backZIndex);
+  jumpSparkleFrontLayer.style.zIndex = String(frontZIndex);
+  jumpSparkleBackLayer.style.display = backVisible ? 'block' : 'none';
+  jumpSparkleBackLayer.style.visibility = backVisible ? 'visible' : 'hidden';
+  jumpSparkleBackLayer.setAttribute('aria-hidden', backVisible ? 'false' : 'true');
+  jumpSparkleFrontLayer.style.display = frontVisible ? 'block' : 'none';
+  jumpSparkleFrontLayer.style.visibility = frontVisible ? 'visible' : 'hidden';
+  jumpSparkleFrontLayer.setAttribute('aria-hidden', frontVisible ? 'false' : 'true');
+  syncJumpSparkleBlendPlateState(safeConfig, backVisible, frontVisible);
+  if (jumpSparkleFrontLayer.parentElement && jumpSparkleFrontLayer.parentElement.lastElementChild !== jumpSparkleFrontLayer) {
+    jumpSparkleFrontLayer.parentElement.appendChild(jumpSparkleFrontLayer);
+  }
+  const visibilityChanged = (
+    runtime.lastBackLayerVisible !== backVisible
+    || runtime.lastFrontLayerVisible !== frontVisible
+  );
+  if (visibilityChanged) {
+    logJumpSparkleDebug('layer_visibility_change', safeConfig, {
+      backVisible,
+      frontVisible,
+    }, {
+      throttleKey: `layer_visibility_change:${backVisible ? '1' : '0'}:${frontVisible ? '1' : '0'}`,
+    });
+  }
+  runtime.lastBackLayerVisible = backVisible;
+  runtime.lastFrontLayerVisible = frontVisible;
+  runtime.lastEffectiveRenderer = safeConfig.effectiveRenderer || '';
+}
+
+function deactivateJumpSparkleInstance(instance) {
+  if (!instance || !instance.videoEl) {
+    return;
+  }
+  try {
+    instance.videoEl.pause();
+  } catch (_error) {
+    // Ignore pause errors during cleanup.
+  }
+  instance.active = false;
+  instance.startedAtMs = 0;
+  instance.fallbackAttempted = false;
+  instance.renderSceneX = Number.NaN;
+  instance.renderSceneY = Number.NaN;
+  instance.renderWidthPx = 0;
+  instance.renderHeightPx = 0;
+  instance.debugFirstCanvasFrameLogged = false;
+  instance.debugFirstVideoFrameLogged = false;
+  instance.videoEl.style.display = 'none';
+  instance.videoEl.style.visibility = 'hidden';
+}
+
+function setJumpSparkleInstanceSource(instance, path) {
+  if (!instance || !instance.videoEl || typeof path !== 'string' || path.trim().length <= 0) {
+    return false;
+  }
+  const normalizedPath = normalizeHostedAssetPath(path.trim());
+  if (typeof normalizedPath !== 'string' || normalizedPath.trim().length <= 0) {
+    return false;
+  }
+  const nextPath = normalizedPath.trim();
+  const currentPath = String(instance.videoEl.getAttribute('data-jump-sparkle-source-path') || '').trim();
+  if (currentPath === nextPath) {
+    return true;
+  }
+  instance.videoEl.setAttribute('data-jump-sparkle-source-path', nextPath);
+  instance.videoEl.setAttribute('src', nextPath);
+  instance.videoEl.src = nextPath;
+  if (typeof instance.videoEl.load === 'function') {
+    try {
+      instance.videoEl.load();
+    } catch (_error) {
+      // Ignore load errors here; runtime error listener handles fallback.
+    }
+  }
+  return true;
+}
+
+function moveJumpSparkleInstanceToLayer(instance, layerName) {
+  if (!instance || !instance.videoEl) {
+    return;
+  }
+  const normalizedLayer = layerName === 'front' ? 'front' : 'back';
+  const targetLayer = normalizedLayer === 'front' ? jumpSparkleFrontLayer : jumpSparkleBackLayer;
+  if (instance.videoEl.parentElement !== targetLayer) {
+    targetLayer.appendChild(instance.videoEl);
+  }
+  instance.layer = normalizedLayer;
+}
+
+function createJumpSparkleInstance() {
+  const runtime = getJumpSparkleRuntimeState();
+  const instanceId = runtime.nextInstanceId;
+  runtime.nextInstanceId += 1;
+  const videoEl = document.createElement('video');
+  const instance = {
+    id: instanceId,
+    videoEl,
+    active: false,
+    layer: 'back',
+    startedAtMs: 0,
+    preferredPath: '',
+    fallbackPath: '',
+    fallbackAttempted: false,
+    intrinsicAspectRatio: 1,
+    anchorSceneX: 0,
+    anchorSceneY: 0,
+    anchorXRatio: Number.NaN,
+    anchorYRatio: Number.NaN,
+    isUpperLayer: false,
+    renderSceneX: Number.NaN,
+    renderSceneY: Number.NaN,
+    renderWidthPx: 0,
+    renderHeightPx: 0,
+    debugFirstCanvasFrameLogged: false,
+    debugFirstVideoFrameLogged: false,
+  };
+  videoEl.id = `jumpSparkleVideo-${instanceId}`;
+  videoEl.className = 'jumpSparkleVideo';
+  videoEl.controls = false;
+  videoEl.preload = 'auto';
+  videoEl.muted = true;
+  videoEl.autoplay = false;
+  videoEl.playsInline = true;
+  videoEl.loop = false;
+  videoEl.disablePictureInPicture = true;
+  videoEl.controlsList = 'nodownload noplaybackrate noremoteplayback nofullscreen';
+  videoEl.setAttribute('playsinline', '');
+  videoEl.setAttribute('webkit-playsinline', '');
+  videoEl.setAttribute('disablepictureinpicture', '');
+  videoEl.setAttribute('controlslist', 'nodownload noplaybackrate noremoteplayback nofullscreen');
+  videoEl.style.display = 'none';
+  videoEl.style.visibility = 'hidden';
+  videoEl.addEventListener('ended', () => {
+    deactivateJumpSparkleInstance(instance);
+  });
+  videoEl.addEventListener('loadedmetadata', () => {
+    const width = Number(videoEl.videoWidth);
+    const height = Number(videoEl.videoHeight);
+    if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+      instance.intrinsicAspectRatio = width / height;
+    }
+  });
+  videoEl.addEventListener('error', () => {
+    if (!instance.active) {
+      return;
+    }
+    if (!instance.fallbackAttempted && typeof instance.fallbackPath === 'string' && instance.fallbackPath.length > 0) {
+      instance.fallbackAttempted = true;
+      if (setJumpSparkleInstanceSource(instance, instance.fallbackPath)) {
+        try {
+          videoEl.currentTime = 0;
+        } catch (_error) {
+          // Ignore seek errors before metadata is available.
+        }
+        const playPromise = videoEl.play();
+        if (playPromise && typeof playPromise.catch === 'function') {
+          playPromise.catch(() => {
+            deactivateJumpSparkleInstance(instance);
+          });
+        }
+        return;
+      }
+    }
+    deactivateJumpSparkleInstance(instance);
+  });
+  jumpSparkleBackLayer.appendChild(videoEl);
+  return instance;
+}
+
+function ensureJumpSparkleInstancePool(sparkleConfig) {
+  const runtime = getJumpSparkleRuntimeState();
+  const safeConfig = sparkleConfig || resolveJumpSparkleConfig();
+  const desiredCount = safeConfig.triggerMode === 'overlapPool'
+    ? safeConfig.overlapPool.maxConcurrent
+    : 1;
+  while (runtime.instances.length < desiredCount) {
+    runtime.instances.push(createJumpSparkleInstance());
+  }
+  while (runtime.instances.length > desiredCount) {
+    const instance = runtime.instances.pop();
+    if (!instance) {
+      continue;
+    }
+    deactivateJumpSparkleInstance(instance);
+    if (instance.videoEl && instance.videoEl.parentElement) {
+      instance.videoEl.parentElement.removeChild(instance.videoEl);
+    }
+  }
+  return runtime.instances;
+}
+
+function clearJumpSparkleCanvasLayer(targetCtx) {
+  if (!targetCtx) {
+    return;
+  }
+  const viewportWidth = Number.isFinite(STATE.viewportWidth) && STATE.viewportWidth > 0
+    ? STATE.viewportWidth
+    : (Number.isFinite(window.innerWidth) && window.innerWidth > 0 ? window.innerWidth : 0);
+  const viewportHeight = Number.isFinite(STATE.viewportHeight) && STATE.viewportHeight > 0
+    ? STATE.viewportHeight
+    : (Number.isFinite(window.innerHeight) && window.innerHeight > 0 ? window.innerHeight : 0);
+  targetCtx.save();
+  targetCtx.setTransform(1, 0, 0, 1, 0, 0);
+  targetCtx.clearRect(0, 0, viewportWidth * (STATE.dpr || 1), viewportHeight * (STATE.dpr || 1));
+  targetCtx.restore();
+}
+
+function drawJumpSparkleInstancesToCanvasLayer(targetCtx, layerName, instances, sparkleConfig) {
+  if (!targetCtx || !Array.isArray(instances) || instances.length <= 0) {
+    clearJumpSparkleCanvasLayer(targetCtx);
+    return false;
+  }
+  const viewportWidth = Number.isFinite(STATE.viewportWidth) && STATE.viewportWidth > 0
+    ? STATE.viewportWidth
+    : (Number.isFinite(window.innerWidth) && window.innerWidth > 0 ? window.innerWidth : 0);
+  const viewportHeight = Number.isFinite(STATE.viewportHeight) && STATE.viewportHeight > 0
+    ? STATE.viewportHeight
+    : (Number.isFinite(window.innerHeight) && window.innerHeight > 0 ? window.innerHeight : 0);
+  const dpr = Number.isFinite(STATE.dpr) && STATE.dpr > 0 ? STATE.dpr : 1;
+
+  targetCtx.save();
+  targetCtx.setTransform(1, 0, 0, 1, 0, 0);
+  targetCtx.clearRect(0, 0, viewportWidth * dpr, viewportHeight * dpr);
+  targetCtx.restore();
+
+  targetCtx.save();
+  targetCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  targetCtx.globalCompositeOperation = sparkleConfig.canvasCompositeOperation || 'source-over';
+  targetCtx.imageSmoothingEnabled = true;
+  let drewAny = false;
+  for (let i = 0; i < instances.length; i += 1) {
+    const instance = instances[i];
+    if (!instance || instance.active !== true || instance.layer !== layerName || !instance.videoEl) {
+      continue;
+    }
+    if (instance.videoEl.readyState < 2) {
+      continue;
+    }
+    if (!Number.isFinite(instance.renderSceneX) || !Number.isFinite(instance.renderSceneY)) {
+      continue;
+    }
+    const drawWidth = Number.isFinite(instance.renderWidthPx) ? Math.max(0, instance.renderWidthPx) : 0;
+    const drawHeight = Number.isFinite(instance.renderHeightPx) ? Math.max(0, instance.renderHeightPx) : 0;
+    if (!(drawWidth > 0) || !(drawHeight > 0)) {
+      continue;
+    }
+    const drawLeft = instance.renderSceneX - (drawWidth * 0.5);
+    const drawTop = instance.renderSceneY - (drawHeight * 0.5);
+    try {
+      targetCtx.drawImage(instance.videoEl, drawLeft, drawTop, drawWidth, drawHeight);
+      drewAny = true;
+    } catch (_error) {
+      // Ignore per-frame draw failures during media decode transitions.
+    }
+  }
+  targetCtx.restore();
+  targetCtx.globalCompositeOperation = 'source-over';
+  return drewAny;
+}
+
+function resolveJumpSparkleVariantPaths(variantEntry) {
+  const trimmed = typeof variantEntry === 'string' ? variantEntry.trim() : '';
+  if (trimmed.length <= 0) {
+    return { preferredPath: '', fallbackPath: '' };
+  }
+  const match = trimmed.match(/^(.*)\.(webm|mov)$/i);
+  const basePath = match ? match[1] : trimmed;
+  const preferAppleSourceFamily = shouldUseAppleVideoSourceFamily();
+  const preferredExt = preferAppleSourceFamily ? 'mov' : 'webm';
+  const fallbackExt = preferAppleSourceFamily ? 'webm' : 'mov';
+  const preferredPath = normalizeHostedAssetPath(`${basePath}.${preferredExt}`);
+  const fallbackPath = normalizeHostedAssetPath(`${basePath}.${fallbackExt}`);
+  return {
+    preferredPath: typeof preferredPath === 'string' && preferredPath.trim().length > 0 ? preferredPath.trim() : '',
+    fallbackPath: (
+      typeof fallbackPath === 'string'
+      && fallbackPath.trim().length > 0
+      && fallbackPath.trim() !== preferredPath
+    )
+      ? fallbackPath.trim()
+      : '',
+  };
+}
+
+function chooseJumpSparkleVariant(sparkleConfig) {
+  const safeConfig = sparkleConfig || resolveJumpSparkleConfig();
+  const variants = Array.isArray(safeConfig.variants) ? safeConfig.variants : [];
+  if (variants.length <= 0) {
+    return { preferredPath: '', fallbackPath: '' };
+  }
+  const index = clamp(Math.floor(Math.random() * variants.length), 0, variants.length - 1);
+  return resolveJumpSparkleVariantPaths(variants[index]);
+}
+
+function resolveCurrentBranchTipDistanceForSparkle(branch) {
+  if (!branch || !branch.pathData || !Number.isFinite(branch.pathData.totalLength)) {
+    return 0;
+  }
+  const branchLength = Math.max(0, branch.pathData.totalLength);
+  if (branchLength <= 1e-8) {
+    return 0;
+  }
+  if (!CONFIG.branchGrowth || CONFIG.branchGrowth.enabled !== true) {
+    return branchLength;
+  }
+  const elapsedSec = Number.isFinite(STATE.branchGrowth && STATE.branchGrowth.elapsedSec)
+    ? Math.max(0, STATE.branchGrowth.elapsedSec)
+    : 0;
+  const animationTotalTimeSec = getAnimationTotalTimeSec();
+  const easedElapsedSec = resolveAnimationEasedElapsedSec(elapsedSec, animationTotalTimeSec);
+  const visibleLength = getBranchVisibleLengthAtElapsed(branch, elapsedSec, animationTotalTimeSec, easedElapsedSec);
+  if (!Number.isFinite(visibleLength)) {
+    return branchLength;
+  }
+  return clamp(visibleLength, 0, branchLength);
+}
+
+function isJumpSparkleFlowerOnUpperLayer(candidate, branchById, overlayWrapActive) {
+  if (!overlayWrapActive || !candidate || !Number.isFinite(candidate.branchId)) {
+    return false;
+  }
+  const branch = branchById.get(candidate.branchId);
+  if (!branch || !branch.pathData) {
+    return false;
+  }
+  const promotionEntry = getOverlayPromotionEntry(branch);
+  if (!promotionEntry || promotionEntry.promoted !== true) {
+    return false;
+  }
+  const cutoverDistance = Number.isFinite(promotionEntry.promotionCutoverDistanceOnPath)
+    ? Math.max(0, promotionEntry.promotionCutoverDistanceOnPath)
+    : Number.POSITIVE_INFINITY;
+  const tipDistance = resolveCurrentBranchTipDistanceForSparkle(branch);
+  return tipDistance >= cutoverDistance - 1e-6;
+}
+
+function chooseJumpSparkleTarget(jumpResult, sparkleConfig = resolveJumpSparkleConfig()) {
+  const affectedFlowers = Array.isArray(jumpResult && jumpResult.affectedFlowers)
+    ? jumpResult.affectedFlowers
+    : [];
+  if (affectedFlowers.length <= 0) {
+    return null;
+  }
+  const safeConfig = sparkleConfig || resolveJumpSparkleConfig();
+  const targetMode = safeConfig && safeConfig.targetSelection
+    ? safeConfig.targetSelection.mode
+    : 'nearest';
+  const overlayWrapActive = isOverlayWrapActive(resolveOverlayWrapConfig(), Boolean(CONFIG.branchGrowth && CONFIG.branchGrowth.enabled === true))
+    && Boolean(frontCanvas && frontCtx);
+  const branchById = new Map();
+  if (STATE.branchGarden && Array.isArray(STATE.branchGarden.branches)) {
+    for (let i = 0; i < STATE.branchGarden.branches.length; i += 1) {
+      const branch = STATE.branchGarden.branches[i];
+      if (branch && Number.isFinite(branch.id)) {
+        branchById.set(branch.id, branch);
+      }
+    }
+  }
+  const candidates = [];
+  let nearestDistancePx = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < affectedFlowers.length; i += 1) {
+    const source = affectedFlowers[i];
+    if (!source || !Number.isFinite(source.x) || !Number.isFinite(source.y)) {
+      continue;
+    }
+    const distancePx = Number.isFinite(source.distancePx)
+      ? Math.max(0, source.distancePx)
+      : Number.POSITIVE_INFINITY;
+    if (distancePx < nearestDistancePx) {
+      nearestDistancePx = distancePx;
+    }
+    candidates.push({
+      x: source.x,
+      y: source.y,
+      branchId: Number.isFinite(source.branchId) ? source.branchId : null,
+      type: typeof source.type === 'string' ? source.type : 'lily',
+      distancePx,
+      flowerIndex: Number.isFinite(source.flowerIndex) ? source.flowerIndex : i,
+      isUpperLayer: false,
+    });
+  }
+  if (candidates.length <= 0) {
+    return null;
+  }
+  for (let i = 0; i < candidates.length; i += 1) {
+    candidates[i].isUpperLayer = isJumpSparkleFlowerOnUpperLayer(candidates[i], branchById, overlayWrapActive);
+  }
+  if (targetMode !== 'weightedTopAware') {
+    candidates.sort((a, b) => {
+      if (a.distancePx !== b.distancePx) {
+        return a.distancePx - b.distancePx;
+      }
+      return b.flowerIndex - a.flowerIndex;
+    });
+    return candidates[0];
+  }
+
+  const weightedConfig = safeConfig.targetSelection && safeConfig.targetSelection.weightedTopAware
+    ? safeConfig.targetSelection.weightedTopAware
+    : {};
+  const heroRect = getHeroVideoRenderedRect();
+  const heroHeight = heroRect && Number.isFinite(heroRect.height) && heroRect.height > 0
+    ? heroRect.height
+    : resolveHeroVideoRenderedHeightPx();
+  const proximityWindowPx = Math.max(
+    0,
+    Number(weightedConfig.proximityWindowVideoHeightRatio || 0) * Math.max(0, heroHeight),
+  );
+  let eligible = candidates.filter((candidate) => (
+    candidate.distancePx <= nearestDistancePx + proximityWindowPx + 1e-6
+  ));
+  if (eligible.length <= 0) {
+    eligible = candidates.slice();
+  }
+
+  let minIndex = Number.POSITIVE_INFINITY;
+  let maxIndex = Number.NEGATIVE_INFINITY;
+  for (let i = 0; i < eligible.length; i += 1) {
+    minIndex = Math.min(minIndex, eligible[i].flowerIndex);
+    maxIndex = Math.max(maxIndex, eligible[i].flowerIndex);
+  }
+  const drawOrderRange = Math.max(1, maxIndex - minIndex);
+  const jumpRadiusPx = Number.isFinite(jumpResult && jumpResult.jumpRadiusPx) && jumpResult.jumpRadiusPx > 0
+    ? jumpResult.jumpRadiusPx
+    : Math.max(1, nearestDistancePx + proximityWindowPx);
+  const distanceWeight = Number.isFinite(weightedConfig.distanceWeight) ? Math.max(0, weightedConfig.distanceWeight) : 0.72;
+  const upperLayerWeight = Number.isFinite(weightedConfig.upperLayerWeight) ? Math.max(0, weightedConfig.upperLayerWeight) : 0.20;
+  const drawOrderWeight = Number.isFinite(weightedConfig.drawOrderWeight) ? Math.max(0, weightedConfig.drawOrderWeight) : 0.08;
+  const totalWeight = Math.max(1e-6, distanceWeight + upperLayerWeight + drawOrderWeight);
+
+  let bestCandidate = null;
+  let bestScore = Number.NEGATIVE_INFINITY;
+  for (let i = 0; i < eligible.length; i += 1) {
+    const candidate = eligible[i];
+    const distanceScore = 1 - clamp(candidate.distancePx / jumpRadiusPx, 0, 1);
+    const upperLayerScore = candidate.isUpperLayer ? 1 : 0;
+    const drawOrderScore = clamp((candidate.flowerIndex - minIndex) / drawOrderRange, 0, 1);
+    const score = (
+      (distanceWeight * distanceScore)
+      + (upperLayerWeight * upperLayerScore)
+      + (drawOrderWeight * drawOrderScore)
+    ) / totalWeight;
+    if (!bestCandidate) {
+      bestCandidate = candidate;
+      bestScore = score;
+      continue;
+    }
+    if (score > bestScore + 1e-8) {
+      bestCandidate = candidate;
+      bestScore = score;
+      continue;
+    }
+    if (Math.abs(score - bestScore) <= 1e-8) {
+      if (candidate.distancePx < bestCandidate.distancePx - 1e-8) {
+        bestCandidate = candidate;
+        bestScore = score;
+      } else if (Math.abs(candidate.distancePx - bestCandidate.distancePx) <= 1e-8 && candidate.flowerIndex > bestCandidate.flowerIndex) {
+        bestCandidate = candidate;
+        bestScore = score;
+      }
+    }
+  }
+  return bestCandidate || eligible[0];
+}
+
+function shouldSkipSparkleDueToInputDedupe(event, sparkleConfig, nowMs = performance.now()) {
+  const safeConfig = sparkleConfig || resolveJumpSparkleConfig();
+  if (!safeConfig.inputDedupe || safeConfig.inputDedupe.enabled !== true) {
+    return false;
+  }
+  const point = extractPrimaryClientPoint(event);
+  if (!point) {
+    return false;
+  }
+  const runtime = getJumpSparkleRuntimeState();
+  const dtMs = Number.isFinite(runtime.lastTriggerMs)
+    ? Math.max(0, nowMs - runtime.lastTriggerMs)
+    : Number.POSITIVE_INFINITY;
+  const dx = Number.isFinite(runtime.lastTriggerClientX)
+    ? point.x - runtime.lastTriggerClientX
+    : Number.POSITIVE_INFINITY;
+  const dy = Number.isFinite(runtime.lastTriggerClientY)
+    ? point.y - runtime.lastTriggerClientY
+    : Number.POSITIVE_INFINITY;
+  const distancePx = Number.isFinite(dx) && Number.isFinite(dy) ? Math.hypot(dx, dy) : Number.POSITIVE_INFINITY;
+  const isDuplicate = dtMs <= safeConfig.inputDedupe.windowMs && distancePx <= safeConfig.inputDedupe.radiusPx;
+  if (!isDuplicate) {
+    runtime.lastTriggerMs = nowMs;
+    runtime.lastTriggerClientX = point.x;
+    runtime.lastTriggerClientY = point.y;
+  }
+  return isDuplicate;
+}
+
+function activateJumpSparkleInstance(target, sparkleConfig, nowMs = performance.now()) {
+  if (!target || !sparkleConfig || sparkleConfig.enabled !== true) {
+    return false;
+  }
+  const instances = ensureJumpSparkleInstancePool(sparkleConfig);
+  if (!Array.isArray(instances) || instances.length <= 0) {
+    return false;
+  }
+  let instance = null;
+  if (sparkleConfig.triggerMode === 'overlapPool') {
+    for (let i = 0; i < instances.length; i += 1) {
+      if (instances[i] && instances[i].active !== true) {
+        instance = instances[i];
+        break;
+      }
+    }
+    if (!instance) {
+      instance = instances[0];
+      for (let i = 1; i < instances.length; i += 1) {
+        const candidate = instances[i];
+        if (!candidate) {
+          continue;
+        }
+        if (!instance || (Number(candidate.startedAtMs) < Number(instance.startedAtMs))) {
+          instance = candidate;
+        }
+      }
+    }
+  } else {
+    instance = instances[0];
+  }
+  if (!instance || !instance.videoEl) {
+    return false;
+  }
+  deactivateJumpSparkleInstance(instance);
+
+  const { preferredPath, fallbackPath } = chooseJumpSparkleVariant(sparkleConfig);
+  if (!preferredPath) {
+    return false;
+  }
+  instance.preferredPath = preferredPath;
+  instance.fallbackPath = fallbackPath;
+  instance.fallbackAttempted = false;
+  instance.anchorSceneX = Number.isFinite(target.x) ? target.x : 0;
+  instance.anchorSceneY = Number.isFinite(target.y) ? target.y : 0;
+  instance.isUpperLayer = target.isUpperLayer === true;
+  const heroRect = getHeroVideoRenderedRect();
+  if (heroRect && Number.isFinite(heroRect.width) && heroRect.width > 0 && Number.isFinite(heroRect.height) && heroRect.height > 0) {
+    instance.anchorXRatio = (instance.anchorSceneX - heroRect.left) / heroRect.width;
+    instance.anchorYRatio = (instance.anchorSceneY - heroRect.top) / heroRect.height;
+  } else {
+    instance.anchorXRatio = Number.NaN;
+    instance.anchorYRatio = Number.NaN;
+  }
+
+  const layerName = (
+    sparkleConfig.layerMode === 'front'
+      ? 'front'
+      : (
+        sparkleConfig.layerMode === 'back'
+          ? 'back'
+          : (instance.isUpperLayer ? 'front' : 'back')
+      )
+  );
+  moveJumpSparkleInstanceToLayer(instance, layerName);
+  instance.videoEl.style.mixBlendMode = sparkleConfig.blendMode;
+  instance.videoEl.playbackRate = sparkleConfig.playbackRate;
+  if (!setJumpSparkleInstanceSource(instance, preferredPath)) {
+    return false;
+  }
+  if (sparkleConfig.effectiveRenderer === 'video') {
+    instance.videoEl.style.display = 'block';
+    instance.videoEl.style.visibility = 'visible';
+  } else {
+    instance.videoEl.style.display = 'none';
+    instance.videoEl.style.visibility = 'hidden';
+  }
+  instance.active = true;
+  instance.startedAtMs = Number.isFinite(nowMs) ? nowMs : performance.now();
+  try {
+    instance.videoEl.currentTime = 0;
+  } catch (_error) {
+    // Ignore seek errors and rely on playback start below.
+  }
+  logJumpSparkleDebug('instance_activated', sparkleConfig, {
+    instanceId: instance.id,
+    layer: layerName,
+    anchorSceneX: instance.anchorSceneX,
+    anchorSceneY: instance.anchorSceneY,
+    preferredSourcePath: preferredPath,
+    fallbackSourcePath: fallbackPath,
+    sourceFamilyPreferredExt: USE_APPLE_VIDEO_SOURCE_FAMILY ? 'mov' : 'webm',
+    playbackRate: sparkleConfig.playbackRate,
+    videoElement: instance.videoEl,
+  }, {
+    nowMs,
+    throttleKey: `instance_activated:${instance.id}:${layerName}`,
+  });
+  syncJumpSparkleLayer(nowMs);
+  const playPromise = instance.videoEl.play();
+  if (playPromise && typeof playPromise.catch === 'function') {
+    playPromise.catch(() => {
+      if (!instance.fallbackAttempted && instance.fallbackPath) {
+        instance.fallbackAttempted = true;
+        if (setJumpSparkleInstanceSource(instance, instance.fallbackPath)) {
+          try {
+            instance.videoEl.currentTime = 0;
+          } catch (_error) {
+            // Ignore seek errors and rely on fallback playback start.
+          }
+          const fallbackPlay = instance.videoEl.play();
+          if (fallbackPlay && typeof fallbackPlay.catch === 'function') {
+            fallbackPlay.catch(() => {
+              deactivateJumpSparkleInstance(instance);
+            });
+          }
+          logJumpSparkleDebug('source_fallback_attempt', sparkleConfig, {
+            instanceId: instance.id,
+            layer: instance.layer,
+            preferredSourcePath: instance.preferredPath,
+            fallbackSourcePath: instance.fallbackPath,
+            fallbackAttempted: true,
+            videoElement: instance.videoEl,
+          }, {
+            nowMs: performance.now(),
+            throttleKey: `source_fallback_attempt:${instance.id}`,
+          });
+          return;
+        }
+      }
+      deactivateJumpSparkleInstance(instance);
+    });
+  }
+  if (!STATE.branchGrowth.running) {
+    scheduleFlowerInteractionFrame(true);
+  }
+  return true;
+}
+
+function triggerJumpSparkleFromJumpResult(jumpResult, event, flowersConfig = CONFIG.flowers || {}) {
+  const sparkleConfig = resolveJumpSparkleConfig(flowersConfig);
+  if (sparkleConfig.enabled !== true) {
+    return false;
+  }
+  if (!jumpResult || Number(jumpResult.affectedFlowerCount) <= 0) {
+    return false;
+  }
+  const nowMs = performance.now();
+  const debugConfig = sparkleConfig.debug || {};
+  if (debugConfig.logOnTrigger === true) {
+    const point = extractPrimaryClientPoint(event);
+    logJumpSparkleDebug('trigger_start', sparkleConfig, {
+      clientX: point && Number.isFinite(point.x) ? point.x : null,
+      clientY: point && Number.isFinite(point.y) ? point.y : null,
+      affectedFlowerCount: Number.isFinite(jumpResult.affectedFlowerCount)
+        ? Math.max(0, Number(jumpResult.affectedFlowerCount))
+        : 0,
+      jumpRadiusPx: Number.isFinite(jumpResult.jumpRadiusPx) ? Math.max(0, Number(jumpResult.jumpRadiusPx)) : null,
+    }, {
+      nowMs,
+      throttleKey: 'trigger_start',
+    });
+  }
+  if (debugConfig.logOnRendererSwitch === true) {
+    logJumpSparkleDebug('renderer_decision', sparkleConfig, {
+      configuredRenderer: sparkleConfig.renderer,
+      effectiveRenderer: sparkleConfig.effectiveRenderer,
+      blendReliabilityPolicy: sparkleConfig.blendReliabilityPolicy,
+      rendererSwitchForced: sparkleConfig.rendererSwitchForced === true,
+    }, {
+      nowMs,
+      throttleKey: `renderer_decision:${sparkleConfig.renderer}:${sparkleConfig.effectiveRenderer}:${sparkleConfig.blendReliabilityPolicy}`,
+    });
+  }
+  if (sparkleConfig.blendModeFallbackToNormal === true) {
+    logJumpSparkleDebug('blend_fallback_to_normal', sparkleConfig, {
+      requestedBlendModeRaw: sparkleConfig.requestedBlendModeRaw,
+      requestedBlendModeNormalized: sparkleConfig.requestedBlendModeNormalized,
+      cssSupportsRequestedBlendMode: sparkleConfig.cssSupportsRequestedBlendMode === true,
+    }, {
+      nowMs,
+      throttleKey: `blend_fallback_to_normal:${sparkleConfig.requestedBlendModeNormalized}`,
+    });
+  }
+  if (shouldSkipSparkleDueToInputDedupe(event, sparkleConfig, nowMs)) {
+    return false;
+  }
+  const target = chooseJumpSparkleTarget(jumpResult, sparkleConfig);
+  if (!target) {
+    return false;
+  }
+  return activateJumpSparkleInstance(target, sparkleConfig, nowMs);
+}
+
+function syncJumpSparkleLayer(nowMs = performance.now()) {
+  const sparkleConfig = resolveJumpSparkleConfig();
+  const runtime = getJumpSparkleRuntimeState();
+  const useCanvasRenderer = sparkleConfig.effectiveRenderer === 'canvas';
+  jumpSparkleBackCanvas.style.mixBlendMode = useCanvasRenderer ? sparkleConfig.blendMode : 'normal';
+  jumpSparkleFrontCanvas.style.mixBlendMode = useCanvasRenderer ? sparkleConfig.blendMode : 'normal';
+  if (sparkleConfig.enabled !== true || !Array.isArray(runtime.instances)) {
+    if (Array.isArray(runtime.instances)) {
+      for (let i = 0; i < runtime.instances.length; i += 1) {
+        deactivateJumpSparkleInstance(runtime.instances[i]);
+      }
+    }
+    clearJumpSparkleCanvasLayer(jumpSparkleBackCtx);
+    clearJumpSparkleCanvasLayer(jumpSparkleFrontCtx);
+    setJumpSparkleLayerVisibility(false, false, sparkleConfig);
+    return;
+  }
+  ensureJumpSparkleInstancePool(sparkleConfig);
+  if (runtime.instances.length <= 0) {
+    clearJumpSparkleCanvasLayer(jumpSparkleBackCtx);
+    clearJumpSparkleCanvasLayer(jumpSparkleFrontCtx);
+    setJumpSparkleLayerVisibility(false, false, sparkleConfig);
+    return;
+  }
+  const heroRect = getHeroVideoRenderedRect();
+  const heroHeight = (
+    heroRect
+    && Number.isFinite(heroRect.height)
+    && heroRect.height > 0
+  )
+    ? heroRect.height
+    : resolveHeroVideoRenderedHeightPx();
+  const viewportWidth = Number.isFinite(STATE.viewportWidth) && STATE.viewportWidth > 0
+    ? STATE.viewportWidth
+    : (Number.isFinite(window.innerWidth) && window.innerWidth > 0 ? window.innerWidth : 0);
+  const viewportHeight = Number.isFinite(STATE.viewportHeight) && STATE.viewportHeight > 0
+    ? STATE.viewportHeight
+    : (Number.isFinite(window.innerHeight) && window.innerHeight > 0 ? window.innerHeight : 0);
+  const offsetXPx = (Number(sparkleConfig.offsetXVideoHeightRatio) || 0) * heroHeight;
+  const offsetYPx = (Number(sparkleConfig.offsetYVideoHeightRatio) || 0) * heroHeight;
+  const widthPx = Math.max(0, (Number(sparkleConfig.widthVideoHeightRatio) || 0) * heroHeight);
+  let backVisible = false;
+  let frontVisible = false;
+
+  for (let i = 0; i < runtime.instances.length; i += 1) {
+    const instance = runtime.instances[i];
+    if (!instance || !instance.videoEl) {
+      continue;
+    }
+    if (instance.active !== true) {
+      instance.videoEl.style.display = 'none';
+      instance.videoEl.style.visibility = 'hidden';
+      continue;
+    }
+    const baseX = (
+      heroRect
+      && Number.isFinite(heroRect.left)
+      && Number.isFinite(heroRect.width)
+      && heroRect.width > 0
+      && Number.isFinite(instance.anchorXRatio)
+    )
+      ? (heroRect.left + (instance.anchorXRatio * heroRect.width))
+      : instance.anchorSceneX;
+    const baseY = (
+      heroRect
+      && Number.isFinite(heroRect.top)
+      && Number.isFinite(heroRect.height)
+      && heroRect.height > 0
+      && Number.isFinite(instance.anchorYRatio)
+    )
+      ? (heroRect.top + (instance.anchorYRatio * heroRect.height))
+      : instance.anchorSceneY;
+    const sceneX = baseX + offsetXPx;
+    const sceneY = baseY + offsetYPx;
+    const aspectRatio = Number.isFinite(instance.intrinsicAspectRatio) && instance.intrinsicAspectRatio > 1e-6
+      ? instance.intrinsicAspectRatio
+      : 1;
+    const heightPx = widthPx / aspectRatio;
+    const leftPercent = viewportWidth > 1e-6 ? (sceneX / viewportWidth) * 100 : 50;
+    const topPercent = viewportHeight > 1e-6 ? (sceneY / viewportHeight) * 100 : 50;
+    instance.renderSceneX = sceneX;
+    instance.renderSceneY = sceneY;
+    instance.renderWidthPx = widthPx;
+    instance.renderHeightPx = heightPx;
+
+    if (useCanvasRenderer) {
+      instance.videoEl.style.display = 'none';
+      instance.videoEl.style.visibility = 'hidden';
+    } else {
+      instance.videoEl.style.left = `${leftPercent}%`;
+      instance.videoEl.style.top = `${topPercent}%`;
+      instance.videoEl.style.width = `${widthPx}px`;
+      instance.videoEl.style.height = `${heightPx}px`;
+      instance.videoEl.style.transform = 'translate(-50%, -50%)';
+      instance.videoEl.style.mixBlendMode = sparkleConfig.blendMode;
+      instance.videoEl.style.display = 'block';
+      instance.videoEl.style.visibility = 'visible';
+      instance.videoEl.style.pointerEvents = 'none';
+      if (instance.videoEl.readyState >= 2 && instance.debugFirstVideoFrameLogged !== true) {
+        instance.debugFirstVideoFrameLogged = true;
+        logJumpSparkleDebug('first_video_frame_visible', sparkleConfig, {
+          instanceId: instance.id,
+          layer: instance.layer,
+          renderWidthPx: instance.renderWidthPx,
+          renderHeightPx: instance.renderHeightPx,
+          sourcePath: instance.videoEl.currentSrc || instance.videoEl.src || '',
+          fallbackAttempted: instance.fallbackAttempted === true,
+          videoElement: instance.videoEl,
+        }, {
+          nowMs,
+          throttleKey: `first_video_frame_visible:${instance.id}`,
+        });
+      }
+    }
+
+    if (instance.layer === 'front') {
+      frontVisible = true;
+    } else {
+      backVisible = true;
+    }
+
+    if (instance.videoEl.ended === true) {
+      deactivateJumpSparkleInstance(instance);
+    }
+  }
+
+  if (useCanvasRenderer) {
+    const drewBack = drawJumpSparkleInstancesToCanvasLayer(jumpSparkleBackCtx, 'back', runtime.instances, sparkleConfig);
+    const drewFront = drawJumpSparkleInstancesToCanvasLayer(jumpSparkleFrontCtx, 'front', runtime.instances, sparkleConfig);
+    if (drewBack || drewFront) {
+      for (let i = 0; i < runtime.instances.length; i += 1) {
+        const instance = runtime.instances[i];
+        if (!instance || instance.active !== true || !instance.videoEl) {
+          continue;
+        }
+        if (instance.videoEl.readyState < 2 || instance.debugFirstCanvasFrameLogged === true) {
+          continue;
+        }
+        if (!(instance.layer === 'back' ? drewBack : drewFront)) {
+          continue;
+        }
+        instance.debugFirstCanvasFrameLogged = true;
+        logJumpSparkleDebug('first_canvas_frame_drawn', sparkleConfig, {
+          instanceId: instance.id,
+          layer: instance.layer,
+          renderWidthPx: instance.renderWidthPx,
+          renderHeightPx: instance.renderHeightPx,
+          sourcePath: instance.videoEl.currentSrc || instance.videoEl.src || '',
+          fallbackAttempted: instance.fallbackAttempted === true,
+          videoElement: instance.videoEl,
+        }, {
+          nowMs,
+          throttleKey: `first_canvas_frame_drawn:${instance.id}`,
+        });
+      }
+    }
+  } else {
+    clearJumpSparkleCanvasLayer(jumpSparkleBackCtx);
+    clearJumpSparkleCanvasLayer(jumpSparkleFrontCtx);
+  }
+
+  setJumpSparkleLayerVisibility(backVisible, frontVisible, sparkleConfig);
+  if (!backVisible && !frontVisible) {
+    for (let i = 0; i < runtime.instances.length; i += 1) {
+      const instance = runtime.instances[i];
+      if (instance && instance.videoEl) {
+        instance.videoEl.style.display = 'none';
+        instance.videoEl.style.visibility = 'hidden';
+      }
+    }
+    clearJumpSparkleCanvasLayer(jumpSparkleBackCtx);
+    clearJumpSparkleCanvasLayer(jumpSparkleFrontCtx);
+  }
+  if (!Number.isFinite(nowMs)) {
+    // Keep function signature parity with other sync helpers.
+  }
+}
+
+function isJumpSparkleAnimationActive() {
+  const sparkleConfig = resolveJumpSparkleConfig();
+  if (sparkleConfig.enabled !== true) {
+    return false;
+  }
+  const runtime = getJumpSparkleRuntimeState();
+  if (!runtime || !Array.isArray(runtime.instances)) {
+    return false;
+  }
+  for (let i = 0; i < runtime.instances.length; i += 1) {
+    if (runtime.instances[i] && runtime.instances[i].active === true) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function onMouseMove(event) {
   const pointer = getCanvasPointerPosition(event);
   if (!pointer) {
@@ -21052,11 +23586,25 @@ function onMouseClick(event) {
   if (!pointer) {
     return;
   }
-  const affectedCount = flowerSystem.applyJumpAt(
-    pointer.x,
-    pointer.y,
-    getFlowersRuntimeConfig(),
-  );
+  const flowersRuntimeConfig = getFlowersRuntimeConfig();
+  let jumpResult = null;
+  if (typeof flowerSystem.applyJumpAtDetailed === 'function') {
+    jumpResult = flowerSystem.applyJumpAtDetailed(pointer.x, pointer.y, flowersRuntimeConfig);
+  } else {
+    const affectedCountFallback = flowerSystem.applyJumpAt(pointer.x, pointer.y, flowersRuntimeConfig);
+    jumpResult = {
+      affectedFlowerCount: Number.isFinite(affectedCountFallback) ? affectedCountFallback : 0,
+      jumpRadiusPx: 0,
+      affectedFlowers: [],
+      nearestAffectedFlower: null,
+    };
+  }
+  const affectedCount = Number.isFinite(jumpResult && jumpResult.affectedFlowerCount)
+    ? jumpResult.affectedFlowerCount
+    : 0;
+  if (affectedCount > 0) {
+    triggerJumpSparkleFromJumpResult(jumpResult, event, CONFIG.flowers || {});
+  }
   if (affectedCount > 0 && !STATE.branchGrowth.running) {
     scheduleFlowerInteractionFrame(true);
   }

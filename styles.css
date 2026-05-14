@@ -259,6 +259,43 @@ video {
   visibility: hidden;
 }
 
+#jumpSparkleBackLayer,
+#jumpSparkleFrontLayer {
+  position: fixed;
+  top: var(--app-viewport-offset-top);
+  left: var(--app-viewport-offset-left);
+  width: var(--app-viewport-width);
+  height: var(--app-viewport-height);
+  pointer-events: none;
+  display: none;
+  visibility: hidden;
+}
+
+#jumpSparkleBackCanvas,
+#jumpSparkleFrontCanvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.jumpSparkleVideo {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: auto;
+  min-height: 0;
+  transform: translate(-50%, -50%);
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+  display: none;
+  visibility: hidden;
+}
+
 #rsvpLayer .rsvpDebugRect {
   position: absolute;
   transform: translate(-50%, -50%);
@@ -295,6 +332,7 @@ video {
   box-shadow: none;
   background: transparent;
   pointer-events: auto;
+  z-index: 6;
 }
 
 #rsvpNameInput::placeholder {
@@ -316,6 +354,7 @@ video {
   background: transparent;
   cursor: pointer;
   pointer-events: auto;
+  z-index: 6;
 }
 
 #rsvpYesButton img,
@@ -338,6 +377,83 @@ video {
 
 #rsvpNameInput:focus-visible {
   outline: none;
+}
+
+#rsvpConfirmGlowLayer {
+  --rsvp-glow-pulse-duration: 1800ms;
+  --rsvp-glow-pulse-easing: ease-in-out;
+  --rsvp-glow-pulse-min-scale: 0.92;
+  --rsvp-glow-pulse-max-scale: 1.08;
+  --rsvp-glow-pulse-min-opacity: 0.35;
+  --rsvp-glow-pulse-max-opacity: 0.62;
+  position: absolute;
+  transform: translate(-50%, -50%) scale(1);
+  transform-origin: center center;
+  width: 0;
+  height: 0;
+  margin: 0;
+  padding: 0;
+  pointer-events: none;
+  display: none;
+  visibility: hidden;
+  opacity: 0;
+  z-index: 4;
+}
+
+#rsvpConfirmGlowCore,
+#rsvpConfirmGlowRays {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: 9999px;
+}
+
+#rsvpConfirmGlowCore {
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.72) 0%, rgba(255, 255, 255, 0) 72%);
+}
+
+#rsvpConfirmGlowRays {
+  background: repeating-conic-gradient(
+    from 0deg at 50% 50%,
+    rgba(255, 255, 255, 0.28) 0deg 8.6deg,
+    rgba(255, 255, 255, 0.06) 8.6deg 18deg
+  );
+  opacity: 0.7;
+  filter: blur(6px);
+}
+
+#rsvpConfirmGlowLayer.is-pulsing {
+  animation: rsvpConfirmGlowPulse var(--rsvp-glow-pulse-duration) var(--rsvp-glow-pulse-easing) infinite;
+}
+
+#rsvpConfirmGlowLayer.is-final {
+  animation: none;
+}
+
+.rsvpMissingIndicator {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  user-select: none;
+  display: none;
+  visibility: hidden;
+  line-height: 1;
+  z-index: 8;
+}
+
+@keyframes rsvpConfirmGlowPulse {
+  0% {
+    transform: translate(-50%, -50%) scale(var(--rsvp-glow-pulse-min-scale));
+    opacity: var(--rsvp-glow-pulse-min-opacity);
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(var(--rsvp-glow-pulse-max-scale));
+    opacity: var(--rsvp-glow-pulse-max-opacity);
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(var(--rsvp-glow-pulse-min-scale));
+    opacity: var(--rsvp-glow-pulse-min-opacity);
+  }
 }
 
 #wash1Layer {
@@ -406,6 +522,8 @@ body.ios26-fixed-workaround #foliageVideoUpper,
 body.ios26-fixed-workaround #centerOverlayImage,
 body.ios26-fixed-workaround #centerOverlayImageAlt,
 body.ios26-fixed-workaround #rsvpLayer,
+body.ios26-fixed-workaround #jumpSparkleBackLayer,
+body.ios26-fixed-workaround #jumpSparkleFrontLayer,
 body.ios26-fixed-workaround #scrollHintLayer,
 body.ios26-fixed-workaround #section2ButtonLayer,
 body.ios26-fixed-workaround #section1LabelLayer,
@@ -456,6 +574,8 @@ body[data-viewport-layout-mode="relativeAdjustable"] #foliageVideoUpper,
 body[data-viewport-layout-mode="relativeAdjustable"] #centerOverlayImage,
 body[data-viewport-layout-mode="relativeAdjustable"] #centerOverlayImageAlt,
 body[data-viewport-layout-mode="relativeAdjustable"] #rsvpLayer,
+body[data-viewport-layout-mode="relativeAdjustable"] #jumpSparkleBackLayer,
+body[data-viewport-layout-mode="relativeAdjustable"] #jumpSparkleFrontLayer,
 body[data-viewport-layout-mode="relativeAdjustable"] #scrollHintLayer,
 body[data-viewport-layout-mode="relativeAdjustable"] #section2ButtonLayer,
 body[data-viewport-layout-mode="relativeAdjustable"] #section1LabelLayer,
@@ -472,6 +592,8 @@ body[data-viewport-layout-mode="relative166"] #foliageVideoUpper,
 body[data-viewport-layout-mode="relative166"] #centerOverlayImage,
 body[data-viewport-layout-mode="relative166"] #centerOverlayImageAlt,
 body[data-viewport-layout-mode="relative166"] #rsvpLayer,
+body[data-viewport-layout-mode="relative166"] #jumpSparkleBackLayer,
+body[data-viewport-layout-mode="relative166"] #jumpSparkleFrontLayer,
 body[data-viewport-layout-mode="relative166"] #scrollHintLayer,
 body[data-viewport-layout-mode="relative166"] #section2ButtonLayer,
 body[data-viewport-layout-mode="relative166"] #section1LabelLayer,

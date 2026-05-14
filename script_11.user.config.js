@@ -255,7 +255,7 @@
   foliageVideos: {
     enabled: true,
     startFrame: 270, // Hero video frame at which to start foliage videos
-    playbackSpeed: 1.0,
+    playbackSpeed: 4,
     fallbackToFoliageOnLoadError: true,
     syncEnabled: true, // enable/disable sync loop to keep videos in sync
     syncMethod: 'requestVideoFrameCallback', // 'auto' (try requestVideoFrameCallback first), 'requestVideoFrameCallback', 'raf'
@@ -629,7 +629,7 @@
 
   centerOverlayImage: {
     enabled: true,
-    spritePath: './test_page2.png', // fallback/default page path; section pageIndex controls active page when swipeSections is enabled
+    spritePath: './page_1.6.png', // fallback/default page path; section pageIndex controls active page when swipeSections is enabled
     scale: 0.38, // interpreted by scaleMode
     scaleMode: 'videoSizeRatio', // multiplier | videoSizeRatio
     offsetXPx: 0,
@@ -647,8 +647,8 @@
     section1Label: {
       enabled: true,
       sectionId: 'section-1',
-      offsetXVideoHeightRatio: 0,
-      offsetYVideoHeightRatio: 0.17,
+      offsetXVideoHeightRatio: -0.0164,
+      offsetYVideoHeightRatio: 0.251,
       widthVideoHeightRatio: 0.55,
       fontFamily: 'ZeinaDidotScript',  
       fontSourcePath: './Didot_Bold.otf',
@@ -662,7 +662,7 @@
 
     // Ordered page list used by section.pageIndex (1-based).
     pages: [
-      './test_page.png',
+      './page_1.6.png',
       './page_2.1.png',
       './page_3.2.png',
       './page_4.png',
@@ -705,6 +705,14 @@
             hoverScale: 1.08,
             transitionDurationMs: 180,
             transitionEasing: 'cubic-bezier(0.16, 1, 0.3, 1)',
+            wiggle: {
+              enabled: true,
+              delayAfterShowMs: 240,
+              maxAngleDeg: 2.4,
+              durationMs: 760,
+              speedHz: 5.8,
+              dampingStrength: 3.2,
+            },
           },
           debug: {
             enabled: false,
@@ -762,10 +770,10 @@
       widthVideoHeightRatio: 0.07,
       scale: 2,
       offsetXVideoHeightRatio: 0,
-      offsetYVideoHeightRatio: 0.18,
+      offsetYVideoHeightRatio: 0.7,
       bottomMarginPx: 10,
       jumpDelayMs: 3000,
-      jumpDistancePx: 10,
+      jumpDistancePx: 7,
       jumpDurationMs: 250,
       visibleSectionIds: ['section-1', 'section-2', 'section-3'],
       debug: {
@@ -782,7 +790,7 @@
       },
       nameField: {
         offsetXVideoHeightRatio: 0,
-        offsetYVideoHeightRatio: 0,
+        offsetYVideoHeightRatio: -0.1,
         widthVideoHeightRatio: 0.36,
         heightVideoHeightRatio: 0.088,
         fontFamily: 'ZeinaRsvpScript',
@@ -806,6 +814,72 @@
         strokeColor: 'rgba(255, 120, 120, 0.95)',
         lineWidthPx: 2,
       },
+      validation: {
+        showMissingIndicatorsAfterInvalidAttemptOnly: true,
+        invalidConfirmShake: {
+          enabled: true,
+          delayMs: 0,
+          maxOffsetVideoHeightRatio: 0.012,
+          durationMs: 420,
+          speedHz: 7.5,
+          dampingStrength: 4.0,
+          cooldownMs: 140,
+        },
+        missingIndicators: {
+          text: '*',
+          color: '#cf2d2d',
+          fontFamily: 'inherit',
+          fontWeight: 700,
+          fontSizeVideoHeightRatio: 0.025,
+          name: {
+            offsetXVideoHeightRatio: 0.06,
+            offsetYVideoHeightRatio: -0.18295,
+          },
+          response: {
+            offsetXVideoHeightRatio: 0.1235,
+            offsetYVideoHeightRatio: -0.001,
+          },
+        },
+      },
+      confirmGlow: {
+        enabled: true,
+        offsetXVideoHeightRatio: 0,
+        offsetYVideoHeightRatio: 0,
+        widthVideoHeightRatio: 0.24,
+        heightVideoHeightRatio: 0.24,
+        core: {
+          innerColor: 'rgba(255,255,255,0.72)',
+          outerColor: 'rgba(255,255,255,0)',
+        },
+        rays: {
+          enabled: true,
+          color: 'rgba(255, 49, 49, 0.28)',
+          secondaryColor: 'rgb(49, 73, 255)',
+          repeatDeg: 35,
+          blurPx: 5,
+          opacity: 0.8,
+          radialMaskInnerStop: 0.13,
+          radialMaskOuterStop: 0.5,
+          radialMaskEdgeBlurRatio: 0.9,
+        },
+        pulse: {
+          durationMs: 1800,
+          easing: 'ease-in-out',
+          minScale: 0.5,
+          maxScale: 0.92,
+          minOpacity: 0.35,
+          maxOpacity: 0.62,
+        },
+        final: {
+          scale: 1.14,
+          opacity: 0.78,
+          transitionDurationMs: 320,
+          transitionEasing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+        },
+      },
+      scrollHintOnSection3: {
+        requireConfirmBeforeJump: true,
+      },
       buttons: {
         spritePath: './yes&no.png', // sprite-sheet path (2x2 default mapping: yes row0, no row1; unselected col0, selected col1)
         spriteCellWidth: 44,
@@ -814,14 +888,14 @@
         spriteCols: 2,
         spriteRows: 2,
         yes: {
-          offsetXVideoHeightRatio: 0,
-          offsetYVideoHeightRatio: 0,
+          offsetXVideoHeightRatio: -0.088,
+          offsetYVideoHeightRatio: 0.07,
           widthVideoHeightRatio: 0.11,
           heightVideoHeightRatio: 0.11,
         },
         no: {
-          offsetXVideoHeightRatio: 0,
-          offsetYVideoHeightRatio: 0,
+          offsetXVideoHeightRatio: 0.088,
+          offsetYVideoHeightRatio: 0.07,
           widthVideoHeightRatio: 0.11,
           heightVideoHeightRatio: 0.11,
         },
@@ -1023,13 +1097,49 @@
     blueJumpRotateAroundPetalOrigin: true,
     swayJumpRotateAroundPetalOrigin: true,
     jumpEnabled: true,
-    jumpInteractionRadiusFactor: 1.4,
-    jumpStrengthDeg: 15,
+    jumpInteractionRadiusFactor: 0.8,
+    jumpStrengthDeg: 20,
     jumpAttackSpeedDegPerSec: 60,
-    jumpReturnSpeedDegPerSec: 55,
+    jumpReturnSpeedDegPerSec: 55/2,
     jumpDistanceExponent: 1,
-    jumpJitterDeg: 30,
+    jumpJitterDeg: 40,
     jumpEpsilonDeg: 0.5,
+    jumpSparkle: {
+      enabled: true,
+      renderer: 'canvas', // canvas | video
+      variants: [
+        './sparkle_003.webm',
+      ],
+      playbackRate: 0.5,
+      fps: 30,
+      blendMode: 'screen',
+      widthVideoHeightRatio: 0.27,
+      offsetXVideoHeightRatio: 0,
+      offsetYVideoHeightRatio: 0.05,
+      layerMode: 'front', // matchFlowerLayer | front | back
+      zIndexBack: 3,
+      zIndexFront: 50002,
+      triggerMode: 'restart', // restart | overlapPool
+      overlapPool: {
+        maxConcurrent: 3,
+        recyclePolicy: 'oldestActive',
+      },
+      inputDedupe: {
+        enabled: true,
+        windowMs: 120,
+        radiusPx: 24,
+        applyTo: 'sparkleOnly',
+      },
+      targetSelection: {
+        mode: 'nearest', // nearest | weightedTopAware
+        weightedTopAware: {
+          distanceWeight: 0.72,
+          upperLayerWeight: 0.2,
+          drawOrderWeight: 0.08,
+          proximityWindowVideoHeightRatio: 0.045,
+        },
+      },
+    },
     backfacing: false,
     petalToggleAnimationDurationSec: 0.4,
     petalToggleAnimationEasePower: 1,

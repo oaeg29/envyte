@@ -4033,20 +4033,37 @@
         : 2;
     }
 
-    function applyJumpAt(x, y, flowersConfig) {
+    function applyJumpAtInternal(x, y, flowersConfig, options = null) {
       if (!Number.isFinite(x) || !Number.isFinite(y) || state.flowers.length === 0) {
-        return 0;
+        return {
+          affectedFlowerCount: 0,
+          jumpRadiusPx: 0,
+          affectedFlowers: [],
+          nearestAffectedFlower: null,
+        };
       }
 
       const commonConfig = resolveCommonFlowerConfig(flowersConfig || {});
       if (!commonConfig.jumpEnabled) {
-        return 0;
+        return {
+          affectedFlowerCount: 0,
+          jumpRadiusPx: 0,
+          affectedFlowers: [],
+          nearestAffectedFlower: null,
+        };
       }
 
       const jumpRadius = commonConfig.drawSize * commonConfig.jumpInteractionRadiusFactor;
       if (!(jumpRadius > 0)) {
-        return 0;
+        return {
+          affectedFlowerCount: 0,
+          jumpRadiusPx: 0,
+          affectedFlowers: [],
+          nearestAffectedFlower: null,
+        };
       }
+      const safeOptions = isPlainObject(options) ? options : {};
+      const collectAffectedFlowers = safeOptions.collectAffectedFlowers === true;
       const jumpRadiusSq = jumpRadius * jumpRadius;
       const maxJumpRad = degToRad(commonConfig.jumpStrengthDeg);
       const jumpJitterRad = degToRad(commonConfig.jumpJitterDeg);
@@ -4054,6 +4071,8 @@
       const offsetScratch = { x: 0, y: 0 };
       const centerScratch = { x: 0, y: 0 };
       let affectedFlowers = 0;
+      const affectedFlowerList = collectAffectedFlowers ? [] : null;
+      let nearestAffectedFlower = null;
 
       for (let i = 0; i < state.flowers.length; i += 1) {
         const flower = state.flowers[i];
@@ -4166,10 +4185,38 @@
         if (affectedPetalsForFlower > 0) {
           flower.hasJumpMotion = true;
           affectedFlowers += 1;
+          if (collectAffectedFlowers) {
+            const affectedFlower = {
+              x: flower.x,
+              y: flower.y,
+              branchId: Number.isFinite(flower.branchId) ? flower.branchId : null,
+              type: typeof flower.type === 'string' ? flower.type : 'lily',
+              distancePx: distance,
+              flowerIndex: i,
+            };
+            affectedFlowerList.push(affectedFlower);
+            if (!nearestAffectedFlower || affectedFlower.distancePx < nearestAffectedFlower.distancePx) {
+              nearestAffectedFlower = affectedFlower;
+            }
+          }
         }
       }
 
-      return affectedFlowers;
+      return {
+        affectedFlowerCount: affectedFlowers,
+        jumpRadiusPx: jumpRadius,
+        affectedFlowers: affectedFlowerList || [],
+        nearestAffectedFlower: nearestAffectedFlower || null,
+      };
+    }
+
+    function applyJumpAt(x, y, flowersConfig) {
+      const result = applyJumpAtInternal(x, y, flowersConfig, { collectAffectedFlowers: false });
+      return Number.isFinite(result.affectedFlowerCount) ? result.affectedFlowerCount : 0;
+    }
+
+    function applyJumpAtDetailed(x, y, flowersConfig) {
+      return applyJumpAtInternal(x, y, flowersConfig, { collectAffectedFlowers: true });
     }
 
     function stepFlowersAlwaysSway(commonConfig, dtSec, mouseSwayScale) {
@@ -5979,6 +6026,7 @@
       setFlowerOpenAmountOverridesByBranchId,
       clearFlowerOpenAmountOverridesByBranchId,
       applyJumpAt,
+      applyJumpAtDetailed,
       loadAssets,
       loadSprite,
       render,
