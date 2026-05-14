@@ -9691,6 +9691,7 @@ function enforceHeroPlaybackGatePauseFrames(
   }
 
   if (gateState.stage === 'introPlaying') {
+    maybeStartFoliageVideosFromHeroVideoFrame(currentFrame, gateConfig);
     video.pause();
     lockHeroVideoToFrame(pauseTargetFrame, gateConfig);
     gateState.stage = 'waitingForOpenButton';
@@ -9702,6 +9703,7 @@ function enforceHeroPlaybackGatePauseFrames(
   }
 
   if (gateState.stage === 'postOpenButtonPlaying') {
+    maybeStartFoliageVideosFromHeroVideoFrame(currentFrame, gateConfig);
     video.pause();
     lockHeroVideoToFrame(pauseTargetFrame, gateConfig);
     gateState.stage = 'postOpenButtonPaused';
