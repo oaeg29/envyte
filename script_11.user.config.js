@@ -1214,6 +1214,19 @@
     opacity: 0.01, // if Safari ignores this, set to 1 while keeping shim height tiny
   },
 
+  topBarColorSync: {
+    enabled: true,
+    // Maps swipe section IDs -> top bar/body tint color.
+    bySectionId: {
+      'section-1': 'rgb(255, 255, 255)',
+      'section-2': 'rgb(185, 210, 236)',
+      'section-3': 'rgb(193, 160, 133)',
+      'section-4': 'rgb(7, 10, 22)',
+    },
+    // Optional override for meta[name="theme-color"] syncing. Null/omitted keeps iOS default behavior.
+    // syncThemeColor: true,
+  },
+
   flowers: {
     enabled: true,
     renderer: 'canvas', // pixi | canvas

@@ -1816,6 +1816,158 @@ function resolvePageBackgroundGradientStopsFromCssVariables() {
   return stops;
 }
 
+function resolveTopBarColorSyncConfig(configCandidate = CONFIG && CONFIG.topBarColorSync) {
+  const safeConfig = isPlainConfigObject(configCandidate) ? configCandidate : {};
+  const bySectionIdRaw = isPlainConfigObject(safeConfig.bySectionId) ? safeConfig.bySectionId : {};
+  const bySectionId = {};
+  const keys = Object.keys(bySectionIdRaw);
+  for (let i = 0; i < keys.length; i += 1) {
+    const key = keys[i];
+    const sectionId = typeof key === 'string' ? key.trim() : '';
+    if (sectionId.length <= 0) {
+      continue;
+    }
+    const colorCandidate = bySectionIdRaw[key];
+    if (typeof colorCandidate !== 'string') {
+      continue;
+    }
+    const colorToken = colorCandidate.trim();
+    if (colorToken.length <= 0) {
+      continue;
+    }
+    bySectionId[sectionId] = colorToken;
+  }
+  const hasSyncThemeColorOverride = (
+    safeConfig.syncThemeColor === true
+    || safeConfig.syncThemeColor === false
+  );
+  return {
+    enabled: safeConfig.enabled === true,
+    bySectionId,
+    syncThemeColor: hasSyncThemeColorOverride ? safeConfig.syncThemeColor : null,
+  };
+}
+
+function resolveTopBarColorSyncColorBySectionId(
+  sectionId,
+  topBarColorSyncConfig = resolveTopBarColorSyncConfig(),
+) {
+  if (!topBarColorSyncConfig || !isPlainConfigObject(topBarColorSyncConfig.bySectionId)) {
+    return null;
+  }
+  const normalizedSectionId = typeof sectionId === 'string' ? sectionId.trim() : '';
+  if (normalizedSectionId.length <= 0) {
+    return null;
+  }
+  const mappedColor = topBarColorSyncConfig.bySectionId[normalizedSectionId];
+  if (typeof mappedColor !== 'string' || mappedColor.trim().length <= 0) {
+    return null;
+  }
+  const parsedMappedColor = parseCssColorToRgb(mappedColor);
+  return parsedMappedColor ? rgbColorToCss(parsedMappedColor) : null;
+}
+
+function resolveTopBarColorSyncTintState(
+  swipeConfig = resolveSwipeSectionsConfig(),
+  topBarColorSyncConfig = resolveTopBarColorSyncConfig(),
+) {
+  if (!topBarColorSyncConfig || topBarColorSyncConfig.enabled !== true) {
+    return {
+      tint: null,
+      keepPrevious: false,
+    };
+  }
+  const sections = swipeConfig && Array.isArray(swipeConfig.sections) ? swipeConfig.sections : [];
+  if (!swipeConfig || swipeConfig.enabled !== true || sections.length <= 0) {
+    return {
+      tint: null,
+      keepPrevious: false,
+    };
+  }
+  const swipeState = STATE && STATE.swipeSections ? STATE.swipeSections : null;
+  if (!swipeState || typeof swipeState !== 'object') {
+    return {
+      tint: null,
+      keepPrevious: false,
+    };
+  }
+  const hasValidTransition = (
+    swipeState.isTransitioning === true
+    && Number.isFinite(swipeState.transitionFromSectionIndex)
+    && Number.isFinite(swipeState.transitionToSectionIndex)
+    && swipeState.transitionFromSectionIndex >= 0
+    && swipeState.transitionFromSectionIndex < sections.length
+    && swipeState.transitionToSectionIndex >= 0
+    && swipeState.transitionToSectionIndex < sections.length
+  );
+  if (hasValidTransition) {
+    const outgoingSection = sections[Math.floor(swipeState.transitionFromSectionIndex)];
+    const incomingSection = sections[Math.floor(swipeState.transitionToSectionIndex)];
+    const outgoingColor = resolveTopBarColorSyncColorBySectionId(
+      outgoingSection && outgoingSection.id,
+      topBarColorSyncConfig,
+    );
+    const incomingColor = resolveTopBarColorSyncColorBySectionId(
+      incomingSection && incomingSection.id,
+      topBarColorSyncConfig,
+    );
+    if (typeof outgoingColor !== 'string' || typeof incomingColor !== 'string') {
+      return {
+        tint: null,
+        keepPrevious: true,
+      };
+    }
+    const outgoingRgb = parseCssColorToRgb(outgoingColor);
+    const incomingRgb = parseCssColorToRgb(incomingColor);
+    if (!outgoingRgb || !incomingRgb) {
+      return {
+        tint: null,
+        keepPrevious: true,
+      };
+    }
+    const progress = clamp(
+      Number.isFinite(Number(swipeState.sectionStylingOpacityMultiplier))
+        ? Number(swipeState.sectionStylingOpacityMultiplier)
+        : 0,
+      0,
+      1,
+    );
+    return {
+      tint: rgbColorToCss(interpolateRgbColor(outgoingRgb, incomingRgb, progress)),
+      keepPrevious: false,
+    };
+  }
+
+  let activeSectionIndex = Number.isFinite(swipeState.activeSectionIndex)
+    ? Math.floor(swipeState.activeSectionIndex)
+    : -1;
+  if (!(activeSectionIndex >= 0 && activeSectionIndex < sections.length)) {
+    const currentFrame = getCurrentHeroVideoFrame(resolveHeroPlaybackGateConfig());
+    activeSectionIndex = findClosestSwipeSectionIndexToFrame(currentFrame, swipeConfig);
+  }
+  if (!(activeSectionIndex >= 0 && activeSectionIndex < sections.length)) {
+    return {
+      tint: null,
+      keepPrevious: false,
+    };
+  }
+  const activeSection = sections[activeSectionIndex];
+  const activeColor = resolveTopBarColorSyncColorBySectionId(
+    activeSection && activeSection.id,
+    topBarColorSyncConfig,
+  );
+  if (typeof activeColor === 'string' && activeColor.length > 0) {
+    return {
+      tint: activeColor,
+      keepPrevious: false,
+    };
+  }
+  return {
+    tint: null,
+    keepPrevious: true,
+  };
+}
+
 function updateSafariTopTintFromGradient() {
   const splashTintOverride = typeof loadingScreenTopTintOverride === 'string'
     ? loadingScreenTopTintOverride.trim()
@@ -1827,6 +1979,36 @@ function updateSafariTopTintFromGradient() {
     }
     return splashTintOverride;
   }
+
+  let topBarColorSyncState = null;
+  try {
+    topBarColorSyncState = resolveTopBarColorSyncTintState(
+      resolveSwipeSectionsConfig(),
+      resolveTopBarColorSyncConfig(),
+    );
+  } catch (_error) {
+    topBarColorSyncState = null;
+  }
+  if (
+    topBarColorSyncState
+    && typeof topBarColorSyncState.tint === 'string'
+    && topBarColorSyncState.tint.length > 0
+  ) {
+    if (topBarColorSyncState.tint !== lastSafariTopTint) {
+      setSafariTopTint(topBarColorSyncState.tint);
+      lastSafariTopTint = topBarColorSyncState.tint;
+    }
+    return topBarColorSyncState.tint;
+  }
+  if (
+    topBarColorSyncState
+    && topBarColorSyncState.keepPrevious === true
+    && typeof lastSafariTopTint === 'string'
+    && lastSafariTopTint.length > 0
+  ) {
+    return lastSafariTopTint;
+  }
+
   const gradientStops = resolvePageBackgroundGradientStopsFromCssVariables();
   const nextTint = getGradientColorAt(gradientStops, 0);
   if (nextTint === lastSafariTopTint) {
@@ -1877,6 +2059,30 @@ function shouldSyncDynamicThemeColor() {
   return isLikelyIOSDevice();
 }
 
+function shouldSyncDynamicThemeColorForTopTint(
+  topBarColorSyncConfig = resolveTopBarColorSyncConfig(),
+) {
+  if (
+    topBarColorSyncConfig
+    && (topBarColorSyncConfig.syncThemeColor === true || topBarColorSyncConfig.syncThemeColor === false)
+  ) {
+    return topBarColorSyncConfig.syncThemeColor;
+  }
+  return shouldSyncDynamicThemeColor();
+}
+
+function syncSafariTopTintColor() {
+  const topTint = updateSafariTopTintFromGradient();
+  if (
+    shouldSyncDynamicThemeColorForTopTint(resolveTopBarColorSyncConfig())
+    && typeof topTint === 'string'
+    && topTint.trim().length > 0
+  ) {
+    setDynamicThemeColor(topTint);
+  }
+  return topTint;
+}
+
 function shouldEnableSafariTopTintShim() {
   const override = readViewportTopTintShimOverrideFromSearchParams();
   if (override === false) {
@@ -1910,7 +2116,8 @@ function syncSafariTopTintShim() {
   const enabled = shouldEnableSafariTopTintShim();
   const experimentEnabled = shouldEnableViewportTopTintExperiment();
   const config = resolveSafariTopTintShimConfig();
-  const shouldSyncThemeColor = shouldSyncDynamicThemeColor();
+  const topBarColorSyncConfig = resolveTopBarColorSyncConfig();
+  const shouldSyncThemeColor = shouldSyncDynamicThemeColorForTopTint(topBarColorSyncConfig);
   let topTint = null;
   if (enabled || shouldSyncThemeColor) {
     topTint = updateSafariTopTintFromGradient();
@@ -21825,6 +22032,7 @@ function renderScene(options = {}) {
   syncSection1LabelLayer(overlayNowMs);
   syncJumpSparkleLayer(overlayNowMs);
   syncSectionStylingLayers(overlayNowMs, heroPlaybackFrame);
+  syncSafariTopTintColor();
   syncWash1Layer(heroPlaybackFrame);
   syncWash2Layer(heroPlaybackFrame);
   if (enforceHeroPlaybackGatePauseFrames(heroPlaybackFrame, heroPlaybackGateConfig, { rerenderOnPause: false })) {
