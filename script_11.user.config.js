@@ -660,14 +660,14 @@
     section1Label: {
       enabled: true,
       sectionId: 'section-1',
-      offsetXVideoHeightRatio: -0.014,
-      offsetYVideoHeightRatio: 0.251,
+      offsetXVideoHeightRatio: -0.01356,
+      offsetYVideoHeightRatio: 0.2495,
       widthVideoHeightRatio: 0.55,
       fontFamily: 'ZeinaDidotScript',  
       fontSourcePath: './Didot_Bold.otf',
-      fontWeight: 400,
-      fontStyle: 'normal',
-      fontSizeVideoHeightRatio: 0.018,
+      fontWeight: 700,
+      fontStyle: 'bold',
+      fontSizeVideoHeightRatio: 0.01785,
       textColor: '#1f1b17',
       textAlign: 'center',
       lineHeight: 1.0,
@@ -1003,12 +1003,12 @@
           fontWeight: 700,
           fontSizeVideoHeightRatio: 0.025,
           name: {
-            offsetXVideoHeightRatio: 0.06,
-            offsetYVideoHeightRatio: -0.18295,
+            offsetXVideoHeightRatio: 0.045,
+            offsetYVideoHeightRatio: -0.1838,
           },
           response: {
-            offsetXVideoHeightRatio: 0.1235,
-            offsetYVideoHeightRatio: -0.001,
+            offsetXVideoHeightRatio: 0.095,
+            offsetYVideoHeightRatio: -0.002,
           },
         },
       },
@@ -1024,25 +1024,26 @@
         },
         rays: {
           enabled: true,
-          color: 'rgba(255, 49, 49, 0.28)',
-          secondaryColor: 'rgb(49, 73, 255)',
-          repeatDeg: 35,
-          blurPx: 5,
-          opacity: 0.8,
-          radialMaskInnerStop: 0.13,
-          radialMaskOuterStop: 0.5,
-          radialMaskEdgeBlurRatio: 0.9,
+          color: 'rgb(255, 255, 255)',
+          secondaryColor: 'rgba(255, 255, 255, 0)',
+          repeatDeg: 45,
+          rotationDurationMs: 14000,
+          blurPx: 4.5,
+          opacity: 0.9,
+          radialMaskInnerStop: 0.33,
+          radialMaskOuterStop: 0.62,
+          radialMaskEdgeBlurRatio: 2,
         },
         pulse: {
-          durationMs: 1800,
+          durationMs: 1500,
           easing: 'ease-in-out',
-          minScale: 0.5,
-          maxScale: 0.92,
+          minScale: 0.3,
+          maxScale: 0.7,
           minOpacity: 0.35,
           maxOpacity: 0.62,
         },
         final: {
-          scale: 1.14,
+          scale: 0.67,
           opacity: 0.78,
           transitionDurationMs: 320,
           transitionEasing: 'cubic-bezier(0.22, 1, 0.36, 1)',
@@ -1292,11 +1293,9 @@
       enabled: true,
       renderer: 'canvas', // canvas | video
       forceCanvasRendererOnIOS: true, // keep jump sparkle on canvas on iPhone/iPad unless explicitly disabled
-      variants: [
-        './sparkle_003.webm',
-      ],
-      playbackRate: 0.75,
-      playbackAdvanceTimeoutMs: 360, // when using video renderer, wait this long for currentTime to advance before showing sparkle
+      sourcePath: './sparkle_003.webm',
+      playbackRate: 1,
+      playbackAdvanceTimeoutMs: 360, // wait this long for confirmed frame advancement before showing sparkle
       startup: {
         readyWaitMs: 90, // cold-start media readiness wait budget
         sameSourceReadyWaitMs: 0, // same-source fast path budget (0 = don't block)
@@ -1304,28 +1303,13 @@
         fastPathSameSourceEnabled: true,
         instantBudgetMs: 120, // threshold used by telemetry for "instant" startup
       },
-      warmMode: {
-        policy: 'alwaysAfterFirstGesture', // off | adaptive | alwaysAfterFirstGesture
-        adaptiveMissThreshold: 2,
-        adaptiveWindowMs: 4000,
-        disableAfterSuccessCount: 4,
-        probeAdvanceTimeoutMs: 140,
-        probeCooldownMs: 1400,
-        probeWarmTtlMs: 5000,
-      },
       fps: 30,
-      blendMode: 'normal',
       widthVideoHeightRatio: 0.27,
       offsetXVideoHeightRatio: 0,
       offsetYVideoHeightRatio: 0.05,
       layerMode: 'front', // matchFlowerLayer | front | back
       zIndexBack: 3,
       zIndexFront: 50002,
-      triggerMode: 'restart', // restart | overlapPool
-      overlapPool: {
-        maxConcurrent: 3,
-        recyclePolicy: 'oldestActive',
-      },
       inputDedupe: {
         enabled: true,
         windowMs: 400,

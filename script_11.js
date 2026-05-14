@@ -191,8 +191,6 @@ const jumpSparkleBackLayer = document.createElement('div');
 const jumpSparkleFrontLayer = document.createElement('div');
 const jumpSparkleBackCanvas = document.createElement('canvas');
 const jumpSparkleFrontCanvas = document.createElement('canvas');
-const jumpSparkleBackBlendPlate = document.createElement('div');
-const jumpSparkleFrontBlendPlate = document.createElement('div');
 const sectionStylingBackgroundLayer = document.createElement('div');
 const sectionStylingBackgroundBaseLayer = document.createElement('div');
 const sectionStylingBackgroundBaseImageLayer = document.createElement('div');
@@ -3552,16 +3550,8 @@ jumpSparkleBackCanvas.id = 'jumpSparkleBackCanvas';
 jumpSparkleBackCanvas.setAttribute('aria-hidden', 'true');
 jumpSparkleFrontCanvas.id = 'jumpSparkleFrontCanvas';
 jumpSparkleFrontCanvas.setAttribute('aria-hidden', 'true');
-jumpSparkleBackBlendPlate.id = 'jumpSparkleBackBlendPlate';
-jumpSparkleBackBlendPlate.className = 'jumpSparkleBlendPlate';
-jumpSparkleBackBlendPlate.setAttribute('aria-hidden', 'true');
-jumpSparkleFrontBlendPlate.id = 'jumpSparkleFrontBlendPlate';
-jumpSparkleFrontBlendPlate.className = 'jumpSparkleBlendPlate';
-jumpSparkleFrontBlendPlate.setAttribute('aria-hidden', 'true');
 jumpSparkleBackLayer.appendChild(jumpSparkleBackCanvas);
 jumpSparkleFrontLayer.appendChild(jumpSparkleFrontCanvas);
-jumpSparkleBackLayer.appendChild(jumpSparkleBackBlendPlate);
-jumpSparkleFrontLayer.appendChild(jumpSparkleFrontBlendPlate);
 sectionStylingBackgroundLayer.id = 'sectionStylingBackgroundLayer';
 sectionStylingBackgroundLayer.setAttribute('aria-hidden', 'true');
 sectionStylingBackgroundBaseLayer.id = 'sectionStylingBackgroundBaseLayer';
@@ -4050,15 +4040,8 @@ const STATE = {
     lastBackLayerVisible: false,
     lastFrontLayerVisible: false,
     lastEffectiveRenderer: '',
-    lastPreloadSignature: '',
-    userGestureUnlocked: false,
-    adaptiveWarmModeActive: false,
-    startupWindowStartMs: 0,
-    startupMissCount: 0,
-    startupSuccessStreak: 0,
     lastStartupOutcome: '',
     lastStartupLatencyMs: Number.NaN,
-    pendingWarmProbeCount: 0,
   },
   swipeSections: {
     activeSectionIndex: -1,
@@ -8079,7 +8062,10 @@ function syncRsvpDebugRect(
   rectEl.style.visibility = 'visible';
 }
 
-function applyRsvpConfirmGlowStyleFromConfig(rsvpConfig = resolveSwipeSectionsConfig().rsvp) {
+function applyRsvpConfirmGlowStyleFromConfig(
+  rsvpConfig = resolveSwipeSectionsConfig().rsvp,
+  visualState = 'hidden',
+) {
   const confirmGlowConfig = rsvpConfig && rsvpConfig.confirmGlow ? rsvpConfig.confirmGlow : {};
   const coreConfig = confirmGlowConfig && confirmGlowConfig.core ? confirmGlowConfig.core : {};
   const raysConfig = confirmGlowConfig && confirmGlowConfig.rays ? confirmGlowConfig.rays : {};
@@ -8087,9 +8073,20 @@ function applyRsvpConfirmGlowStyleFromConfig(rsvpConfig = resolveSwipeSectionsCo
   const innerColor = coreConfig.innerColor || 'rgba(255,255,255,0.72)';
   const outerColor = coreConfig.outerColor || 'rgba(255,255,255,0)';
   rsvpConfirmGlowCore.style.background = `radial-gradient(circle, ${innerColor} 0%, ${outerColor} 72%)`;
+  const state = (
+    visualState === 'pulsing'
+    || visualState === 'final'
+    || visualState === 'hidden'
+  )
+    ? visualState
+    : 'hidden';
   const raysEnabled = raysConfig.enabled !== false;
-  rsvpConfirmGlowRays.style.display = raysEnabled ? 'block' : 'none';
-  if (raysEnabled) {
+  const raysRotationDurationMs = Number.isFinite(Number(raysConfig.rotationDurationMs))
+    ? Math.max(1, Number(raysConfig.rotationDurationMs))
+    : 3600;
+  const shouldShowRays = raysEnabled && state === 'pulsing';
+  rsvpConfirmGlowRays.style.display = shouldShowRays ? 'block' : 'none';
+  if (shouldShowRays) {
     const raysColor = raysConfig.color || 'rgba(255,255,255,0.28)';
     const raysSecondaryColor = raysConfig.secondaryColor || 'rgba(255,255,255,0.06)';
     const repeatDeg = Number.isFinite(Number(raysConfig.repeatDeg))
@@ -8186,6 +8183,7 @@ function applyRsvpConfirmGlowStyleFromConfig(rsvpConfig = resolveSwipeSectionsCo
   rsvpConfirmGlowLayer.style.setProperty('--rsvp-glow-pulse-max-scale', String(pulseMaxScale));
   rsvpConfirmGlowLayer.style.setProperty('--rsvp-glow-pulse-min-opacity', String(pulseMinOpacity));
   rsvpConfirmGlowLayer.style.setProperty('--rsvp-glow-pulse-max-opacity', String(pulseMaxOpacity));
+  rsvpConfirmGlowLayer.style.setProperty('--rsvp-glow-rays-rotation-duration', `${raysRotationDurationMs}ms`);
 }
 
 function setRsvpConfirmGlowVisualState(
@@ -8528,9 +8526,10 @@ function syncRsvpLayer(nowMs = performance.now()) {
   );
   const missingNameConfig = missingIndicatorsConfig.name || {};
   const missingResponseConfig = missingIndicatorsConfig.response || {};
-  const nameIndicatorCenterXPx = (overlayWidth * 0.5) + ((Number(missingNameConfig.offsetXVideoHeightRatio) || 0) * viewportHeight);
+  const missingIndicatorBaseXPx = Number.isFinite(centerX) ? centerX : (overlayHeight * 0.5);
+  const nameIndicatorCenterXPx = missingIndicatorBaseXPx + ((Number(missingNameConfig.offsetXVideoHeightRatio) || 0) * viewportHeight);
   const nameIndicatorCenterYPx = (overlayHeight * 0.5) + ((Number(missingNameConfig.offsetYVideoHeightRatio) || 0) * viewportHeight);
-  const responseIndicatorCenterXPx = (overlayWidth * 0.5) + ((Number(missingResponseConfig.offsetXVideoHeightRatio) || 0) * viewportHeight);
+  const responseIndicatorCenterXPx = missingIndicatorBaseXPx + ((Number(missingResponseConfig.offsetXVideoHeightRatio) || 0) * viewportHeight);
   const responseIndicatorCenterYPx = (overlayHeight * 0.5) + ((Number(missingResponseConfig.offsetYVideoHeightRatio) || 0) * viewportHeight);
   const applyMissingIndicatorStyles = (el, centerXPx, centerYPx, shouldShow) => {
     el.textContent = missingIndicatorText;
@@ -8571,15 +8570,15 @@ function syncRsvpLayer(nowMs = performance.now()) {
     rsvpConfirmGlowLayer.style.top = `${glowCenterYPx}px`;
     rsvpConfirmGlowLayer.style.width = `${glowWidth}px`;
     rsvpConfirmGlowLayer.style.height = `${glowHeight}px`;
-    applyRsvpConfirmGlowStyleFromConfig(rsvpConfig);
-    if (glowWidth > 0 && glowHeight > 0) {
-      const glowState = completionState.isFormComplete
-        ? (runtime.confirmPressed === true ? 'final' : 'pulsing')
-        : 'hidden';
-      setRsvpConfirmGlowVisualState(glowState, rsvpConfig);
-    } else {
-      setRsvpConfirmGlowVisualState('hidden', rsvpConfig);
-    }
+    const glowState = (glowWidth > 0 && glowHeight > 0)
+      ? (
+        completionState.isFormComplete
+          ? (runtime.confirmPressed === true ? 'final' : 'pulsing')
+          : 'hidden'
+      )
+      : 'hidden';
+    applyRsvpConfirmGlowStyleFromConfig(rsvpConfig, glowState);
+    setRsvpConfirmGlowVisualState(glowState, rsvpConfig);
   } else {
     setRsvpConfirmGlowVisualState('hidden', rsvpConfig);
   }
@@ -18749,6 +18748,9 @@ function resolveSwipeSectionsRsvpConfig(
         repeatDeg: Number.isFinite(Number(confirmGlowRaysRaw.repeatDeg))
           ? Math.max(0.5, Number(confirmGlowRaysRaw.repeatDeg))
           : 18,
+        rotationDurationMs: Number.isFinite(Number(confirmGlowRaysRaw.rotationDurationMs))
+          ? Math.max(1, Number(confirmGlowRaysRaw.rotationDurationMs))
+          : 3600,
         blurPx: Number.isFinite(Number(confirmGlowRaysRaw.blurPx))
           ? Math.max(0, Number(confirmGlowRaysRaw.blurPx))
           : 6,
@@ -19748,14 +19750,17 @@ function syncSwipeSectionsScrollHintLayer(nowMs = performance.now()) {
 
   const overlayConfig = resolveCenterOverlayImageConfig();
   const opacityMultiplier = clamp(Number(swipeState ? swipeState.overlayOpacityMultiplier : 1), 0, 1);
+  const resolvedNowMs = Number.isFinite(nowMs) ? nowMs : performance.now();
   if (scrollHintState) {
     if (scrollHintState.visibleSinceMs <= 0) {
-      scrollHintState.visibleSinceMs = Number.isFinite(nowMs) ? nowMs : performance.now();
+      // Seed one frame in the past so first eligible render is visible without waiting for a second frame.
+      const firstVisibleLeadMs = 1000 / 60;
+      scrollHintState.visibleSinceMs = resolvedNowMs - firstVisibleLeadMs;
     }
   }
   let opacity = overlayConfig.maxOpacity;
   if (overlayConfig.fadeInEnabled && overlayConfig.fadeInDurationSec > 1e-6 && scrollHintState) {
-    const fadeElapsedSec = Math.max(0, (nowMs - scrollHintState.visibleSinceMs) / 1000);
+    const fadeElapsedSec = Math.max(0, (resolvedNowMs - scrollHintState.visibleSinceMs) / 1000);
     opacity = overlayConfig.maxOpacity * clamp(fadeElapsedSec / overlayConfig.fadeInDurationSec, 0, 1);
   }
   opacity *= opacityMultiplier;
@@ -22047,6 +22052,18 @@ function renderScene(options = {}) {
   syncWash1Layer(heroPlaybackFrame);
   syncWash2Layer(heroPlaybackFrame);
   if (enforceHeroPlaybackGatePauseFrames(heroPlaybackFrame, heroPlaybackGateConfig, { rerenderOnPause: false })) {
+    // Gate stage/frame can change inside enforceHeroPlaybackGatePauseFrames; resync overlay UI immediately.
+    const pausedNowMs = performance.now();
+    const pausedFrame = getCurrentHeroVideoFrame(heroPlaybackGateConfig);
+    syncSwipeSectionsStateWithConfig({
+      forceToClosestFrame: true,
+      emitEvent: false,
+      reason: 'heroGatePauseResync',
+    });
+    syncCenterOverlayImageLayer(pausedNowMs, pausedFrame);
+    syncSection1LabelLayer(pausedNowMs);
+    syncSwipeSectionsScrollHintLayer(pausedNowMs);
+    syncFlowerInteractionLoop();
     return;
   }
   const growthBlockedByHeroGate = isHeroPlaybackGrowthStartBlocked(heroPlaybackGateConfig);
@@ -23867,94 +23884,10 @@ function extractPrimaryClientPoint(event) {
 }
 
 const JUMP_SPARKLE_FRONT_LAYER_TOPMOST_Z_INDEX = 2147483647;
-const JUMP_SPARKLE_SUPPORTED_BLEND_MODES = new Set([
-  'normal',
-  'multiply',
-  'screen',
-  'overlay',
-  'darken',
-  'lighten',
-  'color-dodge',
-  'color-burn',
-  'hard-light',
-  'soft-light',
-  'difference',
-  'exclusion',
-  'hue',
-  'saturation',
-  'color',
-  'luminosity',
-  'plus-lighter',
-  'plus-darker',
-]);
-
-function canonicalizeJumpSparkleBlendModeToken(rawValue = '') {
-  const normalized = String(rawValue || '')
-    .trim()
-    .toLowerCase()
-    .replace(/_/g, '-')
-    .replace(/\s+/g, '-');
-  const compact = normalized.replace(/-/g, '');
-  if (compact === 'softlight') {
-    return 'soft-light';
-  }
-  if (compact === 'hardlight') {
-    return 'hard-light';
-  }
-  if (compact === 'colordodge') {
-    return 'color-dodge';
-  }
-  if (compact === 'colorburn') {
-    return 'color-burn';
-  }
-  if (compact === 'pluslighter') {
-    return 'plus-lighter';
-  }
-  if (compact === 'plusdarker') {
-    return 'plus-darker';
-  }
-  return normalized;
-}
-
-function resolveJumpSparkleBlendMode(rawValue) {
-  const fallback = 'normal';
-  const candidate = canonicalizeJumpSparkleBlendModeToken(rawValue);
-  if (!candidate || !JUMP_SPARKLE_SUPPORTED_BLEND_MODES.has(candidate)) {
-    return fallback;
-  }
-  if (!isJumpSparkleBlendModeSupportedByCss(candidate)) {
-    return fallback;
-  }
-  return candidate;
-}
-
-function isJumpSparkleBlendModeSupportedByCss(blendMode = 'normal') {
-  const candidate = canonicalizeJumpSparkleBlendModeToken(blendMode);
-  if (!candidate || !JUMP_SPARKLE_SUPPORTED_BLEND_MODES.has(candidate)) {
-    return false;
-  }
-  if (typeof CSS !== 'undefined' && CSS && typeof CSS.supports === 'function') {
-    try {
-      return CSS.supports('mix-blend-mode', candidate);
-    } catch (_error) {
-      return false;
-    }
-  }
-  return true;
-}
-
 function resolveEffectiveSparkleRenderer(
   configuredRenderer = 'canvas',
-  blendMode = 'normal',
-  blendReliabilityPolicy = 'autoSafe',
 ) {
-  const normalizedRenderer = configuredRenderer === 'video' ? 'video' : 'canvas';
-  const normalizedBlendMode = canonicalizeJumpSparkleBlendModeToken(blendMode) || 'normal';
-  const normalizedPolicy = blendReliabilityPolicy === 'manualOnly' ? 'manualOnly' : 'autoSafe';
-  if (normalizedPolicy === 'autoSafe' && normalizedBlendMode !== 'normal') {
-    return 'canvas';
-  }
-  return normalizedRenderer;
+  return configuredRenderer === 'video' ? 'video' : 'canvas';
 }
 
 function canRenderJumpSparkleInstanceFrame(instance) {
@@ -23964,29 +23897,23 @@ function canRenderJumpSparkleInstanceFrame(instance) {
   return instance.mediaState === 'playing';
 }
 
-function resolveJumpSparkleCanvasCompositeOperation(blendMode = 'normal') {
-  const normalized = canonicalizeJumpSparkleBlendModeToken(blendMode);
-  let candidate = 'source-over';
-  if (normalized === 'normal') {
-    candidate = 'source-over';
-  } else if (normalized === 'plus-darker') {
-    candidate = 'source-over';
-  } else if (normalized === 'plus-lighter') {
-    candidate = 'lighter';
-  } else if (JUMP_SPARKLE_SUPPORTED_BLEND_MODES.has(normalized)) {
-    candidate = normalized;
+function resolveJumpSparklePrimarySourcePath(safeConfig = {}) {
+  const fromSourcePath = typeof safeConfig.sourcePath === 'string'
+    ? safeConfig.sourcePath.trim()
+    : '';
+  if (fromSourcePath.length > 0) {
+    return fromSourcePath;
   }
-  const probeCtx = jumpSparkleBackCtx || ctx;
-  if (probeCtx) {
-    const prev = probeCtx.globalCompositeOperation;
-    probeCtx.globalCompositeOperation = candidate;
-    const applied = probeCtx.globalCompositeOperation;
-    probeCtx.globalCompositeOperation = prev;
-    if (applied !== candidate) {
-      return 'source-over';
-    }
+  const fromSourcePathsPreferred = (
+    safeConfig.sourcePaths
+    && typeof safeConfig.sourcePaths.preferred === 'string'
+  )
+    ? safeConfig.sourcePaths.preferred.trim()
+    : '';
+  if (fromSourcePathsPreferred.length > 0) {
+    return fromSourcePathsPreferred;
   }
-  return candidate;
+  return './sparkle_003';
 }
 
 function resolveJumpSparkleConfig(flowersConfig = CONFIG.flowers || {}) {
@@ -23995,71 +23922,53 @@ function resolveJumpSparkleConfig(flowersConfig = CONFIG.flowers || {}) {
     ? safeFlowersConfig.jumpSparkle
     : {};
   const startupRaw = isPlainObjectLiteral(safeConfig.startup) ? safeConfig.startup : {};
-  const warmModeRaw = isPlainObjectLiteral(safeConfig.warmMode) ? safeConfig.warmMode : {};
+  const sourcePathsRaw = isPlainObjectLiteral(safeConfig.sourcePaths) ? safeConfig.sourcePaths : {};
   const debugRaw = isPlainObjectLiteral(safeConfig.debug) ? safeConfig.debug : {};
-  const videoBlendPlateRaw = isPlainObjectLiteral(debugRaw.videoBlendPlate) ? debugRaw.videoBlendPlate : {};
-  const variantsRaw = Array.isArray(safeConfig.variants) ? safeConfig.variants : ['./sparkle.001'];
-  const variants = [];
-  for (let i = 0; i < variantsRaw.length; i += 1) {
-    const value = typeof variantsRaw[i] === 'string' ? variantsRaw[i].trim() : '';
-    if (value.length > 0) {
-      variants.push(value);
-    }
-  }
-  if (variants.length <= 0) {
-    variants.push('./sparkle.001');
-  }
-  const layerMode = safeConfig.layerMode === 'front' || safeConfig.layerMode === 'back'
-    ? safeConfig.layerMode
-    : 'matchFlowerLayer';
-  const triggerMode = safeConfig.triggerMode === 'overlapPool'
-    ? 'overlapPool'
-    : 'restart';
-  const overlapPoolRaw = isPlainObjectLiteral(safeConfig.overlapPool) ? safeConfig.overlapPool : {};
-  const recyclePolicy = overlapPoolRaw.recyclePolicy === 'oldestActive'
-    ? 'oldestActive'
-    : 'oldestActive';
   const inputDedupeRaw = isPlainObjectLiteral(safeConfig.inputDedupe) ? safeConfig.inputDedupe : {};
   const targetSelectionRaw = isPlainObjectLiteral(safeConfig.targetSelection) ? safeConfig.targetSelection : {};
   const weightedRaw = isPlainObjectLiteral(targetSelectionRaw.weightedTopAware)
     ? targetSelectionRaw.weightedTopAware
     : {};
+  const layerMode = safeConfig.layerMode === 'front' || safeConfig.layerMode === 'back'
+    ? safeConfig.layerMode
+    : 'matchFlowerLayer';
   const targetMode = targetSelectionRaw.mode === 'weightedTopAware' ? 'weightedTopAware' : 'nearest';
   const configuredRenderer = safeConfig.renderer === 'video' ? 'video' : 'canvas';
-  const blendReliabilityPolicy = safeConfig.blendReliabilityPolicy === 'manualOnly'
-    ? 'manualOnly'
-    : 'autoSafe';
-  const requestedBlendModeRaw = typeof safeConfig.blendMode === 'string' ? safeConfig.blendMode : 'overlay';
-  const requestedBlendModeNormalized = canonicalizeJumpSparkleBlendModeToken(requestedBlendModeRaw);
-  const requestedBlendModeKnown = (
-    requestedBlendModeNormalized.length > 0
-    && JUMP_SPARKLE_SUPPORTED_BLEND_MODES.has(requestedBlendModeNormalized)
-  );
-  const cssSupportsRequestedBlendMode = requestedBlendModeKnown
-    ? isJumpSparkleBlendModeSupportedByCss(requestedBlendModeNormalized)
-    : false;
-  const blendMode = resolveJumpSparkleBlendMode(requestedBlendModeRaw);
-  const blendModeFallbackToNormal = blendMode === 'normal' && requestedBlendModeNormalized !== 'normal';
   const forceCanvasRendererOnIOS = safeConfig.forceCanvasRendererOnIOS !== false;
   const runningOnIOS = isLikelyIOSDevice();
-  let effectiveRenderer = resolveEffectiveSparkleRenderer(
-    configuredRenderer,
-    blendMode,
-    blendReliabilityPolicy,
-  );
+  let effectiveRenderer = resolveEffectiveSparkleRenderer(configuredRenderer);
   let iosRendererSafetyApplied = false;
   if (runningOnIOS && forceCanvasRendererOnIOS && effectiveRenderer !== 'canvas') {
     effectiveRenderer = 'canvas';
     iosRendererSafetyApplied = true;
   }
-  const warmModePolicy = (
-    warmModeRaw.policy === 'off'
-    || warmModeRaw.policy === 'adaptive'
-    || warmModeRaw.policy === 'alwaysAfterFirstGesture'
-  )
-    ? warmModeRaw.policy
-    : 'adaptive';
   const rendererSwitchForced = effectiveRenderer !== configuredRenderer;
+  const sourcePath = resolveJumpSparklePrimarySourcePath(safeConfig);
+  const normalizedSourcePath = normalizeHostedAssetPath(sourcePath);
+  const explicitPreferredPathRaw = typeof sourcePathsRaw.preferred === 'string'
+    ? sourcePathsRaw.preferred.trim()
+    : '';
+  const explicitFallbackPathRaw = typeof sourcePathsRaw.fallback === 'string'
+    ? sourcePathsRaw.fallback.trim()
+    : '';
+  const normalizedExplicitPreferredPath = explicitPreferredPathRaw.length > 0
+    ? normalizeHostedAssetPath(explicitPreferredPathRaw)
+    : '';
+  const normalizedExplicitFallbackPath = explicitFallbackPathRaw.length > 0
+    ? normalizeHostedAssetPath(explicitFallbackPathRaw)
+    : '';
+  const resolvedSourcePath = (
+    typeof normalizedSourcePath === 'string'
+    && normalizedSourcePath.trim().length > 0
+  ) ? normalizedSourcePath.trim() : '';
+  const resolvedExplicitPreferredPath = (
+    typeof normalizedExplicitPreferredPath === 'string'
+    && normalizedExplicitPreferredPath.trim().length > 0
+  ) ? normalizedExplicitPreferredPath.trim() : '';
+  const resolvedExplicitFallbackPath = (
+    typeof normalizedExplicitFallbackPath === 'string'
+    && normalizedExplicitFallbackPath.trim().length > 0
+  ) ? normalizedExplicitFallbackPath.trim() : '';
   const debugConfig = {
     enabled: debugRaw.enabled === true,
     logOnTrigger: debugRaw.logOnTrigger !== false,
@@ -24068,29 +23977,25 @@ function resolveJumpSparkleConfig(flowersConfig = CONFIG.flowers || {}) {
     throttleMs: Number.isFinite(Number(debugRaw.throttleMs))
       ? Math.max(0, Number(debugRaw.throttleMs))
       : 500,
-    videoBlendPlate: {
-      enabled: videoBlendPlateRaw.enabled === true,
-      backgroundColor: (
-        typeof videoBlendPlateRaw.backgroundColor === 'string'
-        && videoBlendPlateRaw.backgroundColor.trim().length > 0
-      )
-        ? videoBlendPlateRaw.backgroundColor.trim()
-        : '#ffffff',
-      opacity: Number.isFinite(Number(videoBlendPlateRaw.opacity))
-        ? clamp(Number(videoBlendPlateRaw.opacity), 0, 1)
-        : 1,
-    },
   };
 
   return {
     enabled: safeConfig.enabled === true,
     renderer: configuredRenderer,
     effectiveRenderer,
-    blendReliabilityPolicy,
     rendererSwitchForced,
     forceCanvasRendererOnIOS,
     iosRendererSafetyApplied,
-    variants,
+    sourcePath: resolvedSourcePath,
+    sourcePaths: {
+      preferred: resolvedExplicitPreferredPath,
+      fallback: (
+        resolvedExplicitFallbackPath.length > 0
+        && resolvedExplicitFallbackPath !== resolvedExplicitPreferredPath
+      )
+        ? resolvedExplicitFallbackPath
+        : '',
+    },
     playbackRate: Number.isFinite(Number(safeConfig.playbackRate))
       ? Math.max(0.01, Number(safeConfig.playbackRate))
       : 1,
@@ -24113,12 +24018,7 @@ function resolveJumpSparkleConfig(flowersConfig = CONFIG.flowers || {}) {
     fps: Number.isFinite(Number(safeConfig.fps))
       ? Math.max(1, Number(safeConfig.fps))
       : 30,
-    blendMode,
-    requestedBlendModeRaw,
-    requestedBlendModeNormalized,
-    cssSupportsRequestedBlendMode,
-    blendModeFallbackToNormal,
-    canvasCompositeOperation: resolveJumpSparkleCanvasCompositeOperation(blendMode),
+    canvasCompositeOperation: 'source-over',
     widthVideoHeightRatio: Number.isFinite(Number(safeConfig.widthVideoHeightRatio))
       ? Math.max(0, Number(safeConfig.widthVideoHeightRatio))
       : 0.18,
@@ -24135,13 +24035,6 @@ function resolveJumpSparkleConfig(flowersConfig = CONFIG.flowers || {}) {
     zIndexFront: Number.isFinite(Number(safeConfig.zIndexFront))
       ? Math.max(0, Math.floor(Number(safeConfig.zIndexFront)))
       : 10000,
-    triggerMode,
-    overlapPool: {
-      maxConcurrent: Number.isFinite(Number(overlapPoolRaw.maxConcurrent))
-        ? Math.max(1, Math.floor(Number(overlapPoolRaw.maxConcurrent)))
-        : 3,
-      recyclePolicy,
-    },
     inputDedupe: {
       enabled: inputDedupeRaw.enabled !== false,
       windowMs: Number.isFinite(Number(inputDedupeRaw.windowMs))
@@ -24168,27 +24061,6 @@ function resolveJumpSparkleConfig(flowersConfig = CONFIG.flowers || {}) {
           ? Math.max(0, Number(weightedRaw.proximityWindowVideoHeightRatio))
           : 0.045,
       },
-    },
-    warmMode: {
-      policy: warmModePolicy,
-      adaptiveMissThreshold: Number.isFinite(Number(warmModeRaw.adaptiveMissThreshold))
-        ? Math.max(1, Math.floor(Number(warmModeRaw.adaptiveMissThreshold)))
-        : 2,
-      adaptiveWindowMs: Number.isFinite(Number(warmModeRaw.adaptiveWindowMs))
-        ? Math.max(250, Number(warmModeRaw.adaptiveWindowMs))
-        : 4000,
-      disableAfterSuccessCount: Number.isFinite(Number(warmModeRaw.disableAfterSuccessCount))
-        ? Math.max(1, Math.floor(Number(warmModeRaw.disableAfterSuccessCount)))
-        : 4,
-      probeAdvanceTimeoutMs: Number.isFinite(Number(warmModeRaw.probeAdvanceTimeoutMs))
-        ? Math.max(30, Number(warmModeRaw.probeAdvanceTimeoutMs))
-        : 140,
-      probeCooldownMs: Number.isFinite(Number(warmModeRaw.probeCooldownMs))
-        ? Math.max(0, Number(warmModeRaw.probeCooldownMs))
-        : 1400,
-      probeWarmTtlMs: Number.isFinite(Number(warmModeRaw.probeWarmTtlMs))
-        ? Math.max(100, Number(warmModeRaw.probeWarmTtlMs))
-        : 5000,
     },
     debug: debugConfig,
   };
@@ -24329,20 +24201,13 @@ function logJumpSparkleDebug(eventName, sparkleConfig, payload = {}, options = {
   const activeLayerKey = payload && payload.layer === 'front' ? 'front' : 'back';
   const activeLayer = activeLayerKey === 'front' ? jumpSparkleFrontLayer : jumpSparkleBackLayer;
   const activeCanvas = activeLayerKey === 'front' ? jumpSparkleFrontCanvas : jumpSparkleBackCanvas;
-  const activeBlendPlate = activeLayerKey === 'front' ? jumpSparkleFrontBlendPlate : jumpSparkleBackBlendPlate;
   const output = {
     event: eventName,
-    requestedBlendModeRaw: safeConfig.requestedBlendModeRaw,
-    requestedBlendModeNormalized: safeConfig.requestedBlendModeNormalized,
-    resolvedBlendMode: safeConfig.blendMode,
     configuredRenderer: safeConfig.renderer,
     effectiveRenderer: safeConfig.effectiveRenderer,
     forceCanvasRendererOnIOS: safeConfig.forceCanvasRendererOnIOS !== false,
     iosRendererSafetyApplied: safeConfig.iosRendererSafetyApplied === true,
-    blendReliabilityPolicy: safeConfig.blendReliabilityPolicy,
     rendererSwitchForced: safeConfig.rendererSwitchForced === true,
-    cssSupportsRequestedBlendMode: safeConfig.cssSupportsRequestedBlendMode === true,
-    blendFallbackToNormal: safeConfig.blendModeFallbackToNormal === true,
     viewportLayoutMode: STATE.viewportLayoutMode,
     heroHeightPx: heroHeight,
     sourceFamily: USE_APPLE_VIDEO_SOURCE_FAMILY ? 'apple-mov-preferred' : 'webm-preferred',
@@ -24354,7 +24219,6 @@ function logJumpSparkleDebug(eventName, sparkleConfig, payload = {}, options = {
       frontLayer: collectJumpSparkleComputedStyleSnapshot(jumpSparkleFrontLayer),
       activeLayer: collectJumpSparkleComputedStyleSnapshot(activeLayer),
       activeCanvas: collectJumpSparkleComputedStyleSnapshot(activeCanvas),
-      activeBlendPlate: collectJumpSparkleComputedStyleSnapshot(activeBlendPlate),
     };
     if (payload && payload.videoElement) {
       output.computed.video = collectJumpSparkleComputedStyleSnapshot(payload.videoElement);
@@ -24380,15 +24244,8 @@ function getJumpSparkleRuntimeState() {
       lastBackLayerVisible: false,
       lastFrontLayerVisible: false,
       lastEffectiveRenderer: '',
-      lastPreloadSignature: '',
-      userGestureUnlocked: false,
-      adaptiveWarmModeActive: false,
-      startupWindowStartMs: 0,
-      startupMissCount: 0,
-      startupSuccessStreak: 0,
       lastStartupOutcome: '',
       lastStartupLatencyMs: Number.NaN,
-      pendingWarmProbeCount: 0,
     };
   }
   if (!Array.isArray(STATE.jumpSparkle.instances)) {
@@ -24412,32 +24269,11 @@ function getJumpSparkleRuntimeState() {
   if (typeof STATE.jumpSparkle.lastEffectiveRenderer !== 'string') {
     STATE.jumpSparkle.lastEffectiveRenderer = '';
   }
-  if (typeof STATE.jumpSparkle.lastPreloadSignature !== 'string') {
-    STATE.jumpSparkle.lastPreloadSignature = '';
-  }
-  if (typeof STATE.jumpSparkle.userGestureUnlocked !== 'boolean') {
-    STATE.jumpSparkle.userGestureUnlocked = false;
-  }
-  if (typeof STATE.jumpSparkle.adaptiveWarmModeActive !== 'boolean') {
-    STATE.jumpSparkle.adaptiveWarmModeActive = false;
-  }
-  if (!Number.isFinite(Number(STATE.jumpSparkle.startupWindowStartMs))) {
-    STATE.jumpSparkle.startupWindowStartMs = 0;
-  }
-  if (!Number.isFinite(Number(STATE.jumpSparkle.startupMissCount))) {
-    STATE.jumpSparkle.startupMissCount = 0;
-  }
-  if (!Number.isFinite(Number(STATE.jumpSparkle.startupSuccessStreak))) {
-    STATE.jumpSparkle.startupSuccessStreak = 0;
-  }
   if (typeof STATE.jumpSparkle.lastStartupOutcome !== 'string') {
     STATE.jumpSparkle.lastStartupOutcome = '';
   }
   if (!Number.isFinite(Number(STATE.jumpSparkle.lastStartupLatencyMs))) {
     STATE.jumpSparkle.lastStartupLatencyMs = Number.NaN;
-  }
-  if (!Number.isFinite(Number(STATE.jumpSparkle.pendingWarmProbeCount))) {
-    STATE.jumpSparkle.pendingWarmProbeCount = 0;
   }
   return STATE.jumpSparkle;
 }
@@ -24453,27 +24289,8 @@ function resolveJumpSparkleCurrentSourcePath(videoEl) {
   return String(videoEl.currentSrc || videoEl.src || '').trim();
 }
 
-function isJumpSparkleWarmModeEnabled(sparkleConfig, runtime = getJumpSparkleRuntimeState()) {
-  const warmModeConfig = sparkleConfig && sparkleConfig.warmMode ? sparkleConfig.warmMode : {};
-  const policy = warmModeConfig.policy;
-  if (policy === 'off') {
-    return false;
-  }
-  if (runtime.userGestureUnlocked !== true) {
-    return false;
-  }
-  if (policy === 'alwaysAfterFirstGesture') {
-    return true;
-  }
-  if (policy === 'adaptive') {
-    return runtime.adaptiveWarmModeActive === true;
-  }
-  return false;
-}
-
 function recordJumpSparkleStartupOutcome(instance, sparkleConfig, outcome, details = {}) {
   const runtime = getJumpSparkleRuntimeState();
-  const warmModeConfig = sparkleConfig && sparkleConfig.warmMode ? sparkleConfig.warmMode : {};
   const nowMs = Number.isFinite(Number(details.nowMs)) ? Number(details.nowMs) : performance.now();
   const startupLatencyMs = Number.isFinite(Number(details.startupLatencyMs))
     ? Math.max(0, Number(details.startupLatencyMs))
@@ -24481,167 +24298,16 @@ function recordJumpSparkleStartupOutcome(instance, sparkleConfig, outcome, detai
   runtime.lastStartupOutcome = typeof outcome === 'string' ? outcome : '';
   runtime.lastStartupLatencyMs = startupLatencyMs;
 
-  if (warmModeConfig.policy === 'adaptive') {
-    const windowMs = Number.isFinite(Number(warmModeConfig.adaptiveWindowMs))
-      ? Math.max(250, Number(warmModeConfig.adaptiveWindowMs))
-      : 4000;
-    const missThreshold = Number.isFinite(Number(warmModeConfig.adaptiveMissThreshold))
-      ? Math.max(1, Math.floor(Number(warmModeConfig.adaptiveMissThreshold)))
-      : 2;
-    const disableAfterSuccessCount = Number.isFinite(Number(warmModeConfig.disableAfterSuccessCount))
-      ? Math.max(1, Math.floor(Number(warmModeConfig.disableAfterSuccessCount)))
-      : 4;
-    const elapsedSinceWindowStart = Number.isFinite(Number(runtime.startupWindowStartMs))
-      ? Math.max(0, nowMs - Number(runtime.startupWindowStartMs))
-      : Number.POSITIVE_INFINITY;
-    if (!Number.isFinite(elapsedSinceWindowStart) || elapsedSinceWindowStart > windowMs) {
-      runtime.startupWindowStartMs = nowMs;
-      runtime.startupMissCount = 0;
-      runtime.startupSuccessStreak = 0;
-    }
-    const isSuccessOutcome = outcome === 'instant' || outcome === 'warm_hit';
-    if (isSuccessOutcome) {
-      runtime.startupSuccessStreak = Math.max(0, Number(runtime.startupSuccessStreak) || 0) + 1;
-      runtime.startupMissCount = Math.max(0, (Number(runtime.startupMissCount) || 0) - 1);
-      if (runtime.adaptiveWarmModeActive === true && runtime.startupSuccessStreak >= disableAfterSuccessCount) {
-        runtime.adaptiveWarmModeActive = false;
-      }
-    } else {
-      runtime.startupSuccessStreak = 0;
-      runtime.startupMissCount = Math.max(0, Number(runtime.startupMissCount) || 0) + 1;
-      if (runtime.startupMissCount >= missThreshold) {
-        runtime.adaptiveWarmModeActive = true;
-      }
-    }
-  }
-
   logJumpSparkleDebug('startup_outcome', sparkleConfig, {
     instanceId: instance && Number.isFinite(instance.id) ? instance.id : null,
     outcome,
     startupLatencyMs,
     mediaState: instance && typeof instance.mediaState === 'string' ? instance.mediaState : '',
     sourcePath: instance && instance.videoEl ? resolveJumpSparkleCurrentSourcePath(instance.videoEl) : '',
-    adaptiveWarmModeActive: runtime.adaptiveWarmModeActive === true,
-    startupMissCount: Number(runtime.startupMissCount) || 0,
-    startupSuccessStreak: Number(runtime.startupSuccessStreak) || 0,
-    pendingWarmProbeCount: Number(runtime.pendingWarmProbeCount) || 0,
   }, {
     nowMs,
     throttleKey: `startup_outcome:${outcome}`,
   });
-}
-
-function maybeKickJumpSparkleWarmProbe(instance, sparkleConfig, reason = 'unknown') {
-  if (!instance || !instance.videoEl || instance.active === true) {
-    return;
-  }
-  const runtime = getJumpSparkleRuntimeState();
-  if (!isJumpSparkleWarmModeEnabled(sparkleConfig, runtime)) {
-    return;
-  }
-  const warmModeConfig = sparkleConfig && sparkleConfig.warmMode ? sparkleConfig.warmMode : {};
-  const nowMs = performance.now();
-  const probeCooldownMs = Number.isFinite(Number(warmModeConfig.probeCooldownMs))
-    ? Math.max(0, Number(warmModeConfig.probeCooldownMs))
-    : 1400;
-  const lastProbeAtMs = Number(instance.lastWarmProbeAtMs);
-  if (Number.isFinite(lastProbeAtMs) && (nowMs - lastProbeAtMs) < probeCooldownMs) {
-    return;
-  }
-  const sourcePath = resolveJumpSparkleCurrentSourcePath(instance.videoEl);
-  if (sourcePath.length <= 0) {
-    return;
-  }
-  if (instance.warmProbeInFlight === true) {
-    return;
-  }
-
-  instance.warmProbeInFlight = true;
-  instance.lastWarmProbeAtMs = nowMs;
-  runtime.pendingWarmProbeCount = Math.max(0, Number(runtime.pendingWarmProbeCount) || 0) + 1;
-  const probeTimeoutMs = Number.isFinite(Number(warmModeConfig.probeAdvanceTimeoutMs))
-    ? Math.max(30, Number(warmModeConfig.probeAdvanceTimeoutMs))
-    : 140;
-  const sourcePathAtProbeStart = sourcePath;
-  Promise.resolve()
-    .then(async () => {
-      try {
-        const playPromise = instance.videoEl.play();
-        if (playPromise && typeof playPromise.then === 'function') {
-          await playPromise;
-        }
-      } catch (_error) {
-        return false;
-      }
-      const advanced = await waitForJumpSparklePlaybackAdvance(instance.videoEl, probeTimeoutMs);
-      try {
-        instance.videoEl.pause();
-      } catch (_error) {
-        // Ignore pause errors for warm probe.
-      }
-      try {
-        instance.videoEl.currentTime = 0;
-      } catch (_error) {
-        // Ignore seek errors for warm probe.
-      }
-      return advanced;
-    })
-    .then((advanced) => {
-      if (advanced === true) {
-        instance.lastWarmProbeSuccessMs = performance.now();
-        instance.lastReadySourcePath = sourcePathAtProbeStart;
-      }
-      logJumpSparkleDebug('warm_probe_result', sparkleConfig, {
-        instanceId: instance.id,
-        reason,
-        advanced: advanced === true,
-        sourcePath: sourcePathAtProbeStart,
-      }, {
-        nowMs: performance.now(),
-        throttleKey: `warm_probe_result:${instance.id}:${reason}`,
-      });
-    })
-    .catch(() => {
-      // Ignore warm probe failures; adaptive mode will keep sampling.
-    })
-    .finally(() => {
-      instance.warmProbeInFlight = false;
-      runtime.pendingWarmProbeCount = Math.max(0, (Number(runtime.pendingWarmProbeCount) || 1) - 1);
-    });
-}
-
-function syncJumpSparkleBlendPlateState(sparkleConfig, backVisible, frontVisible) {
-  const safeConfig = sparkleConfig || resolveJumpSparkleConfig();
-  const debugConfig = safeConfig && safeConfig.debug ? safeConfig.debug : {};
-  const blendPlateConfig = debugConfig && debugConfig.videoBlendPlate ? debugConfig.videoBlendPlate : {};
-  const shouldShowPlate = (
-    safeConfig.enabled === true
-    && safeConfig.effectiveRenderer === 'video'
-    && blendPlateConfig.enabled === true
-  );
-  const plateOpacity = Number.isFinite(Number(blendPlateConfig.opacity))
-    ? clamp(Number(blendPlateConfig.opacity), 0, 1)
-    : 1;
-  const plateBackgroundColor = (
-    typeof blendPlateConfig.backgroundColor === 'string'
-    && blendPlateConfig.backgroundColor.trim().length > 0
-  )
-    ? blendPlateConfig.backgroundColor.trim()
-    : '#ffffff';
-
-  const applyPlateState = (plate, visible) => {
-    if (!plate) {
-      return;
-    }
-    plate.style.backgroundColor = plateBackgroundColor;
-    plate.style.opacity = String(plateOpacity);
-    plate.style.display = visible ? 'block' : 'none';
-    plate.style.visibility = visible ? 'visible' : 'hidden';
-    plate.setAttribute('aria-hidden', visible ? 'false' : 'true');
-  };
-
-  applyPlateState(jumpSparkleBackBlendPlate, shouldShowPlate && backVisible);
-  applyPlateState(jumpSparkleFrontBlendPlate, shouldShowPlate && frontVisible);
 }
 
 function setJumpSparkleLayerVisibility(backVisible, frontVisible, sparkleConfig = resolveJumpSparkleConfig()) {
@@ -24662,7 +24328,6 @@ function setJumpSparkleLayerVisibility(backVisible, frontVisible, sparkleConfig 
   jumpSparkleFrontLayer.style.display = frontVisible ? 'block' : 'none';
   jumpSparkleFrontLayer.style.visibility = frontVisible ? 'visible' : 'hidden';
   jumpSparkleFrontLayer.setAttribute('aria-hidden', frontVisible ? 'false' : 'true');
-  syncJumpSparkleBlendPlateState(safeConfig, backVisible, frontVisible);
   if (jumpSparkleFrontLayer.parentElement && jumpSparkleFrontLayer.parentElement.lastElementChild !== jumpSparkleFrontLayer) {
     jumpSparkleFrontLayer.parentElement.appendChild(jumpSparkleFrontLayer);
   }
@@ -24779,6 +24444,28 @@ function waitForJumpSparkleVideoEvent(videoEl, eventNames = [], timeoutMs = 450)
   });
 }
 
+function getJumpSparklePresentedFrameCount(videoEl) {
+  if (!videoEl) {
+    return Number.NaN;
+  }
+  if (typeof videoEl.getVideoPlaybackQuality === 'function') {
+    try {
+      const quality = videoEl.getVideoPlaybackQuality();
+      const totalFrames = Number(quality && quality.totalVideoFrames);
+      if (Number.isFinite(totalFrames) && totalFrames >= 0) {
+        return totalFrames;
+      }
+    } catch (_error) {
+      // Ignore playback quality probe errors.
+    }
+  }
+  const webkitDecodedFrameCount = Number(videoEl.webkitDecodedFrameCount);
+  if (Number.isFinite(webkitDecodedFrameCount) && webkitDecodedFrameCount >= 0) {
+    return webkitDecodedFrameCount;
+  }
+  return Number.NaN;
+}
+
 function waitForJumpSparklePlaybackAdvance(videoEl, timeoutMs = 360) {
   if (!videoEl) {
     return Promise.resolve(false);
@@ -24786,16 +24473,46 @@ function waitForJumpSparklePlaybackAdvance(videoEl, timeoutMs = 360) {
   const initialTime = Number.isFinite(Number(videoEl.currentTime))
     ? Math.max(0, Number(videoEl.currentTime))
     : 0;
-  if (initialTime > 1e-3) {
-    return Promise.resolve(true);
-  }
+  const initialFrameCount = getJumpSparklePresentedFrameCount(videoEl);
+  const frameCounterAvailable = Number.isFinite(initialFrameCount);
+  const rvfcAvailable = typeof videoEl.requestVideoFrameCallback === 'function';
+  const minMediaAdvanceSec = 1e-3;
   return new Promise((resolve) => {
     let settled = false;
     let timeoutId = null;
     let rafId = null;
-    const hasAdvanced = () => {
+    let rvfcId = null;
+    let rvfcInitialized = false;
+    let rvfcInitialPresentedFrames = Number.NaN;
+    let rvfcInitialMediaTime = Number.NaN;
+    const hasTimeAdvanced = () => {
       const currentTime = Number(videoEl.currentTime);
-      return Number.isFinite(currentTime) && currentTime > initialTime + 1e-3;
+      return Number.isFinite(currentTime) && currentTime > initialTime + minMediaAdvanceSec;
+    };
+    const hasCounterAdvanced = () => {
+      if (!frameCounterAvailable) {
+        return false;
+      }
+      const nextCount = getJumpSparklePresentedFrameCount(videoEl);
+      return Number.isFinite(nextCount) && nextCount > Number(initialFrameCount);
+    };
+    const hasAdvancedWithoutRvfc = () => {
+      if (hasCounterAdvanced()) {
+        return true;
+      }
+      if (!frameCounterAvailable && !rvfcAvailable) {
+        return hasTimeAdvanced();
+      }
+      return false;
+    };
+    const hasAdvancedAtTimeout = () => {
+      if (hasCounterAdvanced()) {
+        return true;
+      }
+      if (!frameCounterAvailable && (!rvfcAvailable || rvfcInitialized !== true)) {
+        return hasTimeAdvanced();
+      }
+      return false;
     };
     const settle = (result) => {
       if (settled) {
@@ -24812,18 +24529,59 @@ function waitForJumpSparklePlaybackAdvance(videoEl, timeoutMs = 360) {
       if (rafId !== null) {
         cancelAnimationFrame(rafId);
       }
+      if (rvfcId !== null && typeof videoEl.cancelVideoFrameCallback === 'function') {
+        try {
+          videoEl.cancelVideoFrameCallback(rvfcId);
+        } catch (_error) {
+          // Ignore RVFC cancel errors.
+        }
+      }
       resolve(result);
     };
     const onPlaybackEvent = () => {
-      if (hasAdvanced()) {
+      if (hasAdvancedWithoutRvfc()) {
         settle(true);
       }
     };
     const onError = () => {
       settle(false);
     };
+    const onVideoFrame = (_nowMs, metadata) => {
+      if (settled) {
+        return;
+      }
+      const presentedFrames = Number(metadata && metadata.presentedFrames);
+      const mediaTime = Number(metadata && metadata.mediaTime);
+      if (!rvfcInitialized) {
+        rvfcInitialized = true;
+        rvfcInitialPresentedFrames = Number.isFinite(presentedFrames) ? presentedFrames : Number.NaN;
+        rvfcInitialMediaTime = Number.isFinite(mediaTime) ? mediaTime : Number.NaN;
+      } else {
+        const presentedAdvanced = (
+          Number.isFinite(rvfcInitialPresentedFrames)
+          && Number.isFinite(presentedFrames)
+          && presentedFrames > rvfcInitialPresentedFrames
+        );
+        const mediaTimeAdvanced = (
+          Number.isFinite(rvfcInitialMediaTime)
+          && Number.isFinite(mediaTime)
+          && mediaTime > rvfcInitialMediaTime + minMediaAdvanceSec
+        );
+        if (presentedAdvanced || mediaTimeAdvanced) {
+          settle(true);
+          return;
+        }
+      }
+      if (hasCounterAdvanced()) {
+        settle(true);
+        return;
+      }
+      if (rvfcAvailable) {
+        rvfcId = videoEl.requestVideoFrameCallback(onVideoFrame);
+      }
+    };
     const tick = () => {
-      if (hasAdvanced()) {
+      if (hasAdvancedWithoutRvfc()) {
         settle(true);
         return;
       }
@@ -24834,8 +24592,11 @@ function waitForJumpSparklePlaybackAdvance(videoEl, timeoutMs = 360) {
     videoEl.addEventListener('seeked', onPlaybackEvent);
     videoEl.addEventListener('error', onError, { once: true });
     timeoutId = setTimeout(() => {
-      settle(hasAdvanced());
+      settle(hasAdvancedAtTimeout());
     }, Math.max(0, Number(timeoutMs) || 0));
+    if (rvfcAvailable) {
+      rvfcId = videoEl.requestVideoFrameCallback(onVideoFrame);
+    }
     rafId = requestAnimationFrame(tick);
   });
 }
@@ -24930,7 +24691,6 @@ async function runJumpSparkleInstancePlayback(instance, sparkleConfig) {
   }
   const activationNonce = Number(instance.activationNonce);
   const suppressAlternateFallback = isLikelyIOSDevice();
-  const runtime = getJumpSparkleRuntimeState();
   const sources = [instance.preferredPath];
   if (
     suppressAlternateFallback !== true
@@ -24965,6 +24725,9 @@ async function runJumpSparkleInstancePlayback(instance, sparkleConfig) {
         instance.videoEl,
         sparkleConfig.playbackAdvanceTimeoutMs,
       );
+      if (instance.active !== true || Number(instance.activationNonce) !== activationNonce) {
+        return { success: false, outcome: 'canceled' };
+      }
       if (!playbackAdvanced) {
         instance.mediaState = 'failed';
         continue;
@@ -24973,22 +24736,14 @@ async function runJumpSparkleInstancePlayback(instance, sparkleConfig) {
       const startupLatencyMs = Number.isFinite(Number(instance.startedAtMs))
         ? Math.max(0, nowMs - Number(instance.startedAtMs))
         : Number.NaN;
-      const warmTtlMs = Number.isFinite(Number(sparkleConfig.warmMode && sparkleConfig.warmMode.probeWarmTtlMs))
-        ? Math.max(100, Number(sparkleConfig.warmMode.probeWarmTtlMs))
-        : 5000;
-      const warmHit = (
-        Number.isFinite(Number(instance.lastWarmProbeSuccessMs))
-        && (nowMs - Number(instance.lastWarmProbeSuccessMs)) <= warmTtlMs
-      );
       const outcome = (
         Number.isFinite(startupLatencyMs)
         && startupLatencyMs <= sparkleConfig.startupInstantBudgetMs
       )
-        ? (warmHit ? 'warm_hit' : 'instant')
+        ? 'instant'
         : 'late_start';
       instance.mediaState = 'playing';
       instance.lastReadySourcePath = sourcePath;
-      instance.lastPlaybackAdvancedAtMs = nowMs;
       recordJumpSparkleStartupOutcome(instance, sparkleConfig, outcome, {
         nowMs,
         startupLatencyMs,
@@ -25013,9 +24768,6 @@ async function runJumpSparkleInstancePlayback(instance, sparkleConfig) {
       ? Math.max(0, performance.now() - Number(instance.startedAtMs))
       : Number.NaN,
   });
-  if (isJumpSparkleWarmModeEnabled(sparkleConfig, runtime)) {
-    maybeKickJumpSparkleWarmProbe(instance, sparkleConfig, 'failed_start');
-  }
   return { success: false, outcome: 'failed_start' };
 }
 
@@ -25061,10 +24813,6 @@ function createJumpSparkleInstance() {
     debugFirstCanvasFrameLogged: false,
     debugFirstVideoFrameLogged: false,
     lastReadySourcePath: '',
-    lastPlaybackAdvancedAtMs: 0,
-    lastWarmProbeAtMs: 0,
-    lastWarmProbeSuccessMs: 0,
-    warmProbeInFlight: false,
   };
   videoEl.id = `jumpSparkleVideo-${instanceId}`;
   videoEl.className = 'jumpSparkleVideo';
@@ -25105,9 +24853,7 @@ function createJumpSparkleInstance() {
 function ensureJumpSparkleInstancePool(sparkleConfig) {
   const runtime = getJumpSparkleRuntimeState();
   const safeConfig = sparkleConfig || resolveJumpSparkleConfig();
-  const desiredCount = safeConfig.triggerMode === 'overlapPool'
-    ? safeConfig.overlapPool.maxConcurrent
-    : 1;
+  const desiredCount = 1;
   while (runtime.instances.length < desiredCount) {
     runtime.instances.push(createJumpSparkleInstance());
   }
@@ -25121,31 +24867,11 @@ function ensureJumpSparkleInstancePool(sparkleConfig) {
       instance.videoEl.parentElement.removeChild(instance.videoEl);
     }
   }
-  const variants = Array.isArray(safeConfig.variants) ? safeConfig.variants : [];
-  const preloadSignature = `${safeConfig.effectiveRenderer}|${safeConfig.triggerMode}|${variants.join('||')}`;
-  if (variants.length > 0 && runtime.lastPreloadSignature !== preloadSignature) {
-    for (let i = 0; i < variants.length; i += 1) {
-      const variantPaths = resolveJumpSparkleVariantPaths(variants[i]);
-      if (!variantPaths || !variantPaths.preferredPath) {
-        continue;
-      }
-      const slot = i % runtime.instances.length;
-      const preloadInstance = runtime.instances[slot];
-      if (!preloadInstance || preloadInstance.active === true) {
-        continue;
-      }
-      setJumpSparkleInstanceSource(preloadInstance, variantPaths.preferredPath, { forceReload: false });
-      maybeKickJumpSparkleWarmProbe(preloadInstance, safeConfig, 'preload_signature_refresh');
-    }
-    runtime.lastPreloadSignature = preloadSignature;
-  } else if (variants.length > 0 && isJumpSparkleWarmModeEnabled(safeConfig, runtime)) {
-    for (let i = 0; i < runtime.instances.length; i += 1) {
-      const idleInstance = runtime.instances[i];
-      if (!idleInstance || idleInstance.active === true) {
-        continue;
-      }
-      maybeKickJumpSparkleWarmProbe(idleInstance, safeConfig, 'warm_mode_idle_tick');
-      break;
+  const preloadPaths = resolveJumpSparklePlaybackPaths(safeConfig);
+  if (runtime.instances.length > 0 && preloadPaths && preloadPaths.preferredPath) {
+    const preloadInstance = runtime.instances[0];
+    if (preloadInstance && preloadInstance.active !== true) {
+      setJumpSparkleInstanceSource(preloadInstance, preloadPaths.preferredPath, { forceReload: false });
     }
   }
   return runtime.instances;
@@ -25187,7 +24913,7 @@ function drawJumpSparkleInstancesToCanvasLayer(targetCtx, layerName, instances, 
 
   targetCtx.save();
   targetCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  targetCtx.globalCompositeOperation = sparkleConfig.canvasCompositeOperation || 'source-over';
+  targetCtx.globalCompositeOperation = 'source-over';
   targetCtx.imageSmoothingEnabled = true;
   let drewAny = false;
   for (let i = 0; i < instances.length; i += 1) {
@@ -25220,8 +24946,8 @@ function drawJumpSparkleInstancesToCanvasLayer(targetCtx, layerName, instances, 
   return drewAny;
 }
 
-function resolveJumpSparkleVariantPaths(variantEntry) {
-  const trimmed = typeof variantEntry === 'string' ? variantEntry.trim() : '';
+function resolveJumpSparkleSourcePaths(sourcePath) {
+  const trimmed = typeof sourcePath === 'string' ? sourcePath.trim() : '';
   if (trimmed.length <= 0) {
     return { preferredPath: '', fallbackPath: '' };
   }
@@ -25244,14 +24970,27 @@ function resolveJumpSparkleVariantPaths(variantEntry) {
   };
 }
 
-function chooseJumpSparkleVariant(sparkleConfig) {
+function resolveJumpSparklePlaybackPaths(sparkleConfig = resolveJumpSparkleConfig()) {
   const safeConfig = sparkleConfig || resolveJumpSparkleConfig();
-  const variants = Array.isArray(safeConfig.variants) ? safeConfig.variants : [];
-  if (variants.length <= 0) {
-    return { preferredPath: '', fallbackPath: '' };
+  const explicitSourcePaths = safeConfig && safeConfig.sourcePaths ? safeConfig.sourcePaths : {};
+  const explicitPreferredPath = typeof explicitSourcePaths.preferred === 'string'
+    ? explicitSourcePaths.preferred.trim()
+    : '';
+  const explicitFallbackPath = typeof explicitSourcePaths.fallback === 'string'
+    ? explicitSourcePaths.fallback.trim()
+    : '';
+  if (explicitPreferredPath.length > 0) {
+    return {
+      preferredPath: explicitPreferredPath,
+      fallbackPath: (
+        explicitFallbackPath.length > 0
+        && explicitFallbackPath !== explicitPreferredPath
+      )
+        ? explicitFallbackPath
+        : '',
+    };
   }
-  const index = clamp(Math.floor(Math.random() * variants.length), 0, variants.length - 1);
-  return resolveJumpSparkleVariantPaths(variants[index]);
+  return resolveJumpSparkleSourcePaths(safeConfig.sourcePath);
 }
 
 function resolveCurrentBranchTipDistanceForSparkle(branch) {
@@ -25462,35 +25201,13 @@ function activateJumpSparkleInstance(target, sparkleConfig, nowMs = performance.
   if (!Array.isArray(instances) || instances.length <= 0) {
     return false;
   }
-  let instance = null;
-  if (sparkleConfig.triggerMode === 'overlapPool') {
-    for (let i = 0; i < instances.length; i += 1) {
-      if (instances[i] && instances[i].active !== true) {
-        instance = instances[i];
-        break;
-      }
-    }
-    if (!instance) {
-      instance = instances[0];
-      for (let i = 1; i < instances.length; i += 1) {
-        const candidate = instances[i];
-        if (!candidate) {
-          continue;
-        }
-        if (!instance || (Number(candidate.startedAtMs) < Number(instance.startedAtMs))) {
-          instance = candidate;
-        }
-      }
-    }
-  } else {
-    instance = instances[0];
-  }
+  const instance = instances[0];
   if (!instance || !instance.videoEl) {
     return false;
   }
   deactivateJumpSparkleInstance(instance);
 
-  const { preferredPath, fallbackPath } = chooseJumpSparkleVariant(sparkleConfig);
+  const { preferredPath, fallbackPath } = resolveJumpSparklePlaybackPaths(sparkleConfig);
   if (!preferredPath) {
     return false;
   }
@@ -25519,7 +25236,7 @@ function activateJumpSparkleInstance(target, sparkleConfig, nowMs = performance.
       )
   );
   moveJumpSparkleInstanceToLayer(instance, layerName);
-  instance.videoEl.style.mixBlendMode = sparkleConfig.blendMode;
+  instance.videoEl.style.mixBlendMode = 'normal';
   instance.videoEl.playbackRate = sparkleConfig.playbackRate;
   if (!setJumpSparkleInstanceSource(instance, preferredPath, { forceReload: false })) {
     return false;
@@ -25579,10 +25296,6 @@ function activateJumpSparkleInstance(target, sparkleConfig, nowMs = performance.
 
 function triggerJumpSparkleFromJumpResult(jumpResult, event, flowersConfig = CONFIG.flowers || {}) {
   const sparkleConfig = resolveJumpSparkleConfig(flowersConfig);
-  const runtime = getJumpSparkleRuntimeState();
-  if (runtime.userGestureUnlocked !== true) {
-    runtime.userGestureUnlocked = true;
-  }
   if (sparkleConfig.enabled !== true) {
     return false;
   }
@@ -25611,21 +25324,10 @@ function triggerJumpSparkleFromJumpResult(jumpResult, event, flowersConfig = CON
       effectiveRenderer: sparkleConfig.effectiveRenderer,
       forceCanvasRendererOnIOS: sparkleConfig.forceCanvasRendererOnIOS !== false,
       iosRendererSafetyApplied: sparkleConfig.iosRendererSafetyApplied === true,
-      blendReliabilityPolicy: sparkleConfig.blendReliabilityPolicy,
       rendererSwitchForced: sparkleConfig.rendererSwitchForced === true,
     }, {
       nowMs,
-      throttleKey: `renderer_decision:${sparkleConfig.renderer}:${sparkleConfig.effectiveRenderer}:${sparkleConfig.blendReliabilityPolicy}`,
-    });
-  }
-  if (sparkleConfig.blendModeFallbackToNormal === true) {
-    logJumpSparkleDebug('blend_fallback_to_normal', sparkleConfig, {
-      requestedBlendModeRaw: sparkleConfig.requestedBlendModeRaw,
-      requestedBlendModeNormalized: sparkleConfig.requestedBlendModeNormalized,
-      cssSupportsRequestedBlendMode: sparkleConfig.cssSupportsRequestedBlendMode === true,
-    }, {
-      nowMs,
-      throttleKey: `blend_fallback_to_normal:${sparkleConfig.requestedBlendModeNormalized}`,
+      throttleKey: `renderer_decision:${sparkleConfig.renderer}:${sparkleConfig.effectiveRenderer}`,
     });
   }
   if (shouldSkipSparkleDueToInputDedupe(event, sparkleConfig, nowMs)) {
@@ -25642,8 +25344,8 @@ function syncJumpSparkleLayer(nowMs = performance.now()) {
   const sparkleConfig = resolveJumpSparkleConfig();
   const runtime = getJumpSparkleRuntimeState();
   const useCanvasRenderer = sparkleConfig.effectiveRenderer === 'canvas';
-  jumpSparkleBackCanvas.style.mixBlendMode = useCanvasRenderer ? sparkleConfig.blendMode : 'normal';
-  jumpSparkleFrontCanvas.style.mixBlendMode = useCanvasRenderer ? sparkleConfig.blendMode : 'normal';
+  jumpSparkleBackCanvas.style.mixBlendMode = 'normal';
+  jumpSparkleFrontCanvas.style.mixBlendMode = 'normal';
   if (sparkleConfig.enabled !== true || !Array.isArray(runtime.instances)) {
     if (Array.isArray(runtime.instances)) {
       for (let i = 0; i < runtime.instances.length; i += 1) {
@@ -25732,7 +25434,7 @@ function syncJumpSparkleLayer(nowMs = performance.now()) {
       instance.videoEl.style.width = `${widthPx}px`;
       instance.videoEl.style.height = `${heightPx}px`;
       instance.videoEl.style.transform = 'translate(-50%, -50%)';
-      instance.videoEl.style.mixBlendMode = sparkleConfig.blendMode;
+      instance.videoEl.style.mixBlendMode = 'normal';
       instance.videoEl.style.display = 'block';
       instance.videoEl.style.visibility = 'visible';
       instance.videoEl.style.pointerEvents = 'none';
@@ -25865,13 +25567,8 @@ function verifyJumpSparkleState() {
     forceCanvasRendererOnIOS: sparkleConfig.forceCanvasRendererOnIOS !== false,
     iosRendererSafetyApplied: sparkleConfig.iosRendererSafetyApplied === true,
     sourceFamily: USE_APPLE_VIDEO_SOURCE_FAMILY ? 'apple-mov-preferred' : 'webm-preferred',
-    userGestureUnlocked: runtime.userGestureUnlocked === true,
-    adaptiveWarmModeActive: runtime.adaptiveWarmModeActive === true,
-    startupMissCount: Number(runtime.startupMissCount) || 0,
-    startupSuccessStreak: Number(runtime.startupSuccessStreak) || 0,
     lastStartupOutcome: typeof runtime.lastStartupOutcome === 'string' ? runtime.lastStartupOutcome : '',
     lastStartupLatencyMs: Number(runtime.lastStartupLatencyMs),
-    pendingWarmProbeCount: Number(runtime.pendingWarmProbeCount) || 0,
     instanceCount: instanceSnapshots.length,
     instances: instanceSnapshots,
   };

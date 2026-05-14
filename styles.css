@@ -475,6 +475,7 @@ video {
   --rsvp-glow-pulse-max-scale: 1.08;
   --rsvp-glow-pulse-min-opacity: 0.35;
   --rsvp-glow-pulse-max-opacity: 0.62;
+  --rsvp-glow-rays-rotation-duration: 3600ms;
   position: absolute;
   transform: translate(-50%, -50%) scale(1);
   transform-origin: center center;
@@ -507,6 +508,9 @@ video {
     rgba(255, 255, 255, 0.28) 0deg 8.6deg,
     rgba(255, 255, 255, 0.06) 8.6deg 18deg
   );
+  transform: rotate(0deg);
+  transform-origin: 50% 50%;
+  animation: none;
   opacity: 0.7;
   filter: blur(6px);
 }
@@ -515,7 +519,15 @@ video {
   animation: rsvpConfirmGlowPulse var(--rsvp-glow-pulse-duration) var(--rsvp-glow-pulse-easing) infinite;
 }
 
+#rsvpConfirmGlowLayer.is-pulsing #rsvpConfirmGlowRays {
+  animation: rsvpConfirmGlowRaysRotate var(--rsvp-glow-rays-rotation-duration) linear infinite;
+}
+
 #rsvpConfirmGlowLayer.is-final {
+  animation: none;
+}
+
+#rsvpConfirmGlowLayer.is-final #rsvpConfirmGlowRays {
   animation: none;
 }
 
@@ -542,6 +554,15 @@ video {
   100% {
     transform: translate(-50%, -50%) scale(var(--rsvp-glow-pulse-min-scale));
     opacity: var(--rsvp-glow-pulse-min-opacity);
+  }
+}
+
+@keyframes rsvpConfirmGlowRaysRotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
   }
 }
 
