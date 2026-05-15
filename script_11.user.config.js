@@ -1306,8 +1306,8 @@
     jumpEpsilonDeg: 0.5,
     jumpSparkle: {
       enabled: true,
-      renderer: 'canvas', // canvas | video
-      forceCanvasRendererOnIOS: true, // keep jump sparkle on canvas on iPhone/iPad unless explicitly disabled
+      renderer: 'video', // canvas | video
+      forceCanvasRendererOnIOS: false, // keep jump sparkle on canvas on iPhone/iPad unless explicitly disabled
       sourcePath: './sparkle_003.webm',
       playbackRate: 1,
       playbackAdvanceTimeoutMs: 360, // wait this long for confirmed frame advancement before showing sparkle

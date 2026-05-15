@@ -15967,8 +15967,32 @@ function drawBackground() {
 }
 
 function resolveOpenButtonArrowDrawTargetCtx() {
-  if (canvas && canvas.style && canvas.style.display === 'none' && heroHintCtx) {
-    return heroHintCtx;
+  if (canvas) {
+    const inlineStyle = canvas.style || null;
+    let canvasEffectivelyHidden = false;
+    if (inlineStyle && (inlineStyle.display === 'none' || inlineStyle.visibility === 'hidden')) {
+      canvasEffectivelyHidden = true;
+    }
+    if (!canvasEffectivelyHidden && typeof window !== 'undefined' && typeof window.getComputedStyle === 'function') {
+      try {
+        const computedStyle = window.getComputedStyle(canvas);
+        if (computedStyle) {
+          if (computedStyle.display === 'none' || computedStyle.visibility === 'hidden') {
+            canvasEffectivelyHidden = true;
+          } else {
+            const computedOpacity = Number.parseFloat(computedStyle.opacity);
+            if (Number.isFinite(computedOpacity) && computedOpacity <= 0.001) {
+              canvasEffectivelyHidden = true;
+            }
+          }
+        }
+      } catch (_error) {
+        // Ignore computed-style errors; fall back to the base canvas context.
+      }
+    }
+    if (canvasEffectivelyHidden && heroHintCtx) {
+      return heroHintCtx;
+    }
   }
   return ctx;
 }
