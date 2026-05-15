@@ -264,7 +264,7 @@
 
   foliageVideos: {
     enabled: true,
-    mode: 'split', // split | combined
+    mode: 'combined', // split | combined
     startFrame: 270, // Hero video frame at which to start foliage videos
     playbackSpeed: 1.45,
     fallbackToFoliageOnLoadError: true,
@@ -272,7 +272,7 @@
     handoffSettleRafCount: 2, // extra RAF paints while canvas is visible before hiding video
     handoffTimeoutMs: 900, // hard safety timeout for handoff finalization
     keepCanvasesMountedDuringVideo: true, // avoid cold compositor attach on reveal
-    syncEnabled: true, // enable/disable sync loop to keep videos in sync
+    syncEnabled: false, // enable/disable sync loop to keep videos in sync
     syncMethod: 'requestVideoFrameCallback', // 'auto' (try requestVideoFrameCallback first), 'requestVideoFrameCallback', 'raf'
     driftThresholdFrames: 3, // frames of drift allowed before correction (at 30fps = 0.033s)
     syncMaster: 'upper', // which video is the master ('lower' or 'upper')
