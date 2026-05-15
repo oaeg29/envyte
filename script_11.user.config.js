@@ -1326,7 +1326,7 @@
       zIndexBack: 3,
       zIndexFront: 50002,
       inputDedupe: {
-        enabled: true,
+        enabled: false,
         windowMs: 400,
         radiusPx: 24,
         applyTo: 'sparkleOnly',

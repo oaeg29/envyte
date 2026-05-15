@@ -24433,6 +24433,64 @@ function resolveEffectiveSparkleRenderer(
   return configuredRenderer === 'video' ? 'video' : 'canvas';
 }
 
+function isDomElementEffectivelyVisible(element, options = {}) {
+  if (!element) {
+    return false;
+  }
+  const safeOptions = isPlainObjectLiteral(options) ? options : {};
+  const opacityThreshold = Number.isFinite(Number(safeOptions.opacityThreshold))
+    ? Math.max(0, Number(safeOptions.opacityThreshold))
+    : 0.001;
+  const inlineStyle = element.style || null;
+  if (inlineStyle) {
+    if (inlineStyle.display === 'none' || inlineStyle.visibility === 'hidden') {
+      return false;
+    }
+    const inlineOpacity = Number.parseFloat(inlineStyle.opacity);
+    if (Number.isFinite(inlineOpacity) && inlineOpacity <= opacityThreshold) {
+      return false;
+    }
+  }
+  if (typeof window === 'undefined' || typeof window.getComputedStyle !== 'function') {
+    return true;
+  }
+  let computedStyle = null;
+  try {
+    computedStyle = window.getComputedStyle(element);
+  } catch (_error) {
+    computedStyle = null;
+  }
+  if (!computedStyle) {
+    return true;
+  }
+  if (computedStyle.display === 'none' || computedStyle.visibility === 'hidden') {
+    return false;
+  }
+  const computedOpacity = Number.parseFloat(computedStyle.opacity);
+  if (Number.isFinite(computedOpacity) && computedOpacity <= opacityThreshold) {
+    return false;
+  }
+  return true;
+}
+
+function isJumpSparkleAllowedByFoliageVisibility(
+  foliageConfigCandidate = CONFIG && CONFIG.foliageVideos,
+) {
+  const foliageConfig = (
+    foliageConfigCandidate && typeof foliageConfigCandidate === 'object'
+      ? foliageConfigCandidate
+      : {}
+  );
+  const canvasesVisible = (
+    isDomElementEffectivelyVisible(canvas, { opacityThreshold: 0.001 })
+    || isDomElementEffectivelyVisible(frontCanvas, { opacityThreshold: 0.001 })
+  );
+  if (foliageConfig.enabled === true) {
+    return FOLIAGE_VIDEO_HANDOFF_RUNTIME.completed === true && canvasesVisible;
+  }
+  return canvasesVisible;
+}
+
 function canRenderJumpSparkleInstanceFrame(instance) {
   if (!instance || instance.active !== true) {
     return false;
@@ -25842,6 +25900,9 @@ function triggerJumpSparkleFromJumpResult(jumpResult, event, flowersConfig = CON
   if (sparkleConfig.enabled !== true) {
     return false;
   }
+  if (!isJumpSparkleAllowedByFoliageVisibility()) {
+    return false;
+  }
   if (!jumpResult || Number(jumpResult.affectedFlowerCount) <= 0) {
     return false;
   }
@@ -25886,10 +25947,15 @@ function triggerJumpSparkleFromJumpResult(jumpResult, event, flowersConfig = CON
 function syncJumpSparkleLayer(nowMs = performance.now()) {
   const sparkleConfig = resolveJumpSparkleConfig();
   const runtime = getJumpSparkleRuntimeState();
+  const sparkleAllowedByFoliageVisibility = isJumpSparkleAllowedByFoliageVisibility();
   const useCanvasRenderer = sparkleConfig.effectiveRenderer === 'canvas';
   jumpSparkleBackCanvas.style.mixBlendMode = 'normal';
   jumpSparkleFrontCanvas.style.mixBlendMode = 'normal';
-  if (sparkleConfig.enabled !== true || !Array.isArray(runtime.instances)) {
+  if (
+    sparkleConfig.enabled !== true
+    || sparkleAllowedByFoliageVisibility !== true
+    || !Array.isArray(runtime.instances)
+  ) {
     if (Array.isArray(runtime.instances)) {
       for (let i = 0; i < runtime.instances.length; i += 1) {
         deactivateJumpSparkleInstance(runtime.instances[i]);
