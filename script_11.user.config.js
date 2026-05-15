@@ -1323,7 +1323,7 @@
       offsetXVideoHeightRatio: 0,
       offsetYVideoHeightRatio: 0.05,
       layerMode: 'front', // matchFlowerLayer | front | back
-      zIndexBack: 3,
+      zIndexBack: 2,
       zIndexFront: 50002,
       inputDedupe: {
         enabled: false,
